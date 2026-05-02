@@ -1,0 +1,961 @@
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║          PLAN DE TEST & DONNÉES DE PRÉSENTATION — LE TOIT DES ANGES            ║
+║                   Application GeStock Pro — Année 2026-2027                    ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
+
+Établissement  : Le Toit des Anges — Crèche-Maternelle-Élémentaire
+Adresse        : 469 Cité Cheikh Omar TALL, Ouakam, Dakar, Sénégal
+Téléphone      : +221 33 820 00 00
+Email          : contact@toit-des-anges.sn
+WhatsApp Biz   : +221 77 820 00 00
+Directrice     : Mme Seynabou NDIAYE
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 0 — CONNEXION & COMPTES UTILISATEURS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+URL de l'application : http://localhost:5173  (ou domaine de déploiement)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  IDENTIFIANTS DE CONNEXION — TOUS LES RÔLES                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  1. DIRECTRICE (accès total)
+     Email    : directrice@toit-des-anges.sn
+     Mdp      : Admin@2026!
+     Rôle     : ADMIN
+     Accès    : Tous les modules sans restriction
+
+  2. MAÎTRESSE MATERNELLE
+     Nom      : Fatou MBAYE
+     Email    : fatou.mbaye@toit-des-anges.sn
+     Mdp      : Maitresse@2026
+     Rôle     : MAITRESSE
+     Accès    : Élèves, Bulletins, Emploi du Temps, Certificats, Événements
+
+  3. ENSEIGNANTE ÉLÉMENTAIRE
+     Nom      : Mariama SOW
+     Email    : mariama.sow@toit-des-anges.sn
+     Mdp      : Enseignant@2026
+     Rôle     : ENSEIGNANT
+     Accès    : Élèves, Bulletins, Emploi du Temps, Certificats, Événements
+
+  4. COMPTABLE
+     Nom      : Ibrahima DIALLO
+     Email    : compta@toit-des-anges.sn
+     Mdp      : Comptable@2026
+     Rôle     : COMPTABLE
+     Accès    : Facturation, Trésorerie, Recouvrement, WhatsApp, Élèves
+
+  5. ASSISTANTE DE DIRECTION
+     Nom      : Aissatou DIOP
+     Email    : assistante@toit-des-anges.sn
+     Mdp      : Assistante@2026
+     Rôle     : ASSISTANTE
+     Accès    : Lecture seule (Élèves, WhatsApp, Emploi du Temps, Événements)
+
+  6. RESPONSABLE RH
+     Nom      : Ousmane NDIAYE
+     Email    : rh@toit-des-anges.sn
+     Mdp      : RhManager@2026
+     Rôle     : HR_MANAGER
+     Accès    : Module RH complet (Employés, Contrats, Paie, Congés)
+
+  7. EMPLOYÉ / GARDIEN
+     Nom      : Modou FALL
+     Email    : gardien@toit-des-anges.sn
+     Mdp      : Employe@2026
+     Rôle     : EMPLOYEE
+     Accès    : Mon Pointage, Mes Congés
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 1 — PARAMÈTRES DE L'ÉTABLISSEMENT (Paramètres → Onglet Scolarité)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Configurer via : Paramètres → Onglet "Établissement"
+  Nom de l'école           : Le Toit des Anges
+  Adresse                  : 469 Cité Cheikh Omar TALL, Ouakam, Dakar
+  Téléphone                : +221 33 820 00 00
+  Email                    : contact@toit-des-anges.sn
+  WhatsApp Business        : +221 77 820 00 00
+
+Configurer via : Paramètres → Onglet "Scolarité"
+  Libellé année scolaire   : 2026-2027
+  Début d'année            : 01/10/2026
+  Fin d'année              : 30/06/2027
+  Durée                    : 10 mois
+  Jour limite paiement     : 5 du mois suivant
+  Fin Trimestre 1 (T1)     : Décembre 2026
+  Fin Trimestre 2 (T2)     : Mars 2027
+  Fin Trimestre 3 (T3)     : Juin 2027
+  Pénalité retard paiement : 2 000 FCFA/jour
+  Pénalité retard de garde : 2 500 FCFA/heure
+
+┌─ FRAIS D'INSCRIPTION PAR NIVEAU (à saisir dans Paramètres → Scolarité) ─────┐
+│  Crèche        :  75 000 FCFA                                                │
+│  Petite Section:  85 000 FCFA                                                │
+│  Moyenne Sect. :  85 000 FCFA                                                │
+│  Grande Sect.  :  85 000 FCFA                                                │
+│  CP            :  95 000 FCFA                                                │
+│  CE1           :  95 000 FCFA                                                │
+│  CE2           :  95 000 FCFA                                                │
+│  CM1           : 100 000 FCFA                                                │
+│  CM2           : 100 000 FCFA                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 2 — OFFRES DE SCOLARITÉ (menu : Offres de Scolarité)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer les offres suivantes :
+
+┌── MENSUALITÉS ──────────────────────────────────────────────────────────────┐
+│  Nom                    Type        Niveaux       Montant      Durée        │
+│  Mensualité Crèche      MENSUALITE  CRECHE        55 000 FCFA  10 mois      │
+│  Mensualité PS          MENSUALITE  PS            60 000 FCFA  10 mois      │
+│  Mensualité MS          MENSUALITE  MS            60 000 FCFA  10 mois      │
+│  Mensualité GS          MENSUALITE  GS            65 000 FCFA  10 mois      │
+│  Mensualité CP          MENSUALITE  CP            70 000 FCFA  10 mois      │
+│  Mensualité CE1         MENSUALITE  CE1           75 000 FCFA  10 mois      │
+│  Mensualité CE2         MENSUALITE  CE2           75 000 FCFA  10 mois      │
+│  Mensualité CM1         MENSUALITE  CM1           80 000 FCFA  10 mois      │
+│  Mensualité CM2         MENSUALITE  CM2           80 000 FCFA  10 mois      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌── TRANSPORT & CANTINE ──────────────────────────────────────────────────────┐
+│  Bus scolaire (mensuel) BUS         Tous          25 000 FCFA  10 mois      │
+│  Cantine (mensuelle)    CANTINE     Tous          30 000 FCFA  10 mois      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌── ACTIVITÉS PARASCOLAIRES ──────────────────────────────────────────────────┐
+│  Activité Anglais       ACTIVITE    PS, MS, GS    15 000 FCFA  Mensuel      │
+│  Activité Informatique  ACTIVITE    CP→CM2        15 000 FCFA  Mensuel      │
+│  Cotisation Sortie      ACTIVITE    Tous          10 000 FCFA  Annuel       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 3 — ADMISSIONS (menu : Admissions)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer 5 dossiers via le bouton "NOUVEAU DOSSIER" (wizard 4 étapes) :
+
+──────────────────────────────────────────────────────────────────────────────
+DOSSIER 1 — Nouvelle inscription (statut : EN_ATTENTE)
+
+  Étape 1 — Identité :
+    Prénom         : Aminata
+    Nom            : DIALLO
+    Date naissance : 15/03/2022
+    Lieu naissance : Dakar
+    Date de dépôt  : 02/05/2026
+    Statut initial : En attente
+
+  Étape 2 — Scolarité :
+    Niveau         : Petite Section (PS)
+    Régime         : Normal
+    Cantine        : ✅ Oui
+    Bus scolaire   : ❌ Non
+    Besoins spec.  : (laisser vide)
+
+  Étape 3 — Parent :
+    Prénom parent  : Kadiatou
+    Nom parent     : DIALLO
+    Lien           : Mère
+    Téléphone      : +221 77 456 78 90
+    Email          : kadiatou.diallo@gmail.com
+    Contact urgence: Mamadou Diallo — +221 76 123 45 67
+
+  Étape 4 — Notes :
+    Notes          : Dossier reçu complet. En attente extrait naissance.
+
+──────────────────────────────────────────────────────────────────────────────
+DOSSIER 2 — Inscription crèche (statut : ADMIS)
+
+  Étape 1 — Identité :
+    Prénom         : Ibrahim
+    Nom            : FALL
+    Date naissance : 20/07/2025
+    Lieu naissance : Dakar
+    Statut initial : Admis
+
+  Étape 2 — Scolarité :
+    Niveau         : Crèche (3–12 mois)
+    Régime         : Cas social (partiel)
+    Remise         : 30%
+    Cantine        : ❌ Non
+    Bus scolaire   : ❌ Non
+    Besoins spec.  : Prématuré — suivi pédiatrique mensuel
+
+  Étape 3 — Parent :
+    Prénom parent  : Fatoumata
+    Nom parent     : FALL
+    Lien           : Mère
+    Téléphone      : +221 78 234 56 78
+    Email          : (laisser vide)
+    Contact urgence: Dr. Ousmane Fall — +221 77 900 11 22
+
+  Étape 4 — Notes :
+    Notes          : Cas social validé par directrice. Remise 30% accordée.
+
+──────────────────────────────────────────────────────────────────────────────
+DOSSIER 3 — Élève actif CE1 (statut : ACTIF)
+
+  Étape 1 — Identité :
+    Prénom         : Zaynab
+    Nom            : NDIAYE
+    Date naissance : 08/09/2018
+    Lieu naissance : Saint-Louis
+    Statut initial : Actif
+
+  Étape 2 — Scolarité :
+    Niveau         : CE1
+    Régime         : Normal
+    Cantine        : ✅ Oui
+    Bus scolaire   : ✅ Oui
+    Besoins spec.  : (laisser vide)
+
+  Étape 3 — Parent :
+    Prénom parent  : Marème
+    Nom parent     : NDIAYE
+    Lien           : Mère
+    Téléphone      : +221 77 345 67 89
+    Email          : mareme.ndiaye@yahoo.fr
+    Contact urgence: Serigne NDIAYE — +221 70 567 89 01
+
+  Étape 4 — Notes :
+    Notes          : Réinscrite depuis 2023. Très bonne élève.
+
+──────────────────────────────────────────────────────────────────────────────
+DOSSIER 4 — Élève Grande Section (statut : ACTIF)
+
+  Étape 1 — Identité :
+    Prénom         : Moussa
+    Nom            : DIOP
+    Date naissance : 14/01/2020
+    Lieu naissance : Thiès
+    Statut initial : Actif
+
+  Étape 2 — Scolarité :
+    Niveau         : Grande Section (GS)
+    Régime         : Normal
+    Cantine        : ✅ Oui
+    Bus scolaire   : ✅ Oui
+    Besoins spec.  : Retard de développement du langage — suivi orthophoniste
+
+  Étape 3 — Parent :
+    Prénom parent  : Pape
+    Nom parent     : DIOP
+    Lien           : Père
+    Téléphone      : +221 76 456 78 90
+    Email          : pape.diop@orange.sn
+    Contact urgence: Aminata Diop — +221 77 654 32 10
+
+  Étape 4 — Notes :
+    Notes          : Enfant avec besoin spécifique. Séances orthophoniste mardi/jeudi.
+
+──────────────────────────────────────────────────────────────────────────────
+DOSSIER 5 — Cas total exonéré (statut : ACTIF)
+
+  Étape 1 — Identité :
+    Prénom         : Rokhaya
+    Nom            : MBAYE
+    Date naissance : 22/04/2021
+    Lieu naissance : Dakar
+    Statut initial : Actif
+
+  Étape 2 — Scolarité :
+    Niveau         : Moyenne Section (MS)
+    Régime         : Cas social (total)
+    Remise         : 100%
+    Cantine        : ✅ Oui
+    Bus scolaire   : ❌ Non
+    Besoins spec.  : Orpheline, prise en charge par tuteur
+
+  Étape 3 — Parent :
+    Prénom parent  : Alioune
+    Nom parent     : MBAYE
+    Lien           : Tuteur légal
+    Téléphone      : +221 70 123 45 67
+    Email          : alioune.mbaye@hotmail.com
+    Contact urgence: Imam Thierno — +221 77 888 99 00
+
+  Étape 4 — Notes :
+    Notes          : Dossier social complet. Exonération totale décidée en réunion du 15/04/2026.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 4 — ÉLÈVES INSCRITS (menu : Élèves)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer les fiches élèves complètes via "Inscrire un élève" :
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ NOM              │ PRÉNOM  │ NIVEAU │ DATE NAISS. │ STATUT │ BUS │ CANTINE  │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ SARR             │ Adama   │ CM1    │ 10/05/2015  │ ACTIF  │ Oui │ Oui      │
+│ DIALLO           │ Aminata │ PS     │ 15/03/2022  │ ACTIF  │ Non │ Oui      │
+│ NDIAYE           │ Zaynab  │ CE1    │ 08/09/2018  │ ACTIF  │ Oui │ Oui      │
+│ DIOP             │ Moussa  │ GS     │ 14/01/2020  │ ACTIF  │ Oui │ Oui      │
+│ MBAYE            │ Rokhaya │ MS     │ 22/04/2021  │ ACTIF  │ Non │ Oui      │
+│ SOW              │ Cheikh  │ CE2    │ 03/11/2017  │ ACTIF  │ Non │ Non      │
+│ FALL             │ Ndéye   │ CP     │ 17/07/2019  │ ACTIF  │ Oui │ Oui      │
+│ WADE             │ Oumar   │ CM2    │ 25/02/2014  │ ACTIF  │ Non │ Non      │
+│ SALL             │ Fatou   │ GS     │ 30/08/2020  │ ACTIF  │ Oui │ Oui      │
+│ GUEYE            │ Ibou    │ CRECHE │ 12/11/2025  │ ACTIF  │ Non │ Non      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Parent de SARR Adama :
+    Mère : Dieynaba SARR — +221 77 100 22 33 — dieynaba.sarr@gmail.com
+  Parent de DIALLO Aminata :
+    Mère : Kadiatou DIALLO — +221 77 456 78 90 — kadiatou.diallo@gmail.com
+  Parent de SOW Cheikh :
+    Père : Cheikh Tidiane SOW — +221 76 200 33 44
+  Parent de FALL Ndéye :
+    Mère : Fatoumata FALL — +221 78 300 44 55
+  Parent de WADE Oumar :
+    Père : Idrissa WADE — +221 77 400 55 66 — idrissa.wade@orange.sn
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 5 — FACTURATION SCOLAIRE (menu : Facturation)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer les factures suivantes (bouton "NOUVELLE FACTURE") :
+
+  FACT-001 — SARR Adama (CM1) — Mai 2026
+    Élève/Payeur : Dieynaba SARR
+    Lignes       :
+      - Mensualité CM1 — Mai 2026    80 000 FCFA
+      - Bus scolaire — Mai 2026      25 000 FCFA
+      - Cantine — Mai 2026           30 000 FCFA
+    Total        : 135 000 FCFA
+    Statut       : PAYÉE
+    Date         : 05/05/2026
+
+  FACT-002 — NDIAYE Zaynab (CE1) — Mai 2026
+    Élève/Payeur : Marème NDIAYE
+    Lignes       :
+      - Mensualité CE1 — Mai 2026    75 000 FCFA
+      - Bus scolaire — Mai 2026      25 000 FCFA
+      - Cantine — Mai 2026           30 000 FCFA
+    Total        : 130 000 FCFA
+    Statut       : PAYÉE
+    Date         : 03/05/2026
+
+  FACT-003 — DIOP Moussa (GS) — Mai 2026
+    Élève/Payeur : Pape DIOP
+    Lignes       :
+      - Mensualité GS — Mai 2026     65 000 FCFA
+      - Bus scolaire — Mai 2026      25 000 FCFA
+      - Cantine — Mai 2026           30 000 FCFA
+    Total        : 120 000 FCFA
+    Statut       : EN ATTENTE
+    Date         : 01/05/2026
+    → Cette facture est EN RETARD → démonstration de pénalité
+
+  FACT-004 — FALL Ndéye (CP) — Mai 2026 (inscription initiale)
+    Élève/Payeur : Fatoumata FALL
+    Lignes       :
+      - Frais d'inscription CP       95 000 FCFA
+      - Mensualité CP — Oct 2026     70 000 FCFA  (dernier mois payé à l'avance)
+      - Fournitures CP               45 000 FCFA
+      - Tenue scolaire (pack x3)     18 000 FCFA
+    Total        : 228 000 FCFA
+    Statut       : PAYÉE
+    Date         : 28/04/2026
+
+  FACT-005 — WADE Oumar (CM2) — Mai 2026
+    Élève/Payeur : Idrissa WADE
+    Lignes       :
+      - Mensualité CM2 — Mai 2026    80 000 FCFA
+    Total        : 80 000 FCFA
+    Statut       : EN SOUFFRANCE (impayée depuis 2 mois)
+    Date         : 01/04/2026
+    → Pour la démo recouvrement
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 6 — TRÉSORERIE & PAIEMENTS (menu : Trésorerie)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Enregistrer les paiements liés aux factures payées :
+
+  PAY-001 — Dieynaba SARR
+    Montant   : 135 000 FCFA
+    Mode      : Espèces (caisse)
+    Date      : 05/05/2026
+    Facture   : FACT-001
+
+  PAY-002 — Marème NDIAYE
+    Montant   : 130 000 FCFA
+    Mode      : Wave (mobile money)
+    Réf Wave  : W-20260503-4421
+    Date      : 03/05/2026
+    Facture   : FACT-002
+
+  PAY-003 — Fatoumata FALL (inscription)
+    Montant   : 228 000 FCFA
+    Mode      : Virement bancaire
+    Référence : VIR-20260428
+    Date      : 28/04/2026
+    Facture   : FACT-004
+
+  → Paiement partiel pour DIOP Moussa :
+  PAY-004 (partiel)
+    Montant   : 65 000 FCFA (paiement partiel)
+    Mode      : Espèces
+    Date      : 10/05/2026
+    Reste dû  : 55 000 FCFA + pénalité retard (2 000 FCFA × 5 jours = 10 000)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 7 — RESSOURCES HUMAINES (menu : RH)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Connexion requise : directrice@toit-des-anges.sn  OU  rh@toit-des-anges.sn
+
+── A. EMPLOYÉS à créer (RH → Employés → Ajouter) ────────────────────────────
+
+  EMP-001 : Seynabou NDIAYE
+    Poste         : Directrice
+    Département   : Direction
+    Date embauche : 01/09/2015
+    Salaire brut  : 450 000 FCFA
+    Type contrat  : CDI
+    Tél           : +221 77 820 00 00
+    Email         : directrice@toit-des-anges.sn
+    Genre         : Femme
+    Date naiss.   : 12/03/1978
+
+  EMP-002 : Fatou MBAYE
+    Poste         : Maîtresse PS/MS
+    Département   : Maternelle
+    Date embauche : 01/09/2020
+    Salaire brut  : 250 000 FCFA
+    Type contrat  : CDI
+    Tél           : +221 77 123 45 67
+    Email         : fatou.mbaye@toit-des-anges.sn
+    Genre         : Femme
+    Date naiss.   : 15/05/1990
+
+  EMP-003 : Mariama SOW
+    Poste         : Enseignante CE1/CE2
+    Département   : Élémentaire
+    Date embauche : 01/09/2021
+    Salaire brut  : 280 000 FCFA
+    Type contrat  : CDI
+    Tél           : +221 78 234 56 78
+    Email         : mariama.sow@toit-des-anges.sn
+    Genre         : Femme
+    Date naiss.   : 20/11/1988
+
+  EMP-004 : Ibrahima DIALLO
+    Poste         : Comptable
+    Département   : Administration
+    Date embauche : 15/01/2022
+    Salaire brut  : 220 000 FCFA
+    Type contrat  : CDD (5 ans → expire 14/01/2027)
+    Tél           : +221 76 345 67 89
+    Email         : compta@toit-des-anges.sn
+    Genre         : Homme
+    Date naiss.   : 08/03/1992
+
+  EMP-005 : Aissatou DIOP
+    Poste         : Assistante de direction
+    Département   : Administration
+    Date embauche : 01/10/2023
+    Salaire brut  : 180 000 FCFA
+    Type contrat  : CDD (2 ans → expire 30/09/2025)
+    Tél           : +221 70 456 78 90
+    Email         : assistante@toit-des-anges.sn
+    Genre         : Femme
+    Date naiss.   : 25/07/1995
+
+  EMP-006 : Ousmane NDIAYE
+    Poste         : Responsable RH
+    Département   : Administration
+    Date embauche : 01/03/2023
+    Salaire brut  : 300 000 FCFA
+    Type contrat  : CDI
+    Tél           : +221 77 567 89 01
+    Email         : rh@toit-des-anges.sn
+    Genre         : Homme
+    Date naiss.   : 02/09/1985
+
+  EMP-007 : Modou FALL
+    Poste         : Agent de sécurité / Gardien
+    Département   : Services généraux
+    Date embauche : 01/01/2019
+    Salaire brut  : 120 000 FCFA
+    Type contrat  : CDI
+    Tél           : +221 76 678 90 12
+    Email         : gardien@toit-des-anges.sn
+    Genre         : Homme
+    Date naiss.   : 18/06/1982
+
+── B. PARAMÈTRES DE PAIE (RH → Paramètres Paie) ─────────────────────────────
+  Taux charges sociales  : 14%  (IPRES + CSS côté employeur)
+  Taux IRPP (moyen)      : 10%
+  Salaire minimum (SMIG) : 100 000 FCFA
+  Jour de paiement       : 28 de chaque mois
+  Taux heures sup.       : 1.5 × taux horaire
+  Devise                 : F CFA
+
+── C. CONGÉ À CRÉER POUR LA DEMO (RH → Congés) ──────────────────────────────
+  Employée    : Fatou MBAYE
+  Type        : Congé payé (PAID)
+  Du          : 01/07/2027
+  Au          : 31/08/2027
+  Motif       : Vacances scolaires d'été
+  Statut      : À approuver par Directrice
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 8 — EMPLOI DU TEMPS (menu : Emploi du Temps)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sélectionner le niveau : CE1  →  Créer les créneaux suivants :
+
+  LUNDI
+    08h00–09h00 │ Français         │ Mariama SOW    │ Couleur : #3b82f6 (bleu)
+    09h00–10h00 │ Mathématiques    │ Mariama SOW    │ Couleur : #f59e0b (orange)
+    10h15–11h15 │ Histoire-Géo     │ Mariama SOW    │ Couleur : #10b981 (vert)
+    11h15–12h15 │ Sciences         │ Mariama SOW    │ Couleur : #8b5cf6 (violet)
+
+  MARDI
+    08h00–09h00 │ Mathématiques    │ Mariama SOW    │ #f59e0b
+    09h00–10h00 │ Anglais          │ Intervenant    │ #ef4444 (rouge)
+    10h15–11h15 │ Français         │ Mariama SOW    │ #3b82f6
+    11h15–12h15 │ EPS              │ Mariama SOW    │ #06b6d4 (cyan)
+
+  MERCREDI
+    08h00–09h00 │ Français         │ Mariama SOW    │ #3b82f6
+    09h00–10h00 │ Mathématiques    │ Mariama SOW    │ #f59e0b
+    10h15–11h15 │ Dessin/Artiste   │ Mariama SOW    │ #ec4899 (rose)
+
+  JEUDI
+    08h00–09h00 │ Mathématiques    │ Mariama SOW    │ #f59e0b
+    09h00–10h00 │ Français         │ Mariama SOW    │ #3b82f6
+    10h15–11h15 │ Informatique     │ Intervenant    │ #64748b (gris)
+    11h15–12h15 │ Histoire-Géo     │ Mariama SOW    │ #10b981
+
+  VENDREDI
+    08h00–09h00 │ Français         │ Mariama SOW    │ #3b82f6
+    09h00–10h00 │ Sciences         │ Mariama SOW    │ #8b5cf6
+    10h15–11h15 │ Mathématiques    │ Mariama SOW    │ #f59e0b
+    11h15–12h15 │ Récitation       │ Mariama SOW    │ #3b82f6
+
+── CAHIER DE TEXTE (Onglet "Cahier de texte") ────────────────────────────────
+  Créer 2 entrées pour la semaine du 28 avril 2026 :
+
+  Entrée 1 :
+    Niveau   : CE1
+    Matière  : Français
+    Date     : 28/04/2026 (Lundi)
+    Contenu  : Leçon sur les accords sujet-verbe. Exercices pages 42–43.
+    Devoirs  : Apprendre la règle d'accord + exercice 5 page 44.
+
+  Entrée 2 :
+    Niveau   : CE1
+    Matière  : Mathématiques
+    Date     : 29/04/2026 (Mardi)
+    Contenu  : Introduction aux fractions simples. Manipulation du matériel.
+    Devoirs  : Problème 3 page 67 (manuel de maths CE1).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 9 — BULLETINS SCOLAIRES (menu : Bulletins)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+── A. BULLETIN MATERNELLE — Moussa DIOP (GS) — Trimestre 1 ──────────────────
+  Sélectionner : élève = Moussa DIOP │ Trimestre = T1 │ Classe = GS
+
+  DOMAINE : Motricité & Développement physique
+    Courir, sauter, grimper              → ACQUIS
+    Tenir un crayon, ciseaux             → ACQUIS
+    Coordiniation œil-main               → EN COURS
+
+  DOMAINE : Langage & Communication
+    S'exprimer clairement en français    → EN COURS  ← (retard langage)
+    Comprendre une consigne simple       → EN COURS
+    Raconter une histoire vue            → NON ACQUIS
+
+  DOMAINE : Cognitif & Logique
+    Compter jusqu'à 10                   → ACQUIS
+    Reconnaître formes et couleurs       → ACQUIS
+    Trier par taille, par couleur        → ACQUIS
+
+  DOMAINE : Développement social & émotionnel
+    Respecter les règles de vie          → ACQUIS
+    Jouer avec les autres                → ACQUIS
+    Gérer ses émotions                   → EN COURS
+
+  DOMAINE : Arts & Créativité
+    Coloriage dans les traits            → EN COURS
+    Réaliser un dessin libre             → ACQUIS
+
+  Appréciation générale :
+    "Moussa fait de réels progrès malgré ses difficultés de langage.
+     Son suivi orthophonique porte ses fruits. Bon comportement en classe.
+     Encourageons-le pour le prochain trimestre."
+
+── B. BULLETIN ÉLÉMENTAIRE — Zaynab NDIAYE (CE1) — Trimestre 1 ──────────────
+  Sélectionner : élève = Zaynab NDIAYE │ Trimestre = T1 │ Classe = CE1
+
+  FRANÇAIS (coefficient 4)
+    Lecture                  coeff 1 │ note : 16/20
+    Grammaire & Conjugaison  coeff 1 │ note : 17/20
+    Orthographe              coeff 1 │ note : 15/20
+    Expression écrite        coeff 1 │ note : 18/20
+    → Moyenne matière : 16,50/20
+
+  MATHÉMATIQUES (coefficient 4)
+    Calcul mental            coeff 1 │ note : 19/20
+    Problèmes                coeff 2 │ note : 17/20
+    Géométrie                coeff 1 │ note : 16/20
+    → Moyenne matière : 17,25/20
+
+  HISTOIRE-GÉOGRAPHIE (coefficient 2)
+    Histoire                 coeff 1 │ note : 14/20
+    Géographie               coeff 1 │ note : 15/20
+    → Moyenne matière : 14,50/20
+
+  SCIENCES (coefficient 2)
+    Sciences naturelles      coeff 1 │ note : 16/20
+    Éducation civique        coeff 1 │ note : 18/20
+    → Moyenne matière : 17,00/20
+
+  ANGLAIS (coefficient 1)
+    Anglais oral             coeff 1 │ note : 14/20
+    → Moyenne matière : 14,00/20
+
+  → Moyenne générale calculée automatiquement ≈ 16,40/20
+  → Appréciation auto : "EXCELLENT — Continuez ainsi !"
+
+  Appréciation personnalisée :
+    "Zaynab est une élève brillante et appliquée. Sa participation en classe
+     est exemplaire. Félicitations pour ces excellents résultats."
+
+  Action : Cliquer "PUBLIER & NOTIFIER" → envoi WhatsApp automatique
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 10 — ÉVÉNEMENTS (menu : Événements)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer 3 événements :
+
+  ÉVÉNEMENT 1 — Réunion parents-professeurs
+    Titre        : Réunion Parents-Professeurs — T1
+    Type         : Réunion parents-profs
+    Date         : 15/12/2026
+    Heure        : 09h00 – 12h00
+    Lieu         : Salle de réunion — Le Toit des Anges
+    Niveaux      : Tous les niveaux
+    Description  : Présentation des résultats du 1er trimestre.
+                   Échanges sur les difficultés rencontrées.
+                   Distribution des bulletins du T1.
+    Statut       : PUBLIÉ
+    → Cliquer "Diffuser WhatsApp" pour envoyer aux parents
+
+  ÉVÉNEMENT 2 — Sortie scolaire Zoo de Hann
+    Titre        : Sortie Scolaire — Zoo de Hann
+    Type         : Sortie scolaire
+    Date         : 28/11/2026
+    Heure        : 08h00 – 17h00
+    Lieu         : Zoo de Hann, Dakar
+    Niveaux      : PS, MS, GS, CP
+    Description  : Sortie pédagogique au Zoo de Hann. Prévoir tenue de sport.
+                   Cotisation : 5 000 FCFA/enfant (transport + entrée).
+                   Pique-nique à prévoir par les parents.
+    Statut       : BROUILLON (pas encore publié — démonstration workflow)
+
+  ÉVÉNEMENT 3 — Fête de fin d'année
+    Titre        : Grande Fête de Fin d'Année 2026-2027
+    Type         : Fête/Spectacle
+    Date         : 27/06/2027
+    Heure        : 10h00 – 17h00
+    Lieu         : Cour de l'établissement
+    Niveaux      : Tous les niveaux
+    Description  : Cérémonie de remise des bulletins du T3.
+                   Spectacle des élèves (danses, théâtre, chants).
+                   Buffet partagé — chaque famille apporte un plat.
+    Statut       : BROUILLON
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 11 — COMMUNICATION WHATSAPP (menu : WhatsApp)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Les modèles WhatsApp sont pré-configurés. Personnaliser les 7 templates :
+
+  TEMPLATE 1 — Reçu provisoire
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 🏫 *LE TOIT DES ANGES — Reçu Provisoire*                   │
+  │                                                             │
+  │ Chère {{parent_prenom}},                                    │
+  │                                                             │
+  │ Nous accusons réception d'un paiement de :                  │
+  │ 💰 *{{montant}} FCFA*                                       │
+  │ Pour : {{eleve_prenom}} {{eleve_nom}} ({{niveau}})          │
+  │ Date : {{date}}                                             │
+  │ Mode : {{mode_paiement}}                                    │
+  │                                                             │
+  │ Un reçu définitif vous sera remis sous 24h.                 │
+  │ Merci de votre confiance 🙏                                 │
+  │ — Direction Le Toit des Anges                               │
+  └─────────────────────────────────────────────────────────────┘
+
+  TEMPLATE 2 — Reçu définitif
+  ┌─────────────────────────────────────────────────────────────┐
+  │ ✅ *LE TOIT DES ANGES — Reçu Définitif N°{{numero_recu}}*  │
+  │                                                             │
+  │ Cher(e) {{parent_prenom}},                                  │
+  │                                                             │
+  │ Votre paiement est confirmé :                               │
+  │ 💰 *{{montant}} FCFA* — {{mois}}                            │
+  │ Élève : {{eleve_prenom}} {{eleve_nom}} | {{niveau}}         │
+  │ Réf. : {{numero_recu}} | {{date}}                           │
+  │                                                             │
+  │ ✔ Scolarité à jour. Merci !                                 │
+  │ Le Toit des Anges — +221 33 820 00 00                       │
+  └─────────────────────────────────────────────────────────────┘
+
+  TEMPLATE 3 — Facture mensuelle
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 📋 *LE TOIT DES ANGES — Facture {{mois}}*                   │
+  │                                                             │
+  │ Cher(e) {{parent_prenom}},                                  │
+  │                                                             │
+  │ Veuillez trouver ci-joint votre facture pour :              │
+  │ 👦 {{eleve_prenom}} {{eleve_nom}} — {{niveau}}              │
+  │                                                             │
+  │ 📌 Montant à régler : *{{montant}} FCFA*                    │
+  │ ⏰ Date limite : 05/{{mois_suivant}}/2026                   │
+  │                                                             │
+  │ ⚠️ Passé ce délai : pénalité de 2 000 FCFA/jour             │
+  │                                                             │
+  │ Règlement : Espèces, Wave (+221 77 820 00 00), Virement     │
+  │ Le Toit des Anges — +221 33 820 00 00                       │
+  └─────────────────────────────────────────────────────────────┘
+
+  TEMPLATE 4 — Relance impayé
+  ┌─────────────────────────────────────────────────────────────┐
+  │ ⚠️ *LE TOIT DES ANGES — Rappel de Paiement*                 │
+  │                                                             │
+  │ Cher(e) {{parent_prenom}},                                  │
+  │                                                             │
+  │ Nous constatons que la mensualité de                        │
+  │ *{{eleve_prenom}} {{eleve_nom}}* ({{niveau}}) reste impayée.│
+  │                                                             │
+  │ 💰 Montant dû : *{{montant}} FCFA*                          │
+  │ 📅 En retard depuis le : {{date_echeance}}                  │
+  │ 🚨 Pénalité appliquée : {{penalite}} FCFA/jour              │
+  │                                                             │
+  │ Merci de régulariser rapidement.                            │
+  │ Pour toute question : +221 33 820 00 00                     │
+  └─────────────────────────────────────────────────────────────┘
+
+  TEMPLATES 5, 6, 7 — garder les modèles par défaut pour bulletin,
+  admission confirmée et retard de garde.
+
+  ENVOI INDIVIDUEL — Demo live :
+    Sélectionner : Zaynab NDIAYE
+    Modèle       : Reçu définitif
+    Cliquer      : "Prévisualiser" → vérifier les variables → "Ouvrir WhatsApp"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 12 — CERTIFICATS & DOCUMENTS (menu : Certificats)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Générer ces 3 documents pour la démo :
+
+  DOC 1 — Certificat de scolarité
+    Élève   : SARR Adama
+    Classe  : CM1
+    Année   : 2026-2027
+    Usage   : Visa / dossier externe
+    → Prévisualiser → Imprimer (ou export PDF)
+
+  DOC 2 — Autorisation de sortie scolaire
+    Élève   : DIOP Moussa
+    Classe  : GS
+    Sortie  : Sortie pédagogique Zoo de Hann
+    Date    : 28/11/2026
+    → Prévisualiser → Imprimer
+
+  DOC 3 — Fiche sanitaire de liaison
+    Élève   : FALL Ibrahim (Crèche)
+    Info    : Prématuré, suivi pédiatrique — allergie penicilline
+    → Prévisualiser → Imprimer
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 13 — STOCK FOURNITURES (menu : Stock Fournitures)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer ces articles en stock (avec catégorie "Fournitures scolaires") :
+
+  STK-001 : Manuel de Français CE1 (LAROUSSE)
+    SKU         : LIV-CE1-FR
+    Catégorie   : Livres scolaires
+    Qté actuel  : 30
+    Seuil mini  : 5
+    Prix achat  : 4 500 FCFA
+    Prix vente  : 6 000 FCFA
+    Emplacement : Bibliothèque A
+
+  STK-002 : Manuel de Maths CE1
+    SKU         : LIV-CE1-MA
+    Qté actuel  : 28
+    Prix achat  : 4 500 FCFA
+    Prix vente  : 6 000 FCFA
+    Emplacement : Bibliothèque A
+
+  STK-003 : Cahier grand format 200 pages
+    SKU         : CAH-GF-200
+    Catégorie   : Fournitures
+    Qté actuel  : 150
+    Seuil mini  : 30
+    Prix achat  :   800 FCFA
+    Prix vente  : 1 200 FCFA
+    Emplacement : Réserve
+
+  STK-004 : Tenue scolaire T-shirt (S)
+    SKU         : TEN-TS-S
+    Catégorie   : Tenues
+    Qté actuel  : 50
+    Prix achat  : 2 500 FCFA
+    Prix vente  : 4 000 FCFA
+    Emplacement : Réserve vêtements
+
+  STK-005 : Tenue scolaire Short (S)
+    SKU         : TEN-SH-S
+    Catégorie   : Tenues
+    Qté actuel  : 45
+    Prix achat  : 2 000 FCFA
+    Prix vente  : 3 500 FCFA
+    Emplacement : Réserve vêtements
+
+  STK-006 : Trousse complète maternelle
+    SKU         : TRS-MAT
+    Catégorie   : Fournitures
+    Qté actuel  : 40
+    Prix achat  : 2 800 FCFA
+    Prix vente  : 4 500 FCFA
+    Emplacement : Réserve
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 14 — CATÉGORIES & SOUS-CATÉGORIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Créer ces catégories (menu : Catégories) :
+
+  1. Livres scolaires
+     → Sous-cat : Maternelle / Élémentaire / Parascolaire
+
+  2. Fournitures
+     → Sous-cat : Cahiers / Stylos & Crayons / Colle & Ciseaux / Trousses
+
+  3. Tenues scolaires
+     → Sous-cat : T-shirts / Shorts / Chaussettes / Chaussures
+
+  4. Matières scolaires (pour les bulletins)
+     → Sous-cat : Français / Mathématiques / Sciences / Histoire-Géo /
+                  Anglais / Éducation Physique / Arts plastiques
+
+  5. Services extrascolaires
+     → Sous-cat : Cantine / Transport / Activités / Sorties
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  MODULE 15 — SCÉNARIOS DE DÉMONSTRATION (ordre conseillé)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ★ SCÉNARIO A — Inscription d'un nouvel élève (5 min)
+    1. Se connecter en DIRECTRICE
+    2. Aller dans "Admissions" → NOUVEAU DOSSIER
+    3. Remplir le wizard (4 étapes) avec les données de DIALLO Aminata
+    4. Changer le statut : EN_ATTENTE → ADMIS
+    5. Aller dans "Élèves" → inscrire l'élève définitivement
+
+  ★ SCÉNARIO B — Facturation et paiement (5 min)
+    1. Se connecter en COMPTABLE
+    2. Aller dans "Facturation" → NOUVELLE FACTURE
+    3. Créer FACT-003 (DIOP Moussa en retard)
+    4. Enregistrer un paiement partiel
+    5. Aller dans "Trésorerie" → voir le brouillard de caisse
+
+  ★ SCÉNARIO C — Relance impayé WhatsApp (3 min)
+    1. Rester en COMPTABLE
+    2. "Recouvrement" → voir WADE Oumar en souffrance
+    3. Aller dans "WhatsApp" → Envoi individuel
+    4. Sélectionner WADE → modèle "Relance impayé"
+    5. Prévisualiser → ouvrir WhatsApp
+
+  ★ SCÉNARIO D — Bulletin scolaire et notification (5 min)
+    1. Se connecter en ENSEIGNANTE (mariama.sow@...)
+    2. "Bulletins" → sélectionner CE1 → Zaynab NDIAYE → T1
+    3. Saisir les notes (données ci-dessus)
+    4. Observer le calcul automatique des moyennes
+    5. Cliquer "PUBLIER & NOTIFIER" → notification WhatsApp parent
+
+  ★ SCÉNARIO E — Emploi du temps et cahier de texte (3 min)
+    1. Rester en ENSEIGNANTE
+    2. "Emploi du Temps" → sélectionner CE1
+    3. Créer les créneaux du lundi
+    4. Aller dans "Cahier de texte" → ajouter une entrée pour aujourd'hui
+
+  ★ SCÉNARIO F — RH : paie du mois (4 min)
+    1. Se connecter en DIRECTRICE ou HR_MANAGER
+    2. "RH" → Génération Paie → Avril 2026
+    3. Générer pour Fatou MBAYE (250 000 FCFA brut)
+    4. Observer les retenues (IPRES + IRPP) et le net
+    5. Valider → changer statut en "PAYÉE"
+
+  ★ SCÉNARIO G — Événement + diffusion WhatsApp (3 min)
+    1. Se connecter en DIRECTRICE
+    2. "Événements" → créer la Réunion Parents-Profs du 15/12
+    3. Publier l'événement
+    4. Cliquer "Diffuser WhatsApp" → voir la liste des parents
+    5. Envoyer à un parent de démo
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NOTES TECHNIQUES & ORDRE DE SAISIE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ORDRE RECOMMANDÉ pour la configuration initiale :
+    1. Paramètres (général + scolarité)
+    2. Catégories → Sous-catégories
+    3. Stock Fournitures
+    4. Offres de Scolarité
+    5. Employés RH → Contrats → Paramètres paie
+    6. Admissions (5 dossiers)
+    7. Élèves (10 fiches)
+    8. Facturation (5 factures) → Trésorerie (paiements)
+    9. Emploi du Temps (CE1)
+   10. Bulletins (2 bulletins)
+   11. Événements (3 événements)
+   12. WhatsApp (vérifier/personnaliser modèles)
+   13. Certificats (3 documents)
+
+  BACKEND requis pour données persistantes :
+    → S'assurer que le serveur Express tourne sur le port 5000
+    → Vérifier la connexion PostgreSQL (base : toit_des_anges)
+    → Si backend indisponible : les modules fonctionnent en mode localStorage
+
+  IMPRESSION des bulletins :
+    → Ouvrir un bulletin publié → bouton "Imprimer"
+    → Sélectionner "Enregistrer en PDF" dans le dialogue d'impression
+    → Le style @media print génère une mise en page propre A4
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Document créé le 02/05/2026 — Le Toit des Anges / GeStock Pro
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

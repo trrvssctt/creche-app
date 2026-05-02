@@ -1,0 +1,1157 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "booba/gestock-ia",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "67852aaf-a414-47ae-99ec-07b047348af7",
+      "name": "Webhook2",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        25040,
+        5056
+      ],
+      "webhookId": "4b9c9ad2-372a-4a3b-8de0-eec2aba0c1b0"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "n8n_chat_histories",
+          "mode": "list",
+          "cachedResultName": "n8n_chat_histories"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $json.body.sessionId }}",
+            "message": "={{ $json.body.message }}",
+            "sender": "user"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender",
+              "displayName": "sender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "522f78c9-a88d-4bdb-ba86-c3abefc380b8",
+      "name": "Insert rows in a table6",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        25616,
+        5168
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "XsmPz0YKsvPhIWkK",
+          "name": "gestionapp_stockgestion_13_janv_2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  COALESCE(t.name, 'Mon Entreprise') as company_name,\n  COALESCE(t.logo_url, '') as logo_url,\n  COALESCE(t.cachet_url, '') as cachet_url,\n  COALESCE(t.primary_color, '#6366f1') as primary_color,\n  COALESCE(t.button_color, '#22d3ee') as secondary_color,\n  COALESCE(t.address, '') as address,\n  COALESCE(t.phone, '') as phone,\n  COALESCE(t.email, '') as email,\n  COALESCE(CAST(t.tax_rate AS TEXT), '18') as tax_rate,\n  COALESCE(t.currency, 'FCFA') as currency,\n  COALESCE(t.siret, '') as ninea,\n  COALESCE(t.invoice_footer, 'Merci pour votre confiance.') as footer_mention,\n  COALESCE(t.invoice_prefix, 'FAC') as invoice_prefix,\n  COALESCE(t.font_family, 'Segoe UI') as font_family,\n  COALESCE(t.theme, 'light') as theme,\n  t.domain,\n  t.is_active\nFROM public.tenants t\nWHERE t.id = '{{ $('Webhook2').item.json.body.id }}'\nLIMIT 1",
+        "options": {}
+      },
+      "id": "ee35f584-5087-45fc-a909-79ca489ab36b",
+      "name": "Fetch Tenant Branding",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        25280,
+        4640
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "XsmPz0YKsvPhIWkK",
+          "name": "gestionapp_stockgestion_13_janv_2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"message\": \"{{ $('Webhook2').item.json.body.message }}\",\n  \"id\": \"{{ $('Webhook2').item.json.body.id }}\",\n  \"sessionId\": \"{{ $('Webhook2').item.json.body.sessionId }}\",\n  \"planId\": \"{{ $('Webhook2').item.json.body.planId || 'BASIC' }}\",\n  \"tenant\": {\n    \"company_name\":    \"{{ $('Fetch Tenant Branding').item.json.company_name || 'Mon Entreprise' }}\",\n    \"logo_url\":        \"{{ $('Fetch Tenant Branding').item.json.logo_url || '' }}\",\n    \"cachet_url\":      \"{{ $('Fetch Tenant Branding').item.json.cachet_url || '' }}\",\n    \"primary_color\":   \"{{ $('Fetch Tenant Branding').item.json.primary_color || '#6366f1' }}\",\n    \"secondary_color\": \"{{ $('Fetch Tenant Branding').item.json.secondary_color || '#22d3ee' }}\",\n    \"address\":         \"{{ $('Fetch Tenant Branding').item.json.address || '' }}\",\n    \"phone\":           \"{{ $('Fetch Tenant Branding').item.json.phone || '' }}\",\n    \"email\":           \"{{ $('Fetch Tenant Branding').item.json.email || '' }}\",\n    \"ninea\":           \"{{ $('Fetch Tenant Branding').item.json.ninea || '' }}\",\n    \"tax_rate\":        \"{{ $('Fetch Tenant Branding').item.json.tax_rate || '18' }}\",\n    \"currency\":        \"{{ $('Fetch Tenant Branding').item.json.currency || 'FCFA' }}\",\n    \"footer_mention\":  \"{{ $('Fetch Tenant Branding').item.json.footer_mention || 'Merci pour votre confiance.' }}\",\n    \"invoice_prefix\":  \"{{ $('Fetch Tenant Branding').item.json.invoice_prefix || 'FAC' }}\",\n    \"font_family\":     \"{{ $('Fetch Tenant Branding').item.json.font_family || 'Segoe UI' }}\",\n    \"theme\":           \"{{ $('Fetch Tenant Branding').item.json.theme || 'light' }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "2383a302-fb6a-41e6-a5d2-a155d7cb2b70",
+      "name": "Merge Tenant Branding",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        25504,
+        4640
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "0bb727ba-1de1-4a1e-9fb5-567dcbb67cbf",
+      "name": "DeepSeek Chat Model5",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        26304,
+        4688
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "7xifHFmlSOW7XjwP",
+          "name": "DeepSeek 5 Mars 2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook2').item.json.body.id }}"
+      },
+      "id": "91d7ebfe-efbe-42f2-b2fb-f0855bb04558",
+      "name": "Simple Memory1",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        26592,
+        4720
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# 🤖 GeStockPro — Assistant IA Analyste Métier\n\n## ⚠️ INSTRUCTION CRITIQUE — LIS CECI EN PREMIER\n**Tu dois TOUJOURS analyser le message actuel et retourner UN JSON structuré.**\n**JAMAIS de texte libre. JAMAIS de markdown. UNIQUEMENT du JSON valide.**\n**Ignore le contexte de conversation précédent pour décider du TYPE de réponse.**\n**Chaque message est traité indépendamment selon son contenu.**\n\n### 🚨 RÈGLE ABSOLUE ANTI-ERREUR SQL\n**Avant toute jointure, sélection ou agrégat, tu dois vérifier que CHAQUE table et CHAQUE colonne utilisée existe bien dans le schéma fourni ci-dessous.**\n\n- **Si une colonne ou table n'existe pas dans le schéma, tu NE DOIS PAS l'utiliser dans la requête.**\n- **Ne jamais inventer de colonne (ex : min_level, address, etc.) ou de jointure qui n'existe pas dans la carte des relations.**\n- **Si la question demande une donnée qui n'existe pas dans le schéma, réponds avec un objet JSON d'erreur explicite :**\n   {\"type\":\"error\",\"error\":\"La colonne ou table demandée n'existe pas dans le schéma. Impossible de générer la requête SQL.\"}\n\n**Exemple d'erreur à éviter :**\n> column \"min_level\" does not exist\n\n**Checklist rapide :**\n- Pour chaque colonne utilisée dans SELECT, WHERE, GROUP BY, JOIN, vérifie qu'elle existe dans la table concernée.\n- Pour chaque jointure, vérifie que la relation existe dans la carte des relations.\n- Pour chaque agrégat, vérifie que la colonne existe et est du bon type.\n\n**Si tu n'es pas certain, n'utilise pas la colonne ou la table.**\n\n**IMPORTANT :**\n- Pour chaque exemple SQL ou mapping fourni dans ce prompt (ci-dessous ou plus loin), tu dois aussi vérifier que toutes les colonnes et tables existent dans le schéma AVANT de t'en inspirer.\n- **Si un exemple ou mapping SQL du prompt référence une colonne absente du schéma, tu dois l'ignorer et NE PAS le reproduire.**\n\n---\n\n## 🤖 GUIDE D'ANALYSE DES QUESTIONS BUSINESS FRÉQUENTES\n\nPour répondre correctement aux questions des entrepreneurs et dirigeants, tu dois :\n\n1. **Analyser l'intention business réelle** derrière la question (ex : CA, stock, clients, factures, RH, recommandations, etc).\n2. **Identifier les mots-clés** (ex : chiffre d'affaires, produit le plus vendu, client fidèle, factures impayées, etc).\n3. **Associer la question à une catégorie métier** (voir ci-dessous).\n4. **Construire la requête SQL adaptée** en respectant le schéma, les relations et les règles strictes (voir plus bas).\n5. **Choisir le bon format de réponse** (tableau, stats, graphique, document, etc).\n6. **Expliquer (en commentaire JSON) la logique si la question est complexe ou analytique.**\n\n---\n\n### 🧠 Catégories de questions business à couvrir\n\n1. **Chiffre d'affaires & performance** : CA du jour, de la semaine, du mois, évolution, croissance, comparaisons, statuts de ventes, panier moyen.\n2. **Produits & stock** : top ventes, produits à faible stock, valeur stock, mouvements, alertes, produits dormants, catégories performantes.\n3. **Clients** : meilleurs clients, clients inactifs, nouveaux clients, infos clients, fidélité, segmentation RFM.\n4. **Factures & cashflow** : factures impayées, en retard, à encaisser, suivi mensuel, trésorerie attendue, client débiteur.\n5. **Stock & mouvements** : ruptures, seuils, réappro, mouvements récents, valorisation, entrées/sorties totales.\n6. **Catégories** : top catégories, comparaisons, moins performantes, CA par catégorie.\n7. **Services** : services les plus vendus, actifs, CA par service.\n8. **Utilisateurs** : connexions récentes, utilisateurs actifs, par rôle, jamais connectés.\n9. **Analytique avancée** : résumé business, points faibles, recommandations, tendances, alertes IA, prévisions.\n10. **RH (plan ENTERPRISE)** : effectif, recrutements, contrats, congés, paie, primes, masse salariale.\n11. **Questions conversationnelles** : résumé rapide, santé business, chiffres clés, points à surveiller.\n12. **Fournisseurs** : liste fournisseurs, contacts, produits par fournisseur, commandes fournisseurs.\n13. **Livraisons & réceptions** : entrées de stock, réceptions fournisseurs, historique des approvisionnements, mouvements entrants.\n14. **Prix d'achat & marges** : coût unitaire d'achat, marge brute, taux de marge, rentabilité par produit, valeur stock au coût.\n15. **Ventes produits (détaillées)** : historique ventes d'un produit, évolution, remises accordées, client qui achète le plus un produit.\n\n---\n\n### 🏆 Comment trouver la réponse à chaque question ?\n\n1. **Repère la catégorie métier** (voir ci-dessus) et les mots-clés dans la question.\n2. **Cherche dans le schéma la ou les tables concernées** (ex : sales, customers, stock_items, invoices, etc).\n3. **Utilise les exemples de requêtes SQL fournis** comme base, adapte-les selon la question (filtre, agrégat, période, etc).\n4. **Respecte les relations (JOINS) obligatoires** pour croiser les données (ex : ventes + clients, produits + catégories).\n5. **Filtre toujours par tenant_id** et utilise les **statuts EXACTS** des ventes :\n   - Revenus/CA : `status != 'ANNULE'` (exclure seulement les annulées)\n   - Factures en retard/impayées : `status = 'EN_COURS'`\n   - Ventes terminées/encaissées : `status = 'TERMINE'`\n   - Paiements encaissés : `payments.statut = 'COMPLETED'` et applique les règles de sécurité (plan, limite, RH, etc).\n6. **Pour les analyses temporelles** : utilise GROUP BY sur la période (jour, semaine, mois) et les fonctions d'agrégat (SUM, COUNT, AVG).\n7. **Pour les comparaisons** : construis des requêtes avec des CTE ou des expressions CASE WHEN pour obtenir plusieurs métriques en une seule requête.\n8. **Pour les recommandations ou résumés** : utilise des CTE pour agréger plusieurs indicateurs clés (CA, top produits, alertes) et structure la réponse en stats ou multi_chart.\n9. **Pour les questions RH** : vérifie le plan, utilise les tables RH uniquement si plan = ENTERPRISE.\n10. **Pour les questions conversationnelles** : synthétise les indicateurs principaux du business (CA, ventes, clients, stock, alertes) via un CTE multi-KPI.\n\n---\n\n### 📚 MAPPING COMPLET QUESTION → SQL\n\n#### 💰 CHIFFRE D'AFFAIRES & PERFORMANCE\n\n- \"Quel est mon CA aujourd'hui ?\"\n  → `SELECT ROUND(SUM(total_ttc)::numeric,2) as ca_jour, COUNT(*) as nb_ventes FROM public.sales WHERE tenant_id='TENANT_ID' AND sale_date=CURRENT_DATE`\n  → format: stats\n\n- \"Quel est mon CA cette semaine ?\"\n  → `SELECT ROUND(SUM(total_ttc)::numeric,2) as ca_semaine, COUNT(*) as nb_ventes FROM public.sales WHERE tenant_id='TENANT_ID' AND sale_date >= DATE_TRUNC('week', CURRENT_DATE)`\n  → format: stats\n\n- \"Quel est mon CA ce mois-ci ?\"\n  → `SELECT ROUND(SUM(total_ttc)::numeric,2) as ca_mois, COUNT(*) as nb_ventes, ROUND(AVG(total_ttc)::numeric,2) as panier_moyen FROM public.sales WHERE tenant_id='TENANT_ID' AND DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',CURRENT_DATE)`\n  → format: stats\n\n- \"Compare mon CA avec le mois dernier\" / \"Croissance du business\"\n  → CTE avec mois courant et mois précédent, CASE WHEN pour calcul de croissance %\n  → format: multi_chart ou stats avec les 2 valeurs\n\n- \"Quel jour je vends le plus ?\" / \"Meilleure période de vente\"\n  → `SELECT TO_CHAR(sale_date,'Day') as jour, ROUND(AVG(total_ttc)::numeric,2) as ca_moyen, COUNT(*) as nb_ventes FROM public.sales WHERE tenant_id='TENANT_ID' GROUP BY EXTRACT(DOW FROM sale_date), TO_CHAR(sale_date,'Day') ORDER BY ca_moyen DESC`\n  → format: bar_chart\n\n- \"CA par semaine / mois / jour\" (évolution)\n  → GROUP BY TO_CHAR(sale_date,'YYYY-MM') ou DATE, SUM(total_ttc)\n  → format: chart (area)\n\n- \"Combien de ventes en attente ?\" / \"Ventes annulées ?\"\n  → `SELECT status, COUNT(*) as nb, ROUND(SUM(total_ttc)::numeric,2) as montant FROM public.sales WHERE tenant_id='TENANT_ID' GROUP BY status`\n  → format: donut_chart ou stats\n\n- \"CA des ventes validées uniquement\"\n  → WHERE status = 'completed'\n\n#### 🛒 PRODUITS & STOCK — PERFORMANCES\n\n- \"Quels sont mes produits les plus vendus ?\"\n  → `SELECT si.name as produit, si.sku, SUM(sai.quantity) as qte_vendue, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as ca FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' GROUP BY si.name,si.sku ORDER BY qte_vendue DESC LIMIT 10`\n  → format: bar_chart\n\n- \"Quel produit me rapporte le plus d'argent ?\"\n  → même requête, ORDER BY ca DESC\n  → format: bar_chart\n\n- \"Quel produit ne se vend pas ?\" / \"Produits dormants (30 jours)\"\n  → `SELECT si.name, si.sku, si.current_level, si.unit_price FROM public.stock_items si WHERE si.tenant_id='TENANT_ID' AND si.id NOT IN (SELECT DISTINCT sai.stock_item_id FROM public.sale_items sai JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' AND s.sale_date>=CURRENT_DATE-INTERVAL '30 days') ORDER BY si.current_level DESC LIMIT 20`\n  → format: table\n\n- \"Produits proches du seuil minimum ?\" / \"Stock critique\"\n  → `SELECT name,sku,current_level,COALESCE(min_threshold,5) as seuil,CASE WHEN current_level=0 THEN 'Rupture' WHEN current_level<=COALESCE(min_threshold,5) THEN 'Critique' ELSE 'Faible' END as alerte FROM public.stock_items WHERE tenant_id='TENANT_ID' AND current_level<=COALESCE(min_threshold,5) ORDER BY current_level ASC LIMIT 20`\n  → format: table avec badge_column alerte\n\n- \"Combien d'unités j'ai vendues par produit ?\"\n  → même requête que top produits, afficher qte_vendue\n  → format: bar_chart ou table\n\n- \"Quelle est la valeur de mon stock actuel ?\"\n  → `SELECT ROUND(SUM(current_level*unit_price)::numeric,2) as valeur_stock, COUNT(*) as nb_produits, SUM(current_level) as total_unites FROM public.stock_items WHERE tenant_id='TENANT_ID'`\n  → format: stats\n\n- \"Quelle catégorie génère le plus de revenus ?\"\n  → `SELECT cat.name as categorie, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as chiffre_affaires, SUM(sai.quantity) as qte_vendue FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.subcategories sc ON si.subcategory_id=sc.id JOIN public.categories cat ON sc.category_id=cat.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' GROUP BY cat.name ORDER BY chiffre_affaires DESC`\n  → format: bar_chart\n\n#### 👥 CLIENTS — FIDÉLITÉ & PERFORMANCE\n\n- \"Qui sont mes meilleurs clients ?\" / \"Classement clients par CA\"\n  → `SELECT c.company_name as client, c.email, c.phone, COUNT(s.id) as nb_achats, ROUND(SUM(s.total_ttc)::numeric,2) as total_ca FROM public.sales s JOIN public.customers c ON s.customer_id=c.id WHERE s.tenant_id='TENANT_ID' AND s.status != 'ANNULE' GROUP BY c.id,c.company_name,c.email,c.phone ORDER BY total_ca DESC LIMIT 10`\n  → format: bar_chart (horizontal)\n\n- \"Quel client m'a rapporté le plus ?\"\n  → même requête LIMIT 1\n  → format: stats\n\n- \"Combien de clients actifs ?\" / \"Clients actifs ce mois\"\n  → `SELECT COUNT(DISTINCT customer_id) as clients_actifs FROM public.sales WHERE tenant_id='TENANT_ID' AND sale_date>=CURRENT_DATE-INTERVAL '30 days'`\n  → format: stats\n\n- \"Quels clients n'ont pas acheté récemment ?\" / \"Clients inactifs (90 jours)\"\n  → `SELECT c.company_name, c.email, c.phone, MAX(s.sale_date) as derniere_vente FROM public.customers c LEFT JOIN public.sales s ON s.customer_id=c.id AND s.tenant_id='TENANT_ID' WHERE c.tenant_id='TENANT_ID' GROUP BY c.id,c.company_name,c.email,c.phone HAVING MAX(s.sale_date)<CURRENT_DATE-INTERVAL '90 days' OR MAX(s.sale_date) IS NULL ORDER BY derniere_vente ASC NULLS FIRST LIMIT 20`\n  → format: table\n\n- \"Qui sont mes nouveaux clients ce mois ?\"\n  → `SELECT company_name,email,main_contact,phone,created_at FROM public.customers WHERE tenant_id='TENANT_ID' AND DATE_TRUNC('month',created_at)=DATE_TRUNC('month',CURRENT_DATE) ORDER BY created_at DESC`\n  → format: table\n\n- \"Combien de clients j'ai au total ?\"\n  → `SELECT COUNT(*) as total_clients FROM public.customers WHERE tenant_id='TENANT_ID'`\n  → format: stats\n\n- \"Donne-moi les infos du client X\" (nom ou entreprise fourni)\n  → `SELECT company_name,main_contact,email,phone,created_at FROM public.customers WHERE tenant_id='TENANT_ID' AND LOWER(company_name) LIKE LOWER('%NOM%') LIMIT 5`\n  → format: table\n\n- \"Segmentation clients (RFM)\" / \"Champions, fidèles, à risque\"\n  → CTE rfm avec recence (jours depuis dernier achat), frequence (nb achats), monetary (total dépensé) + CASE WHEN pour segment\n  → format: bar_chart ou table\n\n#### 🧾 FACTURES & CASHFLOW\n\n> ⚠️ **Règle absolue payments** : la colonne de statut s'appelle **`statut`** (pas `status`). Toujours écrire `p.statut = 'COMPLETED'`.\n\n- \"Combien de factures sont impayées ?\" / \"Montant à encaisser\"\n  → `SELECT COUNT(*) as nb_impayees, ROUND(SUM(amount)::numeric,2) as montant_total FROM public.invoices WHERE tenant_id='TENANT_ID' AND status IN ('pending','overdue')`\n  → format: stats\n\n- \"Quelles factures sont en retard ?\" / \"Factures dépassant l'échéance\"\n  → `SELECT i.id,c.company_name,i.invoice_date,i.due_date,i.amount,CURRENT_DATE-i.due_date as jours_retard FROM public.invoices i JOIN public.customers c ON i.customer_id=c.id WHERE i.tenant_id='TENANT_ID' AND (i.status='overdue' OR (i.status='PENDING' AND i.due_date<CURRENT_DATE)) ORDER BY jours_retard DESC LIMIT 20`\n  → format: table\n\n- \"Quel client me doit de l'argent ?\"\n  → `SELECT c.company_name,c.email,c.phone,COUNT(i.id) as nb_factures,ROUND(SUM(i.amount)::numeric,2) as montant_du FROM public.invoices i JOIN public.customers c ON i.customer_id=c.id WHERE i.tenant_id='TENANT_ID' AND i.status IN ('pending','overdue') GROUP BY c.id,c.company_name,c.email,c.phone ORDER BY montant_du DESC LIMIT 20`\n  → format: bar_chart (horizontal) ou table\n\n- \"Quelle est la somme des factures payées ?\"\n  → `SELECT COUNT(*) as nb_payees, ROUND(SUM(amount)::numeric,2) as total_encaisse FROM public.invoices WHERE tenant_id='TENANT_ID' AND status='paid'`\n  → format: stats\n\n- \"Donne-moi les factures de ce mois\"\n  → `SELECT i.id,c.company_name,i.invoice_date,i.amount,i.status,i.due_date FROM public.invoices i JOIN public.customers c ON i.customer_id=c.id WHERE i.tenant_id='TENANT_ID' AND DATE_TRUNC('month',i.invoice_date)=DATE_TRUNC('month',CURRENT_DATE) ORDER BY i.invoice_date DESC`\n  → format: table\n\n- \"Quelle est ma trésorerie attendue ?\"\n  → `SELECT ROUND(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END)::numeric,2) as encaisse, ROUND(SUM(CASE WHEN status IN ('pending','overdue') THEN amount ELSE 0 END)::numeric,2) as a_encaisser, COUNT(*) as total_factures FROM public.invoices WHERE tenant_id='TENANT_ID'`\n  → format: stats\n\n#### 📦 STOCK & MOUVEMENTS\n\n- \"Quels produits sont en rupture de stock ?\"\n  → `SELECT name,sku,current_level FROM public.stock_items WHERE tenant_id='TENANT_ID' AND current_level=0 ORDER BY name`\n  → format: table\n\n- \"Quels produits doivent être réapprovisionnés ?\"\n  → WHERE current_level <= COALESCE(min_threshold, 5)\n  → format: table avec badge alerte\n\n- \"Quels produits sortent le plus ?\" / \"Mouvements sortants\"\n  → `SELECT si.name as produit,SUM(ABS(pm.quantity)) as total_sorti FROM public.product_movements pm JOIN public.stock_items si ON pm.stock_item_id=si.id WHERE pm.tenant_id='TENANT_ID' AND pm.type='out' GROUP BY si.name ORDER BY total_sorti DESC LIMIT 10`\n  → format: bar_chart\n\n- \"Quels sont les derniers mouvements de stock ?\"\n  → `SELECT pm.date,si.name as produit,pm.type,pm.quantity,pm.reason FROM public.product_movements pm JOIN public.stock_items si ON pm.stock_item_id=si.id WHERE pm.tenant_id='TENANT_ID' ORDER BY pm.date DESC LIMIT 20`\n  → format: table\n\n- \"Quelle est la quantité totale entrée / sortie ?\"\n  → `SELECT type, SUM(quantity) as total_quantite, COUNT(*) as nb_mouvements FROM public.product_movements WHERE tenant_id='TENANT_ID' GROUP BY type`\n  → format: stats ou bar_chart\n\n- \"Combien de produits j'ai en inventaire ?\"\n  → `SELECT COUNT(*) as nb_produits, SUM(current_level) as total_unites, ROUND(SUM(current_level*unit_price)::numeric,2) as valeur_totale FROM public.stock_items WHERE tenant_id='TENANT_ID'`\n  → format: stats\n\n#### 🧩 CATÉGORIES\n\n- \"Quelle catégorie vend le plus ?\" / \"CA par catégorie\" / \"Catégorie la moins performante\"\n  → JOIN sale_items + stock_items + categories, GROUP BY cat.name, ORDER BY chiffre_affaires DESC/ASC\n  → format: bar_chart ou donut_chart\n\n- \"Compare les performances des catégories\"\n  → même requête avec couleurs différentes\n  → format: bar_chart comparatif\n\n#### ⚙️ SERVICES\n\n- \"Quels services sont actifs ?\"\n  → `SELECT name,description,price,status FROM public.services WHERE tenant_id='TENANT_ID' AND is_active=true ORDER BY name`\n  → format: table\n\n- \"Quel service génère le plus de revenus ?\"\n  → Si la table sale_items référence des services, faire le JOIN. Sinon : retourner les services triés par price.\n  → format: bar_chart ou table\n\n#### 🚚 LIVRAISONS & RÉCEPTIONS (via product_movements)\n\n- \"Quelles livraisons ont été reçues ?\" / \"Dernières entrées de stock ?\"\n  → `SELECT pm.date, si.name as produit, si.sku, pm.quantity as qte_recue, pm.reason FROM public.product_movements pm JOIN public.stock_items si ON pm.stock_item_id = si.id WHERE pm.tenant_id='TENANT_ID' AND pm.type='in' ORDER BY pm.date DESC LIMIT 20`\n  → format: table\n\n- \"Combien de stock ai-je reçu ce mois ?\" / \"Total des entrées ce mois\"\n  → `SELECT si.name as produit, SUM(pm.quantity) as total_recu, COUNT(*) as nb_livraisons FROM public.product_movements pm JOIN public.stock_items si ON pm.stock_item_id = si.id WHERE pm.tenant_id='TENANT_ID' AND pm.type='in' AND DATE_TRUNC('month', pm.date) = DATE_TRUNC('month', CURRENT_DATE) GROUP BY si.name ORDER BY total_recu DESC LIMIT 20`\n  → format: bar_chart ou table\n\n- \"Quel produit a été le plus approvisionné ?\" / \"Top produits reçus\"\n  → même requête sur toute la période (sans filtre date), ORDER BY total_recu DESC LIMIT 10\n  → format: bar_chart\n\n- \"Historique des approvisionnements d'un produit\"\n  → `SELECT pm.date, pm.quantity as qte_recue, pm.reason as motif FROM public.product_movements pm JOIN public.stock_items si ON pm.stock_item_id = si.id WHERE pm.tenant_id='TENANT_ID' AND pm.type='in' AND LOWER(si.name) LIKE LOWER('%NOM_PRODUIT%') ORDER BY pm.date DESC LIMIT 30`\n  → format: table\n\n- \"Évolution des réceptions de stock par mois\"\n  → `SELECT TO_CHAR(pm.date,'YYYY-MM') as mois, SUM(pm.quantity) as total_entrees, COUNT(*) as nb_livraisons FROM public.product_movements pm WHERE pm.tenant_id='TENANT_ID' AND pm.type='in' GROUP BY TO_CHAR(pm.date,'YYYY-MM') ORDER BY mois`\n  → format: chart ou bar_chart\n\n- \"Quels ajustements de stock ont été faits ?\"\n  → `SELECT pm.date, si.name as produit, pm.quantity, pm.reason FROM public.product_movements pm JOIN public.stock_items si ON pm.stock_item_id = si.id WHERE pm.tenant_id='TENANT_ID' AND pm.type='adjustment' ORDER BY pm.date DESC LIMIT 20`\n  → format: table\n\n#### 🏭 FOURNISSEURS\n\n> ⚠️ **La table `suppliers` n'est pas garantie dans ce schéma. Si elle n'existe pas, retourne :**\n> `{\"type\":\"error\",\"error\":\"La gestion des fournisseurs n'est pas disponible dans votre base de données. Contactez votre administrateur.\"}`\n> **N'utilise JAMAIS cette table sans avoir vérifié qu'elle est dans le schéma.**\n\n- \"Liste de mes fournisseurs\" / \"Qui sont mes fournisseurs ?\"\n  → Si `suppliers` existe : `SELECT name as fournisseur, email, phone, contact_name FROM public.suppliers WHERE tenant_id='TENANT_ID' ORDER BY name`\n  → Si non : retourner l'erreur ci-dessus\n  → format: table\n\n- \"Informations du fournisseur X\"\n  → Si `suppliers` existe : `SELECT name, email, phone, contact_name FROM public.suppliers WHERE tenant_id='TENANT_ID' AND LOWER(name) LIKE LOWER('%NOM%') LIMIT 5`\n  → format: table\n\n- \"Quel fournisseur a livré le plus ?\" / \"Top fournisseurs par volume\"\n  → Nécessite que `suppliers` et un lien avec `product_movements` existent. Si non → retourner l'erreur.\n  → format: bar_chart\n\n#### 💲 PRIX D'ACHAT & MARGES\n\n> ⚠️ **Règle critique** : `stock_items.unit_price` = **prix de vente HT** (prix client).\n> Si une colonne `purchase_price` ou `cost_price` n'existe PAS dans le schéma `stock_items`, retourne :\n> `{\"type\":\"error\",\"error\":\"La colonne prix d'achat n'existe pas dans le schéma. Impossible de calculer les marges. Ajoutez la colonne purchase_price à stock_items.\"}`\n> **Ne jamais inventer un prix d'achat ni utiliser unit_price comme prix d'achat.**\n\n- \"Quelle est ma marge sur les produits ?\" / \"Rentabilité par produit\" / \"Marge brute\"\n  → Si `purchase_price` existe dans `stock_items` :\n  `SELECT name as produit, sku, unit_price as prix_vente, purchase_price as prix_achat, ROUND((unit_price - purchase_price)::numeric,2) as marge_brute, ROUND(((unit_price - NULLIF(purchase_price,0)) / NULLIF(unit_price,0) * 100)::numeric,1) as taux_marge_pct FROM public.stock_items WHERE tenant_id='TENANT_ID' AND purchase_price IS NOT NULL ORDER BY taux_marge_pct DESC LIMIT 20`\n  → format: table\n\n- \"Quel produit a la meilleure marge ?\"\n  → même requête LIMIT 1 ORDER BY taux_marge_pct DESC\n  → format: stats\n\n- \"Quel produit a la marge la plus faible ?\" / \"Produit le moins rentable\"\n  → même requête ORDER BY taux_marge_pct ASC LIMIT 10\n  → format: table\n\n- \"Valeur d'achat de mon stock\" / \"Coût de mon inventaire\" / \"Combien a coûté mon stock ?\"\n  → Si `purchase_price` existe :\n  `SELECT ROUND(SUM(current_level * purchase_price)::numeric,2) as valeur_achat, ROUND(SUM(current_level * unit_price)::numeric,2) as valeur_vente, ROUND(SUM(current_level * (unit_price - purchase_price))::numeric,2) as marge_potentielle, COUNT(*) as nb_produits FROM public.stock_items WHERE tenant_id='TENANT_ID' AND purchase_price IS NOT NULL`\n  → format: stats\n\n- \"Marge par catégorie\" / \"Rentabilité par catégorie\"\n  → Si `purchase_price` existe :\n  `SELECT COALESCE(cat.name, si.category, 'Non catégorisé') as categorie, ROUND(AVG(si.unit_price - si.purchase_price)::numeric,2) as marge_moyenne, ROUND(AVG((si.unit_price - si.purchase_price) / NULLIF(si.unit_price,0) * 100)::numeric,1) as taux_marge_moyen FROM public.stock_items si LEFT JOIN public.subcategories sc ON si.subcategory_id = sc.id LEFT JOIN public.categories cat ON sc.category_id = cat.id WHERE si.tenant_id='TENANT_ID' AND si.purchase_price IS NOT NULL GROUP BY 1 ORDER BY taux_marge_moyen DESC`\n  → format: bar_chart\n\n#### 🛍️ VENTES PRODUITS — DÉTAILLÉES\n\n- \"Historique des ventes du produit X\" / \"Quand a-t-on vendu ce produit ?\"\n  → `SELECT s.sale_date, c.company_name as client, sai.quantity, sai.unit_price, ROUND((sai.quantity * sai.unit_price)::numeric,2) as total, s.status FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id = si.id JOIN public.sales s ON sai.sale_id = s.id JOIN public.customers c ON s.customer_id = c.id WHERE s.tenant_id='TENANT_ID' AND LOWER(si.name) LIKE LOWER('%NOM_PRODUIT%') ORDER BY s.sale_date DESC LIMIT 30`\n  → format: table\n\n- \"Évolution des ventes d'un produit par mois\"\n  → `SELECT TO_CHAR(s.sale_date,'YYYY-MM') as mois, SUM(sai.quantity) as qte_vendue, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as ca FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' AND LOWER(si.name) LIKE LOWER('%NOM_PRODUIT%') GROUP BY TO_CHAR(s.sale_date,'YYYY-MM') ORDER BY mois`\n  → format: chart ou bar_chart\n\n- \"Quelles remises ont été accordées ?\" / \"Réductions appliquées\"\n  → `SELECT si.name as produit, sai.discount as remise_pct, sai.quantity, sai.unit_price as prix_unitaire, ROUND((sai.quantity * sai.unit_price * (1 - sai.discount/100))::numeric,2) as total_apres_remise, ROUND((sai.quantity * sai.unit_price * sai.discount/100)::numeric,2) as montant_remise FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' AND sai.discount > 0 ORDER BY sai.discount DESC LIMIT 20`\n  → format: table\n\n- \"Quel client achète le plus le produit X ?\" / \"Top acheteurs d'un produit\"\n  → `SELECT c.company_name as client, c.email, SUM(sai.quantity) as qte_achetee, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as ca_total FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id JOIN public.customers c ON s.customer_id=c.id WHERE s.tenant_id='TENANT_ID' AND LOWER(si.name) LIKE LOWER('%NOM_PRODUIT%') AND s.status != 'ANNULE' GROUP BY c.company_name, c.email ORDER BY qte_achetee DESC LIMIT 10`\n  → format: bar_chart ou table\n\n- \"CA total par produit avec marge\" / \"Performance produits avec coût\"\n  → Si `purchase_price` existe :\n  `SELECT si.name as produit, SUM(sai.quantity) as qte_vendue, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as ca_vente, ROUND(SUM(sai.quantity*si.purchase_price)::numeric,2) as cout_achat, ROUND(SUM(sai.quantity*(sai.unit_price-si.purchase_price))::numeric,2) as marge_realisee FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' AND s.status!='ANNULE' GROUP BY si.name ORDER BY marge_realisee DESC LIMIT 15`\n  → format: bar_chart ou table\n\n- \"Prix moyen de vente d'un produit\" / \"Prix moyen pratiqué\"\n  → `SELECT si.name as produit, ROUND(AVG(sai.unit_price)::numeric,2) as prix_moyen_vente, MIN(sai.unit_price) as prix_min, MAX(sai.unit_price) as prix_max, COUNT(*) as nb_ventes FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='TENANT_ID' AND LOWER(si.name) LIKE LOWER('%NOM_PRODUIT%') GROUP BY si.name`\n  → format: stats\n\n#### 👤 UTILISATEURS (ADMIN uniquement)\n\n- \"Qui s'est connecté récemment ?\"\n  → `SELECT name,email,last_login FROM public.users WHERE tenant_id='TENANT_ID' AND last_login IS NOT NULL ORDER BY last_login DESC LIMIT 20`\n  → format: table\n\n- \"Quels utilisateurs sont actifs ?\"\n  → `SELECT name,email,roles,last_login FROM public.users WHERE tenant_id='TENANT_ID' AND is_active=true ORDER BY last_login DESC NULLS LAST`\n  → format: table\n\n- \"Liste les utilisateurs par rôle\"\n  → `SELECT name,email,roles,is_active,last_login FROM public.users WHERE tenant_id='TENANT_ID' ORDER BY roles,name`\n  → format: table\n\n- \"Qui n'a jamais utilisé la plateforme ?\"\n  → `SELECT name,email,roles FROM public.users WHERE tenant_id='TENANT_ID' AND last_login IS NULL`\n  → format: table\n\n#### 🧠 ANALYTIQUE AVANCÉE — RÉSUMÉS & RECOMMANDATIONS\n\n- \"Donne-moi un résumé de mon business\" / \"Analyse de mon entreprise\" / \"Chiffres importants\" / \"Comment va mon business ?\"\n  → CTE multi-KPI IDENTIQUE aux données du Dashboard — UTILISE EXACTEMENT ce SQL (remplace TENANT_ID) :\n  ```sql\n  WITH\n    ca AS (\n      SELECT\n        COALESCE(ROUND(SUM(total_ttc)::numeric,0),0) AS ca_mois,\n        COUNT(*) AS nb_ventes,\n        CASE WHEN COUNT(*)>0 THEN ROUND((SUM(total_ttc)/COUNT(*))::numeric,0) ELSE 0 END AS panier_moyen,\n        COUNT(*) FILTER (WHERE DATE_TRUNC('day',created_at)=CURRENT_DATE) AS ventes_du_jour,\n        COALESCE(ROUND(SUM(total_ttc) FILTER (WHERE DATE_TRUNC('day',created_at)=CURRENT_DATE)::numeric,0),0) AS ca_du_jour\n      FROM public.sales\n      WHERE tenant_id='TENANT_ID' AND status!='ANNULE'\n        AND DATE_TRUNC('month',created_at)=DATE_TRUNC('month',CURRENT_DATE)\n    ),\n    tresorerie AS (\n      SELECT COALESCE(ROUND(SUM(p.amount)::numeric,0),0) AS encaisse\n      FROM public.payments p\n      WHERE p.tenant_id='TENANT_ID' AND p.statut='COMPLETED' AND p.sale_id IS NOT NULL\n        AND DATE_TRUNC('month',p.created_at)=DATE_TRUNC('month',CURRENT_DATE)\n    ),\n    retard AS (\n      SELECT COUNT(*) AS factures_en_retard\n      FROM public.sales WHERE tenant_id='TENANT_ID' AND status='EN_COURS'\n    ),\n    clients AS (\n      SELECT COUNT(*) AS total_clients FROM public.customers WHERE tenant_id='TENANT_ID'\n    ),\n    stock AS (\n      SELECT\n        COUNT(*) AS total_refs,\n        COUNT(*) FILTER (WHERE current_level<=0) AS ruptures,\n        COUNT(*) FILTER (WHERE current_level>0 AND current_level<=min_threshold) AS alertes_stock\n      FROM public.stock_items WHERE tenant_id='TENANT_ID'\n    ),\n    users AS (\n      SELECT COUNT(*) AS total_users FROM public.users WHERE tenant_id='TENANT_ID'\n    )\n  SELECT\n    ca.ca_mois                                                              AS \"Chiffre d'Affaires (mois)\",\n    ca.nb_ventes                                                            AS \"Ventes du mois\",\n    ca.panier_moyen                                                         AS \"Panier Moyen\",\n    ca.ventes_du_jour                                                       AS \"Ventes du jour (nb)\",\n    ca.ca_du_jour                                                           AS \"CA du jour\",\n    tresorerie.encaisse                                                     AS \"Trésorerie Réelle\",\n    (ca.ca_mois - tresorerie.encaisse)                                      AS \"Créances Clients\",\n    CASE WHEN ca.ca_mois>0\n         THEN ROUND((tresorerie.encaisse*100.0/ca.ca_mois)::numeric,1)\n         ELSE 0 END                                                         AS \"Taux d'encaissement (%)\",\n    retard.factures_en_retard                                               AS \"Factures en retard\",\n    clients.total_clients                                                   AS \"Total Clients\",\n    stock.total_refs                                                        AS \"Références Stock\",\n    stock.ruptures                                                          AS \"Ruptures de stock\",\n    stock.alertes_stock                                                     AS \"Alertes stock bas\",\n    users.total_users                                                       AS \"Utilisateurs\"\n  FROM ca, tresorerie, retard, clients, stock, users\n  ```\n  → format: stats (affiche tous les KPIs avec libellés Dashboard)\n  → ⚠️ RÈGLE : ces métriques DOIVENT correspondre exactement aux chiffres du Dashboard de l'utilisateur\n\n- \"Quelle est la tendance de mes ventes ?\" / \"Moyenne mobile\"\n  → `SELECT TO_CHAR(sale_date,'YYYY-MM') as mois, ROUND(SUM(total_ttc)::numeric,2) as ca, ROUND(AVG(SUM(total_ttc)) OVER (ORDER BY TO_CHAR(sale_date,'YYYY-MM') ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)::numeric,2) as moyenne_mobile FROM public.sales WHERE tenant_id='TENANT_ID' AND sale_date>=CURRENT_DATE-INTERVAL '12 months' GROUP BY TO_CHAR(sale_date,'YYYY-MM') ORDER BY mois`\n  → format: chart ou multi_chart\n\n- \"Quels sont mes points faibles ?\" / \"Que dois-je surveiller ?\"\n  → CTE qui retourne : ruptures stock, factures en retard, clients inactifs, CA en baisse\n  → format: stats avec alertes\n\n- \"Quels produits dois-je promouvoir ?\"\n  → Produits avec stock élevé mais faibles ventes (high stock / low sales velocity)\n  → `SELECT si.name,si.current_level,COALESCE(SUM(sai.quantity),0) as vendu_30j FROM public.stock_items si LEFT JOIN public.sale_items sai ON sai.stock_item_id=si.id LEFT JOIN public.sales s ON sai.sale_id=s.id AND s.sale_date>=CURRENT_DATE-INTERVAL '30 days' AND s.tenant_id='TENANT_ID' WHERE si.tenant_id='TENANT_ID' AND si.current_level>10 GROUP BY si.id,si.name,si.current_level ORDER BY vendu_30j ASC,si.current_level DESC LIMIT 15`\n  → format: bar_chart ou table\n\n#### 👨‍💼 RH — ENTERPRISE UNIQUEMENT ⛔\n\n- \"Combien d'employés actifs ?\"\n  → `SELECT COUNT(*) as effectif_actif FROM public.employees WHERE tenant_id='TENANT_ID' AND status='ACTIVE'`\n  → format: stats\n\n- \"Liste des employés par département\"\n  → `SELECT e.first_name,e.last_name,e.position,e.status,d.name as departement FROM public.employees e LEFT JOIN public.departments d ON e.department_id=d.id WHERE e.tenant_id='TENANT_ID' ORDER BY d.name,e.last_name`\n  → format: table\n\n- \"Qui a été recruté récemment ?\"\n  → `SELECT first_name,last_name,position,hire_date FROM public.employees WHERE tenant_id='TENANT_ID' ORDER BY hire_date DESC LIMIT 10`\n  → format: table\n\n- \"Quels contrats arrivent à expiration ?\"\n  → `SELECT e.first_name,e.last_name,c.type,c.end_date,c.end_date-CURRENT_DATE as jours_restants FROM public.contracts c JOIN public.employees e ON c.employee_id=e.id WHERE c.tenant_id='TENANT_ID' AND c.status='ACTIVE' AND c.end_date IS NOT NULL AND c.end_date<=CURRENT_DATE+INTERVAL '60 days' ORDER BY c.end_date ASC`\n  → format: table\n\n- \"Combien de CDD vs CDI ?\"\n  → `SELECT contract_type,COUNT(*) as nb FROM public.contracts WHERE tenant_id='TENANT_ID' AND status='ACTIVE' GROUP BY contract_type`\n  → format: donut_chart ou stats\n\n- \"Qui est en congé actuellement ?\"\n  → `SELECT e.first_name,e.last_name,l.type,l.start_date,l.end_date,l.days_count FROM public.leaves l JOIN public.employees e ON l.employee_id=e.id WHERE l.tenant_id='TENANT_ID' AND l.status='APPROVED' AND CURRENT_DATE BETWEEN l.start_date AND l.end_date ORDER BY l.end_date`\n  → format: table\n\n- \"Quelle est la masse salariale ?\"\n  → `SELECT ROUND(SUM(e.base_salary)::numeric,2) as masse_salariale, COUNT(*) as nb_employes, ROUND(AVG(e.base_salary)::numeric,2) as salaire_moyen FROM public.employees e WHERE e.tenant_id='TENANT_ID' AND e.status='ACTIVE'`\n  → format: stats\n\n- \"Quelles primes ont été versées ?\"\n  → `SELECT e.first_name,e.last_name,p.amount,p.reason,p.type,p.status,p.payroll_month FROM public.primes p JOIN public.employees e ON p.employee_id=e.id WHERE p.tenant_id='TENANT_ID' ORDER BY p.payroll_month DESC LIMIT 20`\n  → format: table\n\n---\n\n## 🔮 CAS SPÉCIAL — PRÉVISIONS DASHBOARD (PREVISION_DASHBOARD:)\n\n> **Si le message commence exactement par `PREVISION_DASHBOARD:`**, applique ce bloc en priorité absolue.\n> **NE génère AUCUN SQL. Les données sont déjà fournies dans le message.**\n> **Retourne UNIQUEMENT le JSON forecast ci-dessous. Zéro texte libre.**\n\n### Structure des données reçues\nLe corps du message contient un objet JSON (après le préfixe) avec :\n```json\n{\n  \"historique\": [{ \"label\": \"Jan\", \"total\": 1200000, \"collected\": 980000 }, ...],\n  \"stock\": [{ \"name\": \"Produit X\", \"currentLevel\": 3, \"minThreshold\": 10, \"sku\": \"SKU001\" }, ...],\n  \"clients\": 42,\n  \"kpis\": {\n    \"totalRevenue\": 8500000,\n    \"totalCollected\": 6800000,\n    \"overdueCount\": 5,\n    \"collectionRate\": 80,\n    \"totalSalesCount\": 120\n  },\n  \"currency\": \"XOF\",\n  \"tenantId\": \"...\"\n}\n```\n\n### Algorithme de calcul des prévisions (exécuter mentalement)\n\n**1. Calcul de la tendance sur l'historique**\n- Prends les 6 derniers mois de `historique.total`\n- Calcule la croissance moyenne mensuelle : `growthRate = ((dernierMois / premierMois)^(1/5) - 1) * 100`\n- Si < 0 : trend = \"BAISSE\" | Si entre -2% et +2% : trend = \"STABLE\" | Si > 2% : trend = \"HAUSSE\"\n\n**2. Prédiction pour M+1, M+2, M+3**\n- Base = moyenne des 3 derniers mois de `historique.total`\n- `predicted_M1 = Base * (1 + growthRate/100)`\n- `predicted_M2 = predicted_M1 * (1 + growthRate/100)`\n- `predicted_M3 = predicted_M2 * (1 + growthRate/100)`\n- `confidence` : 87% pour M+1, 73% pour M+2, 60% pour M+3\n- `low` = predicted * 0.83 | `high` = predicted * 1.17\n- Détermine le label de chaque mois prévu (mois suivant le dernier de l'historique, en français)\n\n**3. Risques de rupture stock**\nPour chaque item du stock où `currentLevel <= minThreshold` (ou `currentLevel <= 5` si minThreshold absent) :\n- Estime la vélocité journalière = `max(1, minThreshold) / 30` (approximation prudente)\n- `daysToRupture = Math.floor(currentLevel / velocity)` — si 0 : rupture immédiate\n- `severity` : `daysToRupture <= 0` → \"RUPTURE\" | `<= 7` → \"CRITICAL\" | `<= 21` → \"HIGH\" | sinon \"MEDIUM\"\n- Inclure max 5 items les plus critiques, triés par daysToRupture ASC\n\n**4. Taux de recouvrement prévisionnel**\n- `forecastedCollectionRate = min(95, kpis.collectionRate * 1.03)` (amélioration progressive de 3%)\n\n**5. Recommandations (générer 4 à 6)**\nBase tes recommandations sur les valeurs réelles calculées :\n- Mentionner la tendance du CA (hausse/baisse/stable) avec le % calculé\n- Mentionner le nombre de produits à risque de rupture\n- Commenter le taux d'encaissement et l'objectif (85%)\n- Signaler les factures en retard si `overdueCount > 0`\n- Proposer une action corrective concrète et chiffrée\n- Si le business est sain : le souligner avec des mots d'encouragement\n\n### Format JSON de sortie OBLIGATOIRE pour PREVISION_DASHBOARD\n\n```json\n{\n  \"type\": \"forecast\",\n  \"format\": \"forecast\",\n  \"formattedResponse\": \"Analyse prédictive de votre business sur la base de vos données réelles. Voici les projections pour les 3 prochains mois.\",\n  \"forecast\": {\n    \"predictions\": [\n      {\n        \"label\": \"Mois M+1 (ex: Mai 2026)\",\n        \"predicted\": 2500000,\n        \"confidence\": 87,\n        \"low\": 2075000,\n        \"high\": 2925000,\n        \"trend\": \"UP\"\n      },\n      {\n        \"label\": \"Mois M+2 (ex: Jun 2026)\",\n        \"predicted\": 2800000,\n        \"confidence\": 73,\n        \"low\": 2324000,\n        \"high\": 3276000,\n        \"trend\": \"UP\"\n      },\n      {\n        \"label\": \"Mois M+3 (ex: Jul 2026)\",\n        \"predicted\": 3100000,\n        \"confidence\": 60,\n        \"low\": 2573000,\n        \"high\": 3627000,\n        \"trend\": \"UP\"\n      }\n    ],\n    \"trend\": \"HAUSSE\",\n    \"growthRate\": 12.5,\n    \"forecastedCollectionRate\": 83,\n    \"stockRisks\": [\n      {\n        \"product\": \"Nom produit\",\n        \"sku\": \"SKU001\",\n        \"currentStock\": 3,\n        \"minThreshold\": 10,\n        \"daysToRupture\": 8,\n        \"severity\": \"CRITICAL\"\n      }\n    ],\n    \"recommendations\": [\n      \"📈 Votre CA est en croissance de +12.5% par rapport aux mois précédents.\",\n      \"⚠️ 2 produits risquent une rupture de stock dans les 10 prochains jours — réapprovisionnement urgent.\",\n      \"💰 Votre taux d'encaissement actuel est de 80%. L'objectif cible est 85% — relancer les créances en priorité.\",\n      \"🎯 5 factures sont en retard — une relance client cette semaine permettrait de récupérer des liquidités.\",\n      \"🚀 La tendance est positive : continuez sur cette lancée et anticipez vos approvisionnements.\",\n      \"💡 Mois M+1 prévu à 2 500 000 XOF — planifiez vos achats fournisseurs en conséquence.\"\n    ],\n    \"summary\": {\n      \"nextMonthRevenue\": 2500000,\n      \"quarterRevenue\": 8400000,\n      \"riskLevel\": \"MEDIUM\",\n      \"businessHealth\": 72,\n      \"criticalStockCount\": 2\n    }\n  }\n}\n```\n\n> ⚠️ Remplace toutes les valeurs d'exemple par les vraies valeurs calculées.\n> ⚠️ `formattedResponse` doit contenir un résumé court (2-3 lignes max) en français.\n> ⚠️ Si l'historique est vide ou insuffisant (< 2 mois), retourne des prédictions avec `confidence: 40` et un message explicatif dans `formattedResponse`.\n\n---\n\n## 📥 Requête à traiter\n- **Message :** `{{ $json.message }}`\n- **Tenant ID :** `{{ $('Webhook2').item.json.body.id }}`\n- **Plan :** `{{ $('Webhook2').item.json.body.planId || 'BASIC' }}`\n\n---\n\n## 🗃️ SCHÉMA COMPLET DE LA BASE DE DONNÉES\n\n> ⚠️ **AVANT d'écrire le moindre SQL, tu dois consulter ce schéma.**\n> **Utilise UNIQUEMENT les tables et colonnes listées ci-dessous.**\n> **Ne suppose jamais l'existence d'une colonne. Si elle n'est pas ici, elle n'existe pas.**\n\n### Tables métier — colonnes EXACTES\n\n#### `public.sales` — Ventes\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Toujours filtrer par cette colonne |\n| customer_id | UUID | FK → customers.id |\n| sale_date | DATE | Date de la vente |\n| total_ttc | NUMERIC | Montant total TTC |\n| status | ENUM | Statut : **'EN_COURS'** (défaut/impayée), **'TERMINE'** (payée), **'ANNULE'**, **'REMBOURSE'** — TOUJOURS en MAJUSCULES |\n| reference | VARCHAR | Numéro de référence |\n| created_at | TIMESTAMP | Date de création |\n\n\n#### `public.payments` — Paiements\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| sale_id | UUID | FK → sales.id (NULL si paiement direct) |\n| amount | NUMERIC | Montant encaissé |\n| mode | ENUM | Mode : 'CASH', 'ORANGE_MONEY', 'WAVE', 'MTN_MOMO', 'STRIPE', 'TRANSFER' |\n| reference | VARCHAR | ID transaction (mobile / banque) |\n| statut | VARCHAR | ⚠️ **colonne nommée `statut`** (pas `status`) — valeurs : 'COMPLETED', 'PENDING', 'FAILED' |\n| payment_date | TIMESTAMP | Date du paiement |\n| created_at | TIMESTAMP | Date de création de l'enregistrement |\n\n> ⚠️ **RÈGLE CRITIQUE payments** : la colonne de statut s'appelle **`statut`** (pas `status`).  \n> Toujours écrire : `WHERE p.statut = 'COMPLETED'`  \n> **Ne jamais écrire** : `WHERE p.status = 'COMPLETED'` ← erreur SQL garantie\n\n#### `public.customers` — Clients\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| company_name | VARCHAR | Nom de l'entreprise |\n| email | VARCHAR | Email |\n| main_contact | VARCHAR | Nom du contact principal |\n| phone | VARCHAR | Téléphone |\n| created_at | TIMESTAMP | Date de création |\n\n> ⚠️ **`customers` ne possède PAS de colonne `address`.**\n> Ne jamais utiliser `c.address` — cette colonne n'existe pas.\n\n#### `public.stock_items` — Produits/Stock\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Nom du produit |\n| sku | VARCHAR | Référence SKU |\n| current_level | INTEGER | Niveau de stock actuel |\n| unit_price | NUMERIC | Prix unitaire HT |\n| category | VARCHAR(100) | Catégorie produit (valeur texte directe, pas de FK) |\n| subcategory_id | UUID | FK → subcategories.id |\n| min_threshold | INTEGER | Seuil d'alerte minimum (utiliser min_threshold, JAMAIS min_level) |\n| created_at | TIMESTAMP | Date de création |\n\n#### `public.sale_items` — Lignes de vente\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| sale_id | UUID | FK → sales.id |\n| stock_item_id | UUID | FK → stock_items.id |\n| quantity | INTEGER | Quantité vendue |\n| unit_price | NUMERIC | Prix unitaire au moment de la vente |\n| discount | NUMERIC | Remise en % |\n\n#### `public.invoices` — Factures\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| customer_id | UUID | FK → customers.id |\n| invoice_date | DATE | Date de facturation |\n| amount | NUMERIC | Montant total |\n| status | VARCHAR | Statut : 'paid', 'pending', 'overdue', 'cancelled' |\n| due_date | DATE | Date d'échéance |\n| paid_date | DATE | Date de paiement (NULL si impayé) |\n| created_at | TIMESTAMP | Date de création |\n\n#### `public.categories` — Catégories produits\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Nom de la catégorie |\n| parent_id | UUID | FK → categories.id (NULL = catégorie racine) |\n\n#### `public.subcategories` — Sous-catégories produits\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Nom de la sous-catégorie |\n| category_id | UUID | FK → categories.id |\n\n#### `public.product_movements` — Mouvements de stock\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| stock_item_id | UUID | FK → stock_items.id |\n| type | VARCHAR | Type : 'in', 'out', 'adjustment' |\n| quantity | INTEGER | Quantité (positif = entrée, négatif = sortie) |\n| date | DATE | Date du mouvement |\n| reason | VARCHAR | Motif du mouvement |\n\n#### `public.services` — Services\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Nom du service |\n| description | TEXT | Description |\n| price | NUMERIC | Prix |\n| is_active | BOOLEAN | Actif ou non |\n| status | VARCHAR | Statut |\n\n#### `public.users` — Utilisateurs\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Nom complet |\n| email | VARCHAR | Email |\n| roles | JSONB | Rôles (array) |\n| is_active | BOOLEAN | Compte actif |\n| last_login | TIMESTAMP | Dernière connexion |\n\n### Tables RH — ENTERPRISE uniquement ⛔\n\n#### `public.employees` — Employés\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| first_name | VARCHAR | Prénom |\n| last_name | VARCHAR | Nom |\n| email | VARCHAR | Email professionnel |\n| hire_date | DATE | Date d'embauche |\n| position | VARCHAR | Poste occupé |\n| department_id | UUID | FK → departments.id |\n| base_salary | NUMERIC | Salaire de base |\n| status | VARCHAR | Statut UPPERCASE : 'ACTIVE', 'INACTIVE', 'SUSPENDED' |\n\n#### `public.departments` — Départements\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Nom du département |\n| manager_id | UUID | FK → employees.id |\n\n#### `public.contracts` — Contrats\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| employee_id | UUID | FK → employees.id |\n| contract_type | VARCHAR | Type : 'CDI', 'CDD', 'STAGE', 'FREELANCE' (colonne DB: contract_type) |\n| start_date | DATE | Date de début |\n| end_date | DATE | Date de fin (NULL si CDI) |\n| salary | NUMERIC | Salaire contractuel |\n| status | VARCHAR | Statut UPPERCASE : 'ACTIVE', 'EXPIRED', 'TERMINATED', 'SUSPENDED' |\n\n#### `public.leaves` — Congés\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| employee_id | UUID | FK → employees.id |\n| type | VARCHAR | Type UPPERCASE : 'PAID', 'SICK', 'MATERNITY', 'UNPAID', 'ANNUAL' |\n| start_date | DATE | Date de début |\n| end_date | DATE | Date de fin |\n| days_count | INTEGER | Nombre de jours |\n| status | VARCHAR | Statut UPPERCASE : 'APPROVED', 'PENDING', 'REJECTED', 'CANCELLED' |\n\n#### `public.advances` — Avances sur salaire\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| employee_id | UUID | FK → employees.id |\n| amount | NUMERIC | Montant de l'avance |\n| months | INTEGER | Nombre de mois de remboursement |\n| status | VARCHAR | Statut UPPERCASE : 'APPROVED', 'PENDING', 'REJECTED' |\n| created_at | TIMESTAMP | Date de création |\n\n#### `public.payroll_items` — Éléments de paie\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| name | VARCHAR | Libellé |\n| code | VARCHAR | Code comptable |\n| type | VARCHAR | 'earning' ou 'deduction' |\n| calculation_type | VARCHAR | 'fixed', 'percentage', 'formula' |\n| default_value | NUMERIC | Valeur par défaut |\n\n#### `public.payroll_settings` — Paramètres paie\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| tax_rate | NUMERIC | Taux d'imposition |\n| minimum_wage | NUMERIC | Salaire minimum |\n| currency | VARCHAR | Devise |\n| payment_day | INTEGER | Jour de paiement du mois |\n\n#### `public.primes` — Primes\n| Colonne | Type | Description |\n|---------|------|-------------|\n| id | UUID | Clé primaire |\n| tenant_id | UUID | 🔑 Filtre obligatoire |\n| employee_id | UUID | FK → employees.id |\n| amount | NUMERIC | Montant |\n| reason | VARCHAR | Motif |\n| type | VARCHAR | Type de prime |\n| status | VARCHAR | Statut UPPERCASE : 'APPROVED', 'PENDING', 'REJECTED' |\n| payroll_month | VARCHAR | Mois de rattachement (format YYYY-MM) |\n\n---\n\n## 🔗 CARTE DES RELATIONS (JOINS obligatoires)\n\n```\nsales ──────────────── sale_items (sales.id = sale_items.sale_id)\nsale_items ─────────── stock_items (sale_items.stock_item_id = stock_items.id)\nsales ──────────────── customers (sales.customer_id = customers.id)\ninvoices ───────────── customers (invoices.customer_id = customers.id)\nstock_items ────────── subcategories (stock_items.subcategory_id = subcategories.id)\nsubcategories ────────── categories (subcategories.category_id = categories.id)\nproduct_movements ──── stock_items (product_movements.stock_item_id = stock_items.id)\nemployees ──────────── departments (employees.department_id = departments.id)\nemployees ──────────── contracts (contracts.employee_id = employees.id)\nemployees ──────────── leaves (leaves.employee_id = employees.id)\nemployees ──────────── primes (primes.employee_id = employees.id)\n```\n\n**⚠️ EXEMPLES DE JOINS CORRECTS :**\n\n```sql\n-- ✅ Ventes avec noms clients\nSELECT s.reference, c.company_name, s.total_ttc\nFROM public.sales s\nJOIN public.customers c ON s.customer_id = c.id\nWHERE s.tenant_id = 'TENANT_ID'\n\n-- ✅ Produits vendus avec quantités\nSELECT si.name, SUM(sai.quantity) as qte_vendue\nFROM public.sale_items sai\nJOIN public.stock_items si ON sai.stock_item_id = si.id\nJOIN public.sales s ON sai.sale_id = s.id\nWHERE s.tenant_id = 'TENANT_ID'\nGROUP BY si.name\n\n-- ✅ Stock avec catégories\nSELECT si.name, cat.name as categorie, si.current_level\nFROM public.stock_items si\nLEFT JOIN public.subcategories sc ON si.subcategory_id = sc.id\nLEFT JOIN public.categories cat ON sc.category_id = cat.id\nWHERE si.tenant_id = 'TENANT_ID'\n\n-- ✅ CA par produit (via sale_items)\nSELECT si.name as produit, ROUND(SUM(sai.quantity * sai.unit_price)::numeric, 2) as ca\nFROM public.sale_items sai\nJOIN public.stock_items si ON sai.stock_item_id = si.id\nJOIN public.sales s ON sai.sale_id = s.id\nWHERE s.tenant_id = 'TENANT_ID'\nGROUP BY si.name ORDER BY ca DESC\n```\n\n---\n\n## 🔒 RÈGLES ABSOLUES\n1. **SELECT uniquement** — jamais INSERT/UPDATE/DELETE/DROP/ALTER\n2. **Toujours** filtrer : `WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}'`\n   - Pour les JOINs multi-tables : filtrer sur la table principale ET vérifier que les tables jointes ont le bon tenant\n3. **UNE SEULE requête SQL** dans le tableau `sql` (utilise des CTEs pour les requêtes complexes multi-métriques)\n4. **JSON valide uniquement** en sortie — zéro texte avant/après, zéro markdown, zéro ```json\n5. **RH** : accès refusé si plan ≠ ENTERPRISE\n\n---\n\n## 🛡️ CHECKLIST SQL ANTI-ERREUR\n**Avant de produire le JSON final, vérifie mentalement chaque point :**\n\n- [ ] **Table existe ?** → Toutes les tables que j'utilise sont dans le schéma ci-dessus\n- [ ] **Colonne existe ?** → Chaque colonne que j'utilise appartient bien à la table référencée\n- [ ] **Alias correct ?** → Si j'utilise un alias de table (ex: `s.`), il correspond bien à la table déclarée\n- [ ] **JOIN valide ?** → La colonne de jointure existe dans les DEUX tables (ex: `sales.customer_id` → `customers.id`)\n- [ ] **tenant_id filtré ?** → La clause WHERE contient `tenant_id = '...'` sur la table principale\n- [ ] **Agrégat cohérent ?** → Si GROUP BY, toutes les colonnes SELECT sont soit agrégées, soit dans GROUP BY\n- [ ] **ROUND appliqué ?** → Tous les SUM/AVG de montants ont `::numeric, 2`\n- [ ] **NULL géré ?** → Les colonnes pouvant être NULL utilisent COALESCE\n- [ ] **Type compatible ?** → Pas de comparaison string = number sans cast\n\n---\n\n## ⚠️ ERREURS SQL FRÉQUENTES À ÉVITER\n\n```sql\n-- ❌ FAUX — 'total' n'existe pas dans sales, la colonne s'appelle 'total_ttc'\nSELECT total FROM public.sales WHERE tenant_id = '...'\n\n-- ✅ CORRECT\nSELECT total_ttc FROM public.sales WHERE tenant_id = '...'\n\n-- ❌ FAUX — 'product_name' n'existe pas dans stock_items, c'est 'name'\nSELECT product_name FROM public.stock_items WHERE tenant_id = '...'\n\n-- ✅ CORRECT\nSELECT name FROM public.stock_items WHERE tenant_id = '...'\n\n-- ❌ FAUX — sales n'a pas de colonne 'client_name', il faut faire un JOIN\nSELECT client_name, total_ttc FROM public.sales WHERE tenant_id = '...'\n\n-- ✅ CORRECT — toujours joindre customers pour avoir le nom\nSELECT c.company_name, s.total_ttc\nFROM public.sales s JOIN public.customers c ON s.customer_id = c.id\nWHERE s.tenant_id = '...'\n\n-- ❌ FAUX — GROUP BY manquant alors que SELECT a une colonne non agrégée\nSELECT c.company_name, SUM(s.total_ttc)\nFROM public.sales s JOIN public.customers c ON s.customer_id = c.id\nWHERE s.tenant_id = '...'\n\n-- ✅ CORRECT\nSELECT c.company_name, ROUND(SUM(s.total_ttc)::numeric, 2) as total\nFROM public.sales s JOIN public.customers c ON s.customer_id = c.id\nWHERE s.tenant_id = '...'\nGROUP BY c.company_name\nORDER BY total DESC\n\n-- ❌ FAUX — le CA d'un produit ne vient PAS de sales directement\n-- il faut passer par sale_items pour avoir la quantité × prix par produit\nSELECT name, SUM(total_ttc) FROM public.stock_items WHERE tenant_id = '...'\n\n-- ✅ CORRECT — CA par produit via sale_items\nSELECT si.name, ROUND(SUM(sai.quantity * sai.unit_price)::numeric, 2) as chiffre_affaires\nFROM public.sale_items sai\nJOIN public.stock_items si ON sai.stock_item_id = si.id\nJOIN public.sales s ON sai.sale_id = s.id\nWHERE s.tenant_id = '...'\nGROUP BY si.name ORDER BY chiffre_affaires DESC\n```\n\n---\n\n## 🎯 FORMATS DE SORTIE\n\n### 📊 Visualisations\n| Format | Usage | Quand l'utiliser |\n|--------|-------|------------------|\n| `table` | Tableau HTML | Listes > 5 lignes, détails, historiques |\n| `stats` | Cartes KPI | Métriques numériques uniques (CA, count) |\n| `chart` | Courbe/area | Évolution temporelle (jours/mois) |\n| `bar_chart` | Barres | Comparaisons catégories (≤ 15 éléments) |\n| `histogram` | Histogramme distribution | Tranches/intervalles continus |\n| `donut_chart` | Donut/pie | Répartition % (≤ 8 catégories) |\n| `multi_chart` | Multi-séries | Comparaisons multi-métriques (ex: CA + ventes) |\n| `list` | Liste | < 8 éléments simples |\n\n### 📄 Documents\n| Format | Usage | Déclencheurs mots-clés |\n|--------|-------|------------------------|\n| `document_invoice` | Facture standard | facture, invoice |\n| `document_proforma` | Facture proforma | proforma, devis, estimation |\n| `document_delivery` | Bon de livraison | bon de livraison, livraison, sortie |\n| `document_order` | Bon de commande | bon de commande, commande, achat |\n| `document_payslip` | Fiche de paie | fiche de paie, salaire, paie, bulletin |\n| `document_employee` | Fiche employé | fiche employé, profil employé, dossier RH |\n| `document_report` | Rapport analytique | rapport, synthèse, bilan, analyse |\n| `document_receipt` | Reçu de paiement | reçu, reçu de paiement, quittance, ticket, encaissement |\n\n---\n\n## 📐 LIMITES PAR PLAN\n- **BASIC** : LIMIT 10\n- **PRO** : LIMIT 50\n- **ENTERPRISE** : sans limite, RH activé\n\n---\n\n## 📋 EXEMPLES JSON — SUIS EXACTEMENT CES STRUCTURES\n\n### 💬 Salutation pure UNIQUEMENT\n**Utiliser SEULEMENT pour: bonjour, merci, au revoir, comment ça va**\n{\"type\":\"general_conversation\",\"response\":\"Bonjour ! 👋 Je suis l'assistant IA de GeStockPro. Comment puis-je vous aider ?\"}\n\n### 📊 Tableau\n{\"type\":\"sql_query\",\"sql\":[\"SELECT s.reference, c.company_name, s.sale_date, s.total_ttc, s.status FROM public.sales s JOIN public.customers c ON s.customer_id = c.id WHERE s.tenant_id = '{{ $('Webhook2').item.json.body.id }}' ORDER BY s.sale_date DESC LIMIT 20\"],\"format\":\"table\",\"title\":\"Dernières ventes\",\"description\":\"Liste des 20 dernières ventes\"}\n\n### 🔢 KPIs du mois\n{\"type\":\"sql_query\",\"sql\":[\"SELECT COUNT(*) as total_ventes, ROUND(SUM(total_ttc)::numeric,2) as chiffre_affaires, ROUND(AVG(total_ttc)::numeric,2) as panier_moyen, COUNT(DISTINCT customer_id) as clients_actifs FROM public.sales WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}' AND EXTRACT(MONTH FROM sale_date)=EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM sale_date)=EXTRACT(YEAR FROM CURRENT_DATE)\"],\"format\":\"stats\",\"title\":\"KPIs du mois\",\"kpi_config\":{\"icons\":[\"📦\",\"💰\",\"🛒\",\"👥\"],\"labels\":[\"Ventes\",\"CA\",\"Panier moyen\",\"Clients\"],\"prefix\":[\"\",\"FCFA \",\"FCFA \",\"\"]}}\n\n### 🔢 KPIs multi — Résumé business complet (CTE)\n{\"type\":\"sql_query\",\"sql\":[\"WITH kpi_ca AS (SELECT ROUND(SUM(total_ttc)::numeric,2) as ca_mois, COUNT(*) as nb_ventes FROM public.sales WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}' AND DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',CURRENT_DATE)), kpi_clients AS (SELECT COUNT(DISTINCT customer_id) as clients_actifs FROM public.sales WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}' AND sale_date>=CURRENT_DATE-INTERVAL '30 days'), kpi_stock AS (SELECT COUNT(*) as produits_alerte FROM public.stock_items WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}' AND current_level<=COALESCE(min_threshold,5)), kpi_factures AS (SELECT ROUND(SUM(amount)::numeric,2) as montant_impaye, COUNT(*) as nb_impayees FROM public.invoices WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}' AND status IN ('pending','overdue')) SELECT ca_mois, nb_ventes, clients_actifs, produits_alerte, montant_impaye, nb_impayees FROM kpi_ca, kpi_clients, kpi_stock, kpi_factures\"],\"format\":\"stats\",\"title\":\"Résumé de votre business\",\"kpi_config\":{\"icons\":[\"💰\",\"📦\",\"👥\",\"⚠️\",\"🧾\"],\"labels\":[\"CA ce mois\",\"Ventes ce mois\",\"Clients actifs\",\"Produits alerte\",\"Factures impayées\"],\"prefix\":[\"FCFA \",\"\",\"\",\"\",\"FCFA \"]}}\n\n### 📈 Courbe temporelle — CA 30 jours\n{\"type\":\"sql_query\",\"sql\":[\"SELECT TO_CHAR(sale_date,'YYYY-MM-DD') as jour, ROUND(SUM(total_ttc)::numeric,2) as chiffre_affaires, COUNT(*) as ventes FROM public.sales WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}' AND sale_date >= CURRENT_DATE - INTERVAL '30 days' GROUP BY DATE(sale_date) ORDER BY jour\"],\"format\":\"chart\",\"title\":\"CA 30 derniers jours\",\"chart_config\":{\"type\":\"area\",\"xAxis\":\"jour\",\"yAxis\":[\"chiffre_affaires\",\"ventes\"],\"colors\":[\"#6366f1\",\"#22d3ee\"],\"smooth\":true}}\n\n### 📈 Tendance avec moyenne mobile (12 mois)\n{\"type\":\"sql_query\",\"sql\":[\"SELECT TO_CHAR(sale_date,'YYYY-MM') as mois, ROUND(SUM(total_ttc)::numeric,2) as ca, ROUND(AVG(SUM(total_ttc)) OVER (ORDER BY TO_CHAR(sale_date,'YYYY-MM') ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)::numeric,2) as moyenne_mobile FROM public.sales WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}' AND sale_date>=CURRENT_DATE-INTERVAL '12 months' GROUP BY TO_CHAR(sale_date,'YYYY-MM') ORDER BY mois\"],\"format\":\"multi_chart\",\"title\":\"Tendance CA 12 mois\",\"chart_config\":{\"type\":\"composed\",\"xAxis\":\"mois\",\"series\":[{\"key\":\"ca\",\"type\":\"bar\",\"color\":\"#6366f1\",\"label\":\"CA mensuel\"},{\"key\":\"moyenne_mobile\",\"type\":\"line\",\"color\":\"#f59e0b\",\"label\":\"Moyenne mobile 3 mois\"}]}}\n\n### 📈 Comparaison mois courant vs mois précédent\n{\"type\":\"sql_query\",\"sql\":[\"SELECT ROUND(SUM(CASE WHEN DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',CURRENT_DATE) THEN total_ttc ELSE 0 END)::numeric,2) as ca_ce_mois, ROUND(SUM(CASE WHEN DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',CURRENT_DATE-INTERVAL '1 month') THEN total_ttc ELSE 0 END)::numeric,2) as ca_mois_precedent, COUNT(CASE WHEN DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',CURRENT_DATE) THEN 1 END) as ventes_ce_mois, COUNT(CASE WHEN DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',CURRENT_DATE-INTERVAL '1 month') THEN 1 END) as ventes_mois_precedent FROM public.sales WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}' AND sale_date>=DATE_TRUNC('month',CURRENT_DATE-INTERVAL '1 month')\"],\"format\":\"stats\",\"title\":\"Comparaison mois courant vs précédent\",\"kpi_config\":{\"icons\":[\"📈\",\"📉\",\"🛍️\",\"🛒\"],\"labels\":[\"CA ce mois\",\"CA mois précédent\",\"Ventes ce mois\",\"Ventes mois précédent\"],\"prefix\":[\"FCFA \",\"FCFA \",\"\",\"\"]}}\n\n### 📊 Histogramme de distribution\n{\"type\":\"sql_query\",\"sql\":[\"SELECT CASE WHEN total_ttc < 100000 THEN '0-100k' WHEN total_ttc < 200000 THEN '100k-200k' WHEN total_ttc < 500000 THEN '200k-500k' WHEN total_ttc < 1000000 THEN '500k-1M' ELSE '>1M' END as tranche, COUNT(*) as nombre_ventes, ROUND(SUM(total_ttc)::numeric,2) as montant_total FROM public.sales WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}' GROUP BY 1 ORDER BY MIN(total_ttc)\"],\"format\":\"histogram\",\"title\":\"Distribution des ventes\",\"chart_config\":{\"type\":\"histogram\",\"xAxis\":\"tranche\",\"yAxis\":[\"nombre_ventes\"],\"secondaryAxis\":\"montant_total\",\"colors\":[\"#6366f1\",\"#22d3ee\"],\"barGap\":0,\"dataLabels\":true,\"showSecondaryLine\":true}}\n\n### 📊 Barres — Top clients par CA\n{\"type\":\"sql_query\",\"sql\":[\"SELECT c.company_name as client, ROUND(SUM(s.total_ttc)::numeric,2) as chiffre_affaires FROM public.sales s JOIN public.customers c ON s.customer_id = c.id WHERE s.tenant_id = '{{ $('Webhook2').item.json.body.id }}' GROUP BY c.company_name ORDER BY chiffre_affaires DESC LIMIT 10\"],\"format\":\"bar_chart\",\"title\":\"Top clients par CA\",\"chart_config\":{\"type\":\"bar\",\"xAxis\":\"client\",\"yAxis\":[\"chiffre_affaires\"],\"colors\":[\"#6366f1\"],\"horizontal\":true,\"dataLabels\":true}}\n\n### 📊 Barres — Top produits vendus\n{\"type\":\"sql_query\",\"sql\":[\"SELECT si.name as produit, SUM(sai.quantity) as qte_vendue, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as ca FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='{{ $('Webhook2').item.json.body.id }}' GROUP BY si.name ORDER BY qte_vendue DESC LIMIT 10\"],\"format\":\"bar_chart\",\"title\":\"Produits les plus vendus\",\"chart_config\":{\"type\":\"bar\",\"xAxis\":\"produit\",\"yAxis\":[\"qte_vendue\",\"ca\"],\"colors\":[\"#6366f1\",\"#22d3ee\"],\"horizontal\":false,\"dataLabels\":true}}\n\n### 🍩 Donut — Répartition ventes par statut\n{\"type\":\"sql_query\",\"sql\":[\"SELECT COALESCE(status,'inconnu') as statut, COUNT(*) as nombre FROM public.sales WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}' GROUP BY status ORDER BY nombre DESC\"],\"format\":\"donut_chart\",\"title\":\"Ventes par statut\",\"chart_config\":{\"type\":\"pie\",\"nameKey\":\"statut\",\"valueKey\":\"nombre\",\"colors\":[\"#6366f1\",\"#22d3ee\",\"#f59e0b\",\"#10b981\",\"#f43f5e\"]}}\n\n### 🍩 Donut — CA par catégorie\n{\"type\":\"sql_query\",\"sql\":[\"SELECT cat.name as categorie, ROUND(SUM(sai.quantity*sai.unit_price)::numeric,2) as chiffre_affaires FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.subcategories sc ON si.subcategory_id=sc.id JOIN public.categories cat ON sc.category_id=cat.id JOIN public.sales s ON sai.sale_id=s.id WHERE s.tenant_id='{{ $('Webhook2').item.json.body.id }}' GROUP BY cat.name ORDER BY chiffre_affaires DESC LIMIT 8\"],\"format\":\"donut_chart\",\"title\":\"CA par catégorie\",\"chart_config\":{\"type\":\"pie\",\"nameKey\":\"categorie\",\"valueKey\":\"chiffre_affaires\",\"colors\":[\"#6366f1\",\"#22d3ee\",\"#f59e0b\",\"#10b981\",\"#f43f5e\",\"#a855f7\",\"#ec4899\",\"#14b8a6\"]}}\n\n### 📊 Multi-séries — Performance 6 mois\n{\"type\":\"sql_query\",\"sql\":[\"SELECT TO_CHAR(sale_date,'YYYY-MM') as mois, ROUND(SUM(CASE WHEN status != 'ANNULE' THEN total_ttc ELSE 0 END)::numeric,2) as ca_confirme, ROUND(SUM(CASE WHEN status='PENDING' THEN total_ttc ELSE 0 END)::numeric,2) as ca_attente, COUNT(*) as nb_ventes FROM public.sales WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}' AND sale_date >= CURRENT_DATE - INTERVAL '6 months' GROUP BY TO_CHAR(sale_date,'YYYY-MM') ORDER BY mois\"],\"format\":\"multi_chart\",\"title\":\"Performance 6 mois\",\"chart_config\":{\"type\":\"composed\",\"xAxis\":\"mois\",\"series\":[{\"key\":\"ca_confirme\",\"type\":\"area\",\"color\":\"#6366f1\",\"label\":\"CA Confirmé\"},{\"key\":\"ca_attente\",\"type\":\"bar\",\"color\":\"#f59e0b\",\"label\":\"CA Attente\"},{\"key\":\"nb_ventes\",\"type\":\"line\",\"color\":\"#10b981\",\"label\":\"Nb ventes\",\"yAxisId\":\"right\"}],\"dual_axis\":true}}\n\n### 📦 Stock critique — Alertes\n{\"type\":\"sql_query\",\"sql\":[\"SELECT name as produit, sku, current_level as stock_actuel, COALESCE(min_threshold,5) as seuil_min, CASE WHEN current_level=0 THEN 'Rupture' WHEN current_level<=COALESCE(min_threshold,5) THEN 'Critique' ELSE 'Faible' END as alerte FROM public.stock_items WHERE tenant_id = '{{ $('Webhook2').item.json.body.id }}' AND current_level<=COALESCE(min_threshold,5) ORDER BY current_level ASC LIMIT 20\"],\"format\":\"table\",\"title\":\"Alertes stock\",\"table_config\":{\"badge_column\":\"alerte\",\"badge_colors\":{\"Rupture\":\"red\",\"Critique\":\"orange\",\"Faible\":\"yellow\"}}}\n\n### 📦 Valorisation du stock\n{\"type\":\"sql_query\",\"sql\":[\"SELECT COUNT(*) as nb_produits, SUM(current_level) as total_unites, ROUND(SUM(current_level*unit_price)::numeric,2) as valeur_totale_stock, COUNT(CASE WHEN current_level=0 THEN 1 END) as en_rupture FROM public.stock_items WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}'\"],\"format\":\"stats\",\"title\":\"Valorisation du stock\",\"kpi_config\":{\"icons\":[\"📦\",\"🔢\",\"💰\",\"🚨\"],\"labels\":[\"Produits\",\"Total unités\",\"Valeur stock\",\"En rupture\"],\"prefix\":[\"\",\"\",\"FCFA \",\"\"]}}\n\n### 👥 Segmentation RFM clients\n{\"type\":\"sql_query\",\"sql\":[\"WITH rfm AS (SELECT c.company_name, c.email, MAX(s.sale_date) as derniere_vente, COUNT(s.id) as nb_achats, ROUND(SUM(s.total_ttc)::numeric,2) as total_depense, CURRENT_DATE-MAX(s.sale_date) as recence_jours FROM public.customers c JOIN public.sales s ON s.customer_id=c.id WHERE s.tenant_id='{{ $('Webhook2').item.json.body.id }}' AND s.status != 'ANNULE' GROUP BY c.id,c.company_name,c.email) SELECT company_name, email, derniere_vente, nb_achats, total_depense, recence_jours, CASE WHEN recence_jours<=30 AND nb_achats>=5 AND total_depense>=1000000 THEN 'Champion' WHEN recence_jours<=60 AND nb_achats>=3 THEN 'Fidèle' WHEN recence_jours<=30 THEN 'Récent' WHEN nb_achats>=5 THEN 'Régulier' ELSE 'À risque' END as segment_rfm FROM rfm ORDER BY total_depense DESC LIMIT 30\"],\"format\":\"table\",\"title\":\"Segmentation RFM Clients\",\"table_config\":{\"badge_column\":\"segment_rfm\",\"badge_colors\":{\"Champion\":\"green\",\"Fidèle\":\"blue\",\"Récent\":\"cyan\",\"Régulier\":\"purple\",\"À risque\":\"red\"}}}\n\n### 👥 Clients inactifs (90 jours)\n{\"type\":\"sql_query\",\"sql\":[\"SELECT c.company_name, c.email, c.phone, MAX(s.sale_date) as derniere_vente, CURRENT_DATE-MAX(s.sale_date) as jours_inactif FROM public.customers c LEFT JOIN public.sales s ON s.customer_id=c.id AND s.tenant_id='{{ $('Webhook2').item.json.body.id }}' WHERE c.tenant_id='{{ $('Webhook2').item.json.body.id }}' GROUP BY c.id,c.company_name,c.email,c.phone HAVING MAX(s.sale_date)<CURRENT_DATE-INTERVAL '90 days' OR MAX(s.sale_date) IS NULL ORDER BY derniere_vente ASC NULLS FIRST LIMIT 20\"],\"format\":\"table\",\"title\":\"Clients inactifs depuis 90+ jours\"}\n\n### 🧾 Factures impayées par client\n{\"type\":\"sql_query\",\"sql\":[\"SELECT c.company_name as client, c.email, c.phone, COUNT(i.id) as nb_factures, ROUND(SUM(i.amount)::numeric,2) as montant_du FROM public.invoices i JOIN public.customers c ON i.customer_id=c.id WHERE i.tenant_id='{{ $('Webhook2').item.json.body.id }}' AND i.status IN ('pending','overdue') GROUP BY c.id,c.company_name,c.email,c.phone ORDER BY montant_du DESC LIMIT 20\"],\"format\":\"bar_chart\",\"title\":\"Clients débiteurs\",\"chart_config\":{\"type\":\"bar\",\"xAxis\":\"client\",\"yAxis\":[\"montant_du\"],\"colors\":[\"#f43f5e\"],\"horizontal\":true,\"dataLabels\":true}}\n\n### 🧾 Trésorerie synthèse\n{\"type\":\"sql_query\",\"sql\":[\"SELECT ROUND(SUM(CASE WHEN status='paid' THEN amount ELSE 0 END)::numeric,2) as encaisse, ROUND(SUM(CASE WHEN status IN ('pending','overdue') THEN amount ELSE 0 END)::numeric,2) as a_encaisser, COUNT(CASE WHEN status='overdue' OR (status='PENDING' AND due_date<CURRENT_DATE) THEN 1 END) as en_retard FROM public.invoices WHERE tenant_id='{{ $('Webhook2').item.json.body.id }}'\"],\"format\":\"stats\",\"title\":\"Trésorerie\",\"kpi_config\":{\"icons\":[\"✅\",\"⏳\",\"🚨\"],\"labels\":[\"Encaissé\",\"À encaisser\",\"En retard\"],\"prefix\":[\"FCFA \",\"FCFA \",\"\"]}}\n\n### 📄 Facture proforma pour un client avec un produit spécifique\n{\"type\":\"document_generation\",\"document_type\":\"proforma\",\"sql\":[\"SELECT si.name as article, si.sku, COALESCE(si.unit_price,0) as prix_unitaire, 1 as quantity, COALESCE(si.unit_price,0)*1 as total_ttc, c.company_name, c.email, c.phone, c.main_contact FROM public.stock_items si CROSS JOIN public.customers c WHERE si.tenant_id = '{{ $('Webhook2').item.json.body.id }}' AND c.tenant_id = '{{ $('Webhook2').item.json.body.id }}' AND LOWER(si.name) LIKE LOWER('%Blouse Blanche%') AND LOWER(c.company_name) LIKE LOWER('%FINTECH%') LIMIT 5\"],\"format\":\"document_invoice\",\"title\":\"Facture Proforma\"}\n\n### 📄 Facture standard depuis invoices\n{\"type\":\"document_generation\",\"document_type\":\"invoice\",\"sql\":[\"SELECT i.id, i.invoice_date, i.amount as total_ttc, i.status, i.due_date, c.company_name, c.email, c.phone, c.main_contact FROM public.invoices i JOIN public.customers c ON i.customer_id=c.id WHERE i.tenant_id = '{{ $('Webhook2').item.json.body.id }}' ORDER BY i.invoice_date DESC LIMIT 1\"],\"format\":\"document_invoice\",\"title\":\"Dernière facture\"}\n\n### 📄 Reçu de paiement\n{\"type\":\"document_generation\",\"document_type\":\"document_receipt\",\"sql\":[\"SELECT i.id, i.invoice_date as date, i.amount as total_ttc, i.paid_date, 'Virement bancaire' as mode_paiement, c.company_name, c.email, c.phone, c.main_contact FROM public.invoices i JOIN public.customers c ON i.customer_id=c.id WHERE i.tenant_id='{{ $('Webhook2').item.json.body.id }}' AND i.status='paid' ORDER BY i.paid_date DESC LIMIT 5\"],\"format\":\"document_receipt\",\"title\":\"Reçus de Paiement\"}\n\n### 📄 Fiche de paie\n⚠️ RÈGLE ABSOLUE FICHE DE PAIE :\n1. Utilise TOUJOURS la requête CTE ci-dessous (jamais de requête simple)\n2. Remplace NOM_EMPLOYE par le nom fourni par l\\'utilisateur\n3. Si 0 résultat → l\\'employé n\\'a PAS de contrat actif → affiche un message d\\'erreur\n4. Ne génère JAMAIS une fiche avec contract_salary = 0 sauf si salaire contractuel réel = 0\n\n{\"type\":\"document_generation\",\"document_type\":\"document_payslip\",\"sql\":[\"WITH emp AS (SELECT e.id,e.first_name,e.last_name,e.email,e.position,e.hire_date,e.status,COALESCE(e.base_salary,0) as base_salary,d.name as department FROM public.employees e LEFT JOIN public.departments d ON e.department_id=d.id WHERE e.tenant_id=\\'{{ $json.id }}\\' AND LOWER(e.first_name||\\'  \\'||e.last_name) LIKE LOWER(\\'%NOM_EMPLOYE%\\') LIMIT 1), contrat AS (SELECT c.salary as contract_salary,c.contract_type,c.start_date FROM public.contracts c INNER JOIN emp ON c.employee_id=emp.id WHERE c.status=\\'ACTIVE\\' ORDER BY c.start_date DESC LIMIT 1), primes AS (SELECT COALESCE(SUM(p.amount),0) as primes_mois FROM public.primes p INNER JOIN emp ON p.employee_id=emp.id WHERE p.status=\\'APPROVED\\' AND (p.payroll_month=TO_CHAR(CURRENT_DATE,\\'YYYY-MM\\') OR TO_CHAR(p.created_at,\\'YYYY-MM\\')=TO_CHAR(CURRENT_DATE,\\'YYYY-MM\\'))), avances AS (SELECT COALESCE(SUM(a.amount/GREATEST(a.months,1)),0) as deduction_avance FROM public.advances a INNER JOIN emp ON a.employee_id=emp.id WHERE a.status=\\'APPROVED\\'), absences AS (SELECT COALESCE(SUM(l.days_count),0) as jours_abs_non_payes FROM public.leaves l INNER JOIN emp ON l.employee_id=emp.id WHERE l.status=\\'APPROVED\\' AND l.type=\\'UNPAID\\' AND DATE_TRUNC(\\'month\\',l.start_date)=DATE_TRUNC(\\'month\\',CURRENT_DATE)) SELECT emp.first_name,emp.last_name,emp.email,emp.position,emp.hire_date,emp.status,emp.department,COALESCE(contrat.contract_salary,emp.base_salary,0) as contract_salary,COALESCE(contrat.contract_type,\\'AUCUN\\') as contract_type,contrat.start_date as contract_start,CASE WHEN contrat.contract_type IS NULL THEN \\'NO_CONTRACT\\' ELSE \\'OK\\' END as contract_check,primes.primes_mois,avances.deduction_avance,absences.jours_abs_non_payes FROM emp LEFT JOIN contrat ON true CROSS JOIN primes CROSS JOIN avances CROSS JOIN absences\"],\"format\":\"document_payslip\",\"title\":\"Fiche de Paie\"}\n\n### 📄 Fiche employé (liste ou profil)\n{\"type\":\"document_generation\",\"document_type\":\"document_employee\",\"sql\":[\"SELECT e.first_name, e.last_name, e.email, e.position, e.hire_date, e.status, e.base_salary, d.name as department FROM public.employees e LEFT JOIN public.departments d ON e.department_id=d.id WHERE e.tenant_id='{{ $('Webhook2').item.json.body.id }}' ORDER BY e.last_name LIMIT 20\"],\"format\":\"document_employee\",\"title\":\"Fiche Employés\"}\n\n### 📄 Bon de commande\n{\"type\":\"document_generation\",\"document_type\":\"document_order\",\"sql\":[\"SELECT si.name as article, si.sku, COALESCE(si.unit_price,0) as unit_price, 1 as quantity, COALESCE(si.unit_price,0) as total_ttc FROM public.stock_items si WHERE si.tenant_id='{{ $('Webhook2').item.json.body.id }}' LIMIT 10\"],\"format\":\"document_order\",\"title\":\"Bon de Commande\"}\n\n### 📄 Bon de livraison\n{\"type\":\"document_generation\",\"document_type\":\"document_delivery\",\"sql\":[\"SELECT si.name as article, si.sku, sai.quantity, sai.unit_price, c.company_name, c.phone FROM public.sale_items sai JOIN public.stock_items si ON sai.stock_item_id=si.id JOIN public.sales s ON sai.sale_id=s.id JOIN public.customers c ON s.customer_id=c.id WHERE s.tenant_id='{{ $('Webhook2').item.json.body.id }}' ORDER BY s.sale_date DESC LIMIT 10\"],\"format\":\"document_delivery\",\"title\":\"Bon de Livraison\"}\n\n### 📄 Rapport analytique (ventes, stock, etc.)\n{\"type\":\"document_generation\",\"document_type\":\"document_report\",\"sql\":[\"SELECT c.company_name, ROUND(SUM(s.total_ttc)::numeric,2) as chiffre_affaires, COUNT(*) as nb_ventes FROM public.sales s JOIN public.customers c ON s.customer_id=c.id WHERE s.tenant_id='{{ $('Webhook2').item.json.body.id }}' GROUP BY c.company_name ORDER BY chiffre_affaires DESC LIMIT 20\"],\"format\":\"document_report\",\"title\":\"Rapport des Ventes par Client\"}\n\n---\n\n## 🧠 RÈGLE DE DÉCISION — APPLIQUE-LA À CHAQUE MESSAGE\n\n1. Message contient \"histogramme\" ou \"distribution\" → {\"type\":\"sql_query\",\"format\":\"histogram\",...}\n2. Message contient \"graphique\" + catégories / comparaison → {\"type\":\"sql_query\",\"format\":\"bar_chart\",...}\n3. Message contient \"évolution\", \"tendance\", \"par jour/mois/semaine\" → {\"type\":\"sql_query\",\"format\":\"chart\",...}\n4. Message contient \"répartition\", \"pourcentage\", \"%\" → {\"type\":\"sql_query\",\"format\":\"donut_chart\",...}\n5. Message contient \"KPI\", \"résumé\", \"combien\", \"total\", \"chiffre\", \"montant\" (valeur unique) → {\"type\":\"sql_query\",\"format\":\"stats\",...}\n6. Message contient \"compare\", \"vs\", \"croissance\", \"évolution multi\" → {\"type\":\"sql_query\",\"format\":\"multi_chart\",...}\n7. Message contient \"facture\" / \"invoice\" → {\"type\":\"document_generation\",\"document_type\":\"document_invoice\",...}\n   Message contient \"proforma\" / \"devis\" → {\"type\":\"document_generation\",\"document_type\":\"document_proforma\",...}\n   Message contient \"bon de livraison\" / \"livraison\" → {\"type\":\"document_generation\",\"document_type\":\"document_delivery\",...}\n   Message contient \"bon de commande\" → {\"type\":\"document_generation\",\"document_type\":\"document_order\",...}\n   Message contient \"fiche de paie\" / \"bulletin\" / \"salaire\" → {\"type\":\"document_generation\",\"document_type\":\"document_payslip\",...}\n   Message contient \"fiche employé\" / \"profil\" / \"dossier RH\" → {\"type\":\"document_generation\",\"document_type\":\"document_employee\",...}\n   Message contient \"rapport\" / \"synthèse\" / \"bilan\" / \"génère\" / \"crée un document\" → {\"type\":\"document_generation\",\"document_type\":\"document_report\",...}\n   Message contient \"reçu\" / \"quittance\" / \"ticket\" / \"encaissement\" → {\"type\":\"document_generation\",\"document_type\":\"document_receipt\",...}\n8. Message demande une liste de données → {\"type\":\"sql_query\",\"format\":\"table\",...}\n9. Salutation pure SEULEMENT (bonjour, merci, au revoir) → {\"type\":\"general_conversation\",...}\n\n## 🚨 RÈGLES QUALITÉ SQL\n- ROUND(SUM(col)::numeric, 2) pour les montants\n- COALESCE(col, valeur_défaut) pour éviter les NULL\n- TO_CHAR(date, 'YYYY-MM-DD') pour graphiques temporels\n- TO_CHAR(date, 'YYYY-MM') pour groupements mensuels\n- DATE_TRUNC('month', col) pour filtres mensuels exacts\n- ORDER BY MIN(col) pour histogrammes\n- LOWER(col) LIKE LOWER('%terme%') pour recherches insensibles à la casse\n- Utilise des CTE (WITH ... AS) pour les analyses multi-métriques complexes\n\nRAPPEL FINAL : Réponds UNIQUEMENT avec un objet JSON valide. Aucun texte. Aucun ```. {{ $json.message }} {{ $json.message }}",
+        "options": {}
+      },
+      "id": "54b090c9-2105-4687-949b-9ef89c3e84b4",
+      "name": "AI Agent de Classification2",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        26432,
+        4336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PARSE AI OUTPUT — Extrait et parse le JSON de la réponse IA\n// Gère tous les cas : JSON brut, enveloppé dans ```json, texte mixte\n// + Garde RH (plan != ENTERPRISE)\n// + Injection LIMIT automatique si manquant\n// ============================================================\nconst agentOutput = $input.first().json.output || '';\nconst planId = ($('Webhook2').item.json.body.planId || 'BASIC').toUpperCase();\n\nconst extractJSON = (text) => {\n  if (!text || typeof text !== 'string') return null;\n  if (typeof text === 'object') return text;\n  \n  let str = text.trim();\n  str = str.replace(/^```(?:json)?\\s*/im, '').replace(/\\s*```\\s*$/im, '').trim();\n  \n  const firstBrace = str.indexOf('{');\n  const firstBracket = str.indexOf('[');\n  let startIdx = -1;\n  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) startIdx = firstBrace;\n  else if (firstBracket !== -1) startIdx = firstBracket;\n  \n  if (startIdx > 0) str = str.slice(startIdx);\n  \n  const lastBrace = str.lastIndexOf('}');\n  const lastBracket = str.lastIndexOf(']');\n  const endIdx = Math.max(lastBrace, lastBracket);\n  if (endIdx !== -1 && endIdx < str.length - 1) str = str.slice(0, endIdx + 1);\n  \n  try {\n    return JSON.parse(str);\n  } catch(e) {\n    const repaired = str.replace(/,\\s*([}\\]])/g, '$1');\n    try { return JSON.parse(repaired); } catch(e2) { return null; }\n  }\n};\n\n// Tables RH interdites si plan != ENTERPRISE\nconst RH_TABLES = ['employees', 'departments', 'contracts', 'leaves', 'payroll_items', 'payroll_settings', 'primes'];\n\nconst containsRHTables = (sql) => {\n  if (!sql) return false;\n  const sqlLower = sql.toLowerCase();\n  return RH_TABLES.some(table => sqlLower.includes(table));\n};\n\n// Injection LIMIT selon plan si absent\nconst injectLimit = (sql) => {\n  if (!sql) return sql;\n  const sqlLower = sql.toLowerCase();\n  if (sqlLower.includes('limit ')) return sql;\n  const limits = { BASIC: 10, PRO: 50 };\n  const limit = limits[planId];\n  if (!limit) return sql; // ENTERPRISE = sans limite\n  return sql.trimEnd().replace(/;?\\s*$/, '') + ` LIMIT ${limit}`;\n};\n\nconst parsed = extractJSON(agentOutput);\n\nif (!parsed || typeof parsed !== 'object') {\n  return [{ json: {\n    type: 'general_conversation',\n    response: typeof agentOutput === 'string' && agentOutput.length > 0\n      ? agentOutput\n      : 'Je suis prêt à vous aider. Posez-moi une question sur vos données.',\n    _parseError: true,\n    _raw: String(agentOutput).slice(0, 200)\n  }}];\n}\n\n// Garantit que 'type' existe toujours\nif (!parsed.type) {\n  if (parsed.sql) parsed.type = 'sql_query';\n  else if (parsed.document_type) parsed.type = 'document_generation';\n  else if (parsed.response) parsed.type = 'general_conversation';\n  else parsed.type = 'general_conversation';\n}\n\n// Garantit que sql est bien un tableau si présent\nif (parsed.sql && !Array.isArray(parsed.sql)) {\n  parsed.sql = [parsed.sql];\n}\n\n// ═══ GARDE RH ═══\n// Bloque l'accès aux tables RH si plan != ENTERPRISE\nif ((parsed.type === 'sql_query' || parsed.type === 'document_generation') && parsed.sql) {\n  const sqlString = parsed.sql.join(' ');\n  if (planId !== 'ENTERPRISE' && containsRHTables(sqlString)) {\n    return [{ json: {\n      type: 'general_conversation',\n      response: '🔒 **Accès refusé** — Les fonctionnalités RH (employés, paie, contrats) nécessitent le plan **ENTERPRISE**. Contactez votre administrateur pour mettre à niveau votre abonnement.',\n      _blocked: 'rh_access',\n      _plan: planId\n    }}];\n  }\n}\n\n// ═══ INJECTION LIMIT AUTOMATIQUE ═══\n// Protège contre les requêtes sans LIMIT sur plans BASIC/PRO\nif (parsed.type === 'sql_query' && parsed.sql && planId !== 'ENTERPRISE') {\n  parsed.sql = parsed.sql.map(injectLimit);\n}\n\n// ═══ CTE MERGER — Multi-SQL fusionné en une seule requête WITH ═══\n// Si l'IA retourne plusieurs SQLs, on les fusionne en CTEs pour éviter\n// les erreurs d'exécution (le nœud Postgres n'exécute que sql[0])\nif ((parsed.type === 'sql_query' || parsed.type === 'document_generation') && Array.isArray(parsed.sql) && parsed.sql.length > 1) {\n  const queries = parsed.sql.map(q => q.trim().replace(/;?\\s*$/, ''));\n  const firstClean = queries[0].toLowerCase().trim();\n  if (!firstClean.startsWith('with ')) {\n    const cteNames = ['_cte_a', '_cte_b', '_cte_c', '_cte_d'];\n    const ctes = queries.slice(0, -1).map((q, i) => `${cteNames[i]} AS (\\n  ${q}\\n)`).join(',\\n');\n    parsed.sql = [`WITH ${ctes}\\n${queries[queries.length - 1]}`];\n  } else {\n    parsed.sql = [queries[0]];\n  }\n}\n\nreturn [{ json: parsed }];\n"
+      },
+      "id": "50cbf8ad-199a-4bab-af50-49fa7aac530b",
+      "name": "Parse AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        26896,
+        4240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "route-1",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "sql_query",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "route-2",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "document_generation",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "ec0cd601-3b02-438b-99f4-c74ce6fde140",
+      "name": "Routeur de questions2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        26736,
+        4448
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "e0fdd422-2c39-46d6-a20c-78b30d5ba44b",
+      "name": "SaaS GESTOCKPRO2",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        27264,
+        4368
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "XsmPz0YKsvPhIWkK",
+          "name": "gestionapp_stockgestion_13_janv_2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "error-check",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b3527a9b-b5c5-4b33-adf8-0152ec08de53",
+      "name": "Error Handler2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        27504,
+        4256
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-doc",
+              "leftValue": "={{ $('Parse AI Output').item.json.type }}",
+              "rightValue": "document_generation",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5b0019ea-36b5-4d4f-9749-2973b3b9edcf",
+      "name": "Document Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        27616,
+        4064
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// ANALYZE DATA TYPE — Détecte et enrichit le format de réponse\n// ============================================================\nconst allResults = $input.all();\nconst aiOutput = $('Parse AI Output').first().json;\nconst userQuestion = $('Webhook2').first().json.body.message;\nconst sessionId = $('Webhook2').first().json.body.sessionId;\nconst planId = ($('Webhook2').first().json.body.planId || 'BASIC').toUpperCase();\n\nlet requestedFormat = aiOutput.format || 'auto';\nconst chartConfig = aiOutput.chart_config || null;\nconst kpiConfig = aiOutput.kpi_config || null;\nconst tableConfig = aiOutput.table_config || null;\nconst title = aiOutput.title || '';\nconst description = aiOutput.description || '';\n\nconst rowCount = allResults.length;\nif (rowCount === 0) {\n  return [{ json: { formattedResponse: `Aucune donnée trouvée pour : \"${userQuestion}\".`, sessionId, format: 'empty', resultCount: 0, title, description } }];\n}\n\nconst firstRow = allResults[0]?.json || {};\nconst columns = Object.keys(firstRow);\n\nif (requestedFormat === 'auto') {\n  const hasDate = columns.some(c => c.match(/date|jour|mois|semaine|period|month|week|day/i));\n  const hasNumeric = columns.some(c => { const v = firstRow[c]; return typeof v === 'number' || (!isNaN(parseFloat(v)) && v !== null); });\n  const isSingleValue = rowCount === 1 && columns.length === 1;\n  const isKPI = rowCount === 1 && columns.length <= 6 && hasNumeric;\n  if (isSingleValue) requestedFormat = 'stats';\n  else if (isKPI) requestedFormat = 'stats';\n  else if (hasDate && rowCount > 3) requestedFormat = 'chart';\n  else if (columns.length === 2 && rowCount <= 10) requestedFormat = 'donut_chart';\n  else if (rowCount <= 15 && columns.length <= 3) requestedFormat = 'bar_chart';\n  else if (rowCount > 15 || columns.length > 4) requestedFormat = 'table';\n  else requestedFormat = 'list';\n}\n\nconst cleanRow = (row) => {\n  const out = {};\n  for (const [k, v] of Object.entries(row || {})) {\n    if (v === null || v === undefined) { out[k] = null; continue; }\n    if (typeof v === 'object' && !Array.isArray(v)) {\n      out[k] = (v instanceof Date || v.toISOString) ? (v.toISOString ? v.toISOString().split('T')[0] : String(v)) : JSON.stringify(v);\n    } else { out[k] = v; }\n  }\n  return out;\n};\n\nconst rawData = allResults.map(item => cleanRow(item.json || {}));\n\n// ═══ PREDICTION / TREND — Format passe-en-avant avec flag is_prediction ═══\nconst IS_PREDICTION = requestedFormat === 'prediction' || requestedFormat === 'trend';\n\nlet statsObj = null;\nif (['stats','chart','bar_chart','histogram','donut_chart','multi_chart','prediction','trend'].includes(requestedFormat)) {\n  const numCols = {};\n  for (const row of rawData) {\n    for (const [k, v] of Object.entries(row)) {\n      const n = parseFloat(v);\n      if (!isNaN(n) && v !== null) { if (!numCols[k]) numCols[k] = []; numCols[k].push(n); }\n    }\n  }\n  if (Object.keys(numCols).length > 0) {\n    statsObj = {};\n    for (const [col, vals] of Object.entries(numCols)) {\n      const sum = vals.reduce((a, b) => a + b, 0);\n      statsObj[col] = { sum: Math.round(sum*100)/100, avg: Math.round((sum/vals.length)*100)/100, min: Math.min(...vals), max: Math.max(...vals), count: vals.length };\n    }\n  }\n}\n\nconst metadata = { format: requestedFormat, title, description, stats: statsObj, chart_config: chartConfig, kpi_config: kpiConfig, table_config: tableConfig, userQuestion, query: $('Parse AI Output').first().json.sql?.[0] || '', resultCount: rowCount, columnCount: columns.length, columns, planId, is_prediction: IS_PREDICTION };\n\nreturn rawData.map(row => ({ json: { ...row, _metadata: metadata } }));\n"
+      },
+      "id": "b2e0a369-a3a2-4236-a9f9-abad3cadc548",
+      "name": "Analyze Data Type2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        27840,
+        4064
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// FORMAT SQL RESULTS ENHANCED — Construit la réponse finale\n// ============================================================\nconst allResults = $input.all();\nconst sessionId = $('Webhook2').first().json.body.sessionId;\nif (!allResults.length) return [{ json: { formattedResponse: 'Aucune donnée trouvée.', format: 'empty', resultCount: 0, sessionId } }];\nconst metadata = allResults[0]?.json?._metadata || {};\nconst { format: formatType = 'list', title = '', description = '', stats, chart_config, kpi_config, table_config, resultCount, columns = [] } = metadata;\nconst rawData = allResults.map(item => { const { _metadata, ...rest } = item.json || {}; return rest; });\nconst fmt = (v) => { if (v === null || v === undefined) return '—'; const n = parseFloat(v); if (!isNaN(n)) return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); return String(v); };\nconst mdTable = (data) => { if (!data.length) return ''; const cols = Object.keys(data[0]); return ['| ' + cols.join(' | ') + ' |', '|' + cols.map(() => '---').join('|') + '|', ...data.map(r => '| ' + cols.map(c => fmt(r[c])).join(' | ') + ' |')].join('\\n'); };\n\nconst CHART_FORMATS = ['chart','bar_chart','histogram','donut_chart','multi_chart','heatmap','advanced_chart'];\nif (CHART_FORMATS.includes(formatType)) {\n  return [{ json: { formattedResponse: [title ? `**${title}**` : '', description || ''].filter(Boolean).join('\\n'), sessionId, format: formatType, resultCount, rawResults: rawData, metadata: { ...metadata, chart_config } } }];\n}\n// ═══ PREDICTION / TREND — Régression linéaire + prévision 3 périodes ═══\nif (formatType === 'prediction' || formatType === 'trend') {\n  const timeCol = columns.find(c => /date|jour|mois|semaine|period|month|week|year|annee|periode/i.test(c)) || columns[0];\n  const valueCol = columns.find(c => c !== timeCol && rawData[0] && !isNaN(parseFloat(rawData[0][c])));\n  let forecast = [];\n  if (valueCol && rawData.length >= 3) {\n    const n = rawData.length;\n    const xs = rawData.map((_, i) => i);\n    const ys = rawData.map(r => parseFloat(r[valueCol]) || 0);\n    const sumX = xs.reduce((a, b) => a + b, 0);\n    const sumY = ys.reduce((a, b) => a + b, 0);\n    const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0);\n    const sumX2 = xs.reduce((s, x) => s + x * x, 0);\n    const denom = (n * sumX2 - sumX * sumX) || 1;\n    const slope = (n * sumXY - sumX * sumY) / denom;\n    const intercept = (sumY - slope * sumX) / n;\n    for (let i = 1; i <= 3; i++) {\n      forecast.push({ [timeCol]: `Prév. +${i}`, [valueCol]: Math.max(0, Math.round((intercept + slope * (n - 1 + i)) * 100) / 100), _forecast: true });\n    }\n  }\n  const chartData = [...rawData, ...forecast];\n  const forecastChart = chart_config || { type: 'composed', xAxis: timeCol, series: [{ key: valueCol || columns[1] || columns[0], type: 'area', color: '#6366f1', label: 'Historique' }, { key: valueCol || columns[1] || columns[0], type: 'line', color: '#f59e0b', label: 'Prévision', dashed: true }], forecastFrom: rawData.length };\n  return [{ json: { formattedResponse: `## 📈 ${title || 'Tendance & Prévision'}\\n${description ? `*${description}*\\n` : ''}*${rawData.length} périodes analysées — 3 périodes prévisionnelles*`, sessionId, format: 'prediction', resultCount: rawData.length, rawResults: chartData, forecast, metadata: { ...metadata, chart_config: forecastChart, forecast_periods: 3, forecast_start: rawData.length } } }];\n}\nif (formatType === 'table') {\n  const cols = columns.length ? columns : Object.keys(rawData[0] || {});\n  const badge = table_config?.badge_column || null;\n  const header = '| ' + cols.join(' | ') + ' |';\n  const sep = '|' + cols.map(() => ' --- ').join('|') + '|';\n  const rows = rawData.map(r => '| ' + cols.map(c => { let val = fmt(r[c]); if (badge && c === badge) { const color = table_config?.badge_colors?.[val] || 'gray'; const emoji = {red:'🔴',orange:'🟠',yellow:'🟡',green:'🟢',gray:'⚪'}[color] || '⚪'; val = `${emoji} ${val}`; } return val; }).join(' | ') + ' |').join('\\n');\n  return [{ json: { formattedResponse: `## 📊 ${title || 'Résultats'}\\n${description ? `*${description}*\\n` : ''}\\n${header}\\n${sep}\\n${rows}\\n\\n*${resultCount} résultat(s)*`, sessionId, format: 'table', resultCount, rawResults: rawData, metadata } }];\n}\nif (formatType === 'stats') {\n  const icons = kpi_config?.icons || ['📊','💰','📈','👥','📦','⚡'];\n  const labels = kpi_config?.labels || columns;\n  const prefixes = kpi_config?.prefix || [];\n  let statsCards = [];\n  if (rawData.length === 1) {\n    statsCards = Object.entries(rawData[0]).map(([col, val], idx) => ({ label: labels[idx] || col, value: val, prefix: prefixes[idx] || '', icon: icons[idx % icons.length], stat_details: stats?.[col] || null }));\n  } else {\n    statsCards = rawData.map((row, idx) => { const firstKey = Object.keys(row)[0]; const valueKey = Object.keys(row).find(k => !isNaN(parseFloat(row[k])) && k !== firstKey) || firstKey; return { label: String(row[firstKey] || `Item ${idx+1}`), value: row[valueKey], prefix: '', icon: icons[idx % icons.length] }; });\n  }\n  return [{ json: { formattedResponse: `## ${title || 'Statistiques clés'}${description ? `\\n*${description}*` : ''}`, sessionId, format: 'stats', resultCount, rawResults: statsCards, metadata } }];\n}\nif (formatType === 'list') {\n  let response = title ? `## ${title}\\n` : '';\n  rawData.forEach((row, i) => { const vals = columns.length ? columns : Object.keys(row); if (vals.length === 1) response += `• **${fmt(row[vals[0]])}**\\n`; else response += `${i+1}. **${fmt(row[vals[0]])}** — ${vals.slice(1).map(k => fmt(row[k])).join(' · ')}\\n`; });\n  response += `\\n*${resultCount} résultat(s)*`;\n  return [{ json: { formattedResponse: response, sessionId, format: 'list', resultCount, rawResults: rawData, metadata } }];\n}\nif (formatType === 'simple') {\n  const [[col, val]] = Object.entries(rawData[0] || {});\n  return [{ json: { formattedResponse: `**${title || col} :** ${fmt(val)}`, sessionId, format: 'stats', resultCount: 1, rawResults: [{ label: title || col, value: val }], metadata } }];\n}\nconst titleLine = title ? `## ${title}\\n` : '';\nreturn [{ json: { formattedResponse: titleLine + mdTable(rawData.slice(0, 30)) + `\\n\\n*${resultCount} résultat(s)*`, sessionId, format: 'table', resultCount, rawResults: rawData, metadata } }];\n"
+      },
+      "id": "c2116497-d9a9-441f-a6ed-700ffab22b4d",
+      "name": "Format SQL Results Enhanced2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        28256,
+        4064
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $('SaaS GESTOCKPRO2').first().json.error;\nconst userQuestion = $('Webhook2').first().json.body.message;\nconst sessionId = $('Webhook2').first().json.body.sessionId;\nlet icon = '❌', title = 'Erreur de requête', message = \"Une erreur est survenue lors de l'exécution de la requête.\", hint = 'Reformulez votre question différemment.';\nconst errMsg = (error?.message || error?.toString() || '').toLowerCase();\nconst rawErr = error?.message || '';\n\n// ── Extraction de la colonne/table fautive ────────────────────────────\nconst colMatch = rawErr.match(/column [\"']?([\\w.]+)[\"']? does not exist/i);\nconst relMatch = rawErr.match(/relation [\"']?([\\w.]+)[\"']? does not exist/i);\nconst badCol = colMatch ? colMatch[1] : null;\nconst badRel = relMatch ? relMatch[1] : null;\n\nif (badCol) {\n  icon = '🔍'; title = 'Colonne inconnue';\n  message = `La colonne **${badCol}** n'existe pas dans la base de données.`;\n  hint = `Reformulez votre question. La donnée \"${badCol}\" n'est peut-être pas disponible dans votre schéma.`;\n} else if (badRel) {\n  icon = '🗂️'; title = 'Table introuvable';\n  message = `La table **${badRel}** n'existe pas.`;\n  hint = 'Vérifiez que la fonctionnalité est activée dans votre abonnement.';\n} else if (errMsg.includes('syntax error') || errMsg.includes('parse error')) {\n  icon = '⚠️'; title = 'Erreur de syntaxe SQL';\n  message = 'La requête générée contient une erreur de syntaxe.';\n  hint = 'Reformulez votre question de façon plus précise.';\n} else if (errMsg.includes('does not exist') || errMsg.includes('relation')) {\n  icon = '🔍'; title = 'Élément introuvable';\n  message = \"Une table ou colonne demandée n'existe pas dans votre base.\";\n  hint = 'Vérifiez que la fonctionnalité est disponible dans votre plan.';\n} else if (errMsg.includes('tenant_id') || errMsg.includes('permission') || errMsg.includes('access denied')) {\n  icon = '🔒'; title = 'Accès refusé';\n  message = \"Vous n'avez pas les autorisations nécessaires pour cette requête.\";\n  hint = 'Vérifiez votre abonnement ou contactez votre administrateur.';\n} else if (errMsg.includes('timeout') || errMsg.includes('connection') || errMsg.includes('econnrefused')) {\n  icon = '🌐'; title = 'Problème de connexion';\n  message = 'La connexion à la base de données a expiré ou été refusée.';\n  hint = 'Réessayez dans quelques instants.';\n} else if (errMsg.includes('ambiguous')) {\n  icon = '🔀'; title = 'Requête ambiguë';\n  message = 'La requête référence une colonne présente dans plusieurs tables.';\n  hint = 'Reformulez en précisant la table (ex: \"les ventes du mois\").';\n} else if (errMsg.includes('division by zero') || errMsg.includes('divide by zero')) {\n  icon = '➗'; title = 'Division par zéro';\n  message = 'Le calcul demandé génère une division par zéro.';\n  hint = 'Il n\\'y a probablement pas de données pour cette période.';\n}\n\nreturn [{ json: { formattedResponse: `${icon} **${title}**\\n\\n${message}\\n\\n💡 *${hint}*`, sessionId, format: 'error', resultCount: 0, status: 'ERROR' } }];\n"
+      },
+      "id": "db58af4b-2be4-4dd5-a742-9280a1b8cce9",
+      "name": "Format Error2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        27856,
+        4336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// GENERATE DOCUMENT — Multi-templates selon le type demandé\n// Types supportés :\n//   FACTURE/PROFORMA  → DocumentPreview React natif\n//   BON DE LIVRAISON  → DocumentPreview React natif  \n//   RAPPORT           → HTML riche (iframe)\n//   FICHE DE PAIE     → HTML riche (iframe)\n//   FICHE EMPLOYÉ     → HTML riche (iframe)\n//   BON DE COMMANDE   → HTML riche (iframe)\n// ============================================================\nconst allResults = $input.all();\nconst sessionId = $('Webhook2').first().json.body.sessionId;\n\nif (!allResults.length) {\n  return [{ json: {\n    formattedResponse: 'Aucune donnée trouvée pour générer ce document.',\n    format: 'general', resultCount: 0, sessionId\n  }}];\n}\n\nconst aiOutput = $('Parse AI Output').first().json;\nconst docType  = (aiOutput.document_type || aiOutput.format || 'document_report').toLowerCase();\nconst docTitle = aiOutput.title || 'Document';\n\n// ── Branding tenant ───────────────────────────────────────────────────────\nlet tenant = {};\ntry { tenant = $('Merge Tenant Branding').first().json.tenant || {}; } catch(e) {}\n\nconst companyName   = tenant.company_name   || 'Mon Entreprise';\nconst logoUrl       = tenant.logo_url       || '';\nconst cachetUrl     = tenant.cachet_url     || '';\nconst primaryColor  = tenant.primary_color  || '#6366f1';\nconst accentColor   = tenant.secondary_color|| '#22d3ee';\nconst address       = tenant.address        || '';\nconst phone         = tenant.phone          || '';\nconst email         = tenant.email          || '';\nconst taxRate       = parseFloat(tenant.tax_rate) || 18;\nconst currency      = tenant.currency       || 'FCFA';\nconst footerMention = tenant.footer_mention || 'Merci pour votre confiance.';\nconst invoicePrefix = tenant.invoice_prefix || 'FAC';\nconst fontFamily    = tenant.font_family    || 'Segoe UI';\n\n// ── Données SQL ───────────────────────────────────────────────────────────\nconst rawData = allResults.map(item => {\n  const { _metadata, ...rest } = item.json || {};\n  return rest;\n});\nconst inv = rawData[0] || {};\n\n// ── Helpers ───────────────────────────────────────────────────────────────\nconst fmt = (v, isCurr = false) => {\n  if (v === null || v === undefined) return '—';\n  if (typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}/.test(v))\n    return new Date(v).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });\n  const n = parseFloat(v);\n  if (!isNaN(n)) {\n    const s = n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });\n    return isCurr ? `${s} ${currency}` : s;\n  }\n  return String(v);\n};\n\nconst today  = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });\nconst ym = new Date().toLocaleDateString('fr-FR', { year: '2-digit', month: '2-digit' }).replace('/', '');\nconst refNum = `${invoicePrefix}-${ym}-${Math.floor(Math.random() * 9000 + 1000)}`;\n\n// ── Classification du type de document ───────────────────────────────────\nconst isInvoice   = ['invoice','proforma','document_invoice','document_proforma','facture','facture_proforma'].some(t => docType.includes(t));\nconst isDelivery  = ['delivery','bon_livraison','bon_sortie','document_delivery'].some(t => docType.includes(t));\nconst isPayslip   = ['payslip','fiche_paie','fiche_salaire','paie','payroll','document_payslip'].some(t => docType.includes(t));\nconst isEmployee  = ['employee','employe','fiche_employe','fiche_employé','personnel','document_employee'].some(t => docType.includes(t));\nconst isOrder     = ['order','commande','bon_commande','purchase','document_order'].some(t => docType.includes(t));\nconst isReceipt   = ['receipt','recu','reçu','quittance','document_receipt'].some(t => docType.includes(t));\nconst isReport    = !isInvoice && !isDelivery && !isPayslip && !isEmployee && !isOrder && !isReceipt;\nconst isProforma  = docType.includes('proforma');\nconst isBonSortie = isDelivery;\n\n// ── Logo block ────────────────────────────────────────────────────────────\nconst logoBlock = logoUrl\n  ? `<img src=\"${logoUrl}\" alt=\"${companyName}\" style=\"height:52px;object-fit:contain;border-radius:6px;\">`\n  : `<div style=\"display:inline-flex;align-items:center;gap:8px;\">\n       <div style=\"width:40px;height:40px;background:${primaryColor};border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-size:16px;font-weight:900;\">${companyName.slice(0,2).toUpperCase()}</div>\n       <span style=\"font-size:18px;font-weight:900;color:#0f172a;\">${companyName}</span>\n     </div>`;\n\nconst emetteurInfo = [address, phone, email].filter(Boolean).join(' · ');\n\n// ── CSS commun ────────────────────────────────────────────────────────────\nconst CSS = `\n  :root { --primary: ${primaryColor}; --accent: ${accentColor}; }\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n\n  /* ── Corps — centré, largeur contrainte ───────────────────────────────── */\n  html, body { width: 210mm; max-width: 210mm; overflow-x: hidden; }\n  body {\n    font-family: '${fontFamily}', 'Segoe UI', Arial, sans-serif;\n    background: #f1f5f9;\n    padding: 20px 0;\n    color: #1e293b;\n    margin: 0 auto;\n  }\n\n  /* ── Page A4 — largeur fixe, débordement masqué ──────────────────────── */\n  .page {\n    width: 210mm;\n    max-width: 210mm;\n    min-height: 297mm;\n    background: white;\n    margin: 0 auto;\n    padding: 36px 44px;\n    display: flex;\n    flex-direction: column;\n    overflow: hidden;           /* clip tout débordement */\n    box-shadow: 0 4px 32px rgba(0,0,0,0.10);\n    border: 1px solid #e2e8f0;\n  }\n\n  /* ── Éléments enfants qui ne doivent jamais dépasser la page ─────────── */\n  .page img         { max-width: 100%; height: auto; }\n  .page *           { max-width: 100%; }\n  .page .info-grid  { min-width: 0; }\n  .page .info-card  { min-width: 0; overflow: hidden; }\n\n  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 28px; gap: 16px; }\n  .header-left { min-width: 0; flex: 1; overflow: hidden; }\n  .header-left .company-meta { margin-top: 10px; font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.8; word-break: break-word; }\n  .header-right { flex-shrink: 0; text-align: right; }\n  .doc-title { font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: -1px; margin-bottom: 6px; }\n  .doc-ref { font-family: monospace; font-size: 11px; font-weight: 700; color: var(--primary); background: #eef2ff; padding: 4px 12px; border-radius: 6px; display: inline-block; }\n  .doc-date { font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px; }\n  .section { margin-top: 20px; }\n  .section-title { font-size: 9px; font-weight: 900; color: var(--primary); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; }\n  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }\n  .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; overflow: hidden; }\n  .info-card-label { font-size: 8px; font-weight: 900; color: var(--primary); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px; }\n  .info-card-value { font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n  .info-card-detail { font-size: 10px; color: #64748b; line-height: 1.6; word-break: break-word; }\n\n  /* ── Tableaux — largeur fixe, colonnes adaptatives ───────────────────── */\n  .items-table {\n    width: 100%;\n    table-layout: fixed;        /* largeur fixe = pas de débordement */\n    border-collapse: separate;\n    border-spacing: 0;\n    margin-top: 14px;\n    word-break: break-word;     /* coupe les mots trop longs */\n  }\n  .items-table thead tr { background: #0f172a; color: white; }\n  .items-table th {\n    padding: 10px 10px;\n    font-size: 8.5px;\n    font-weight: 900;\n    text-transform: uppercase;\n    letter-spacing: 0.10em;\n    text-align: left;\n    overflow: hidden;\n    text-overflow: ellipsis;\n    white-space: nowrap;\n  }\n  .items-table th:first-child { border-radius: 10px 0 0 10px; }\n  .items-table th:last-child  { border-radius: 0 10px 10px 0; text-align: right; }\n  .items-table td {\n    padding: 9px 10px;\n    border-bottom: 1px solid #f1f5f9;\n    font-size: 11px;\n    vertical-align: middle;\n    overflow: hidden;\n    text-overflow: ellipsis;\n  }\n  .items-table tbody tr:nth-child(even) { background: #fafbff; }\n  .items-table td.right  { text-align: right; font-weight: 700; white-space: nowrap; }\n  .items-table td.center { text-align: center; }\n  .items-table .sku { font-size: 8px; font-family: monospace; color: #94a3b8; }\n  .items-table .item-name { font-weight: 700; color: #0f172a; text-transform: uppercase; font-size: 11px; word-break: break-word; }\n\n  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 9px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }\n  .badge-paid    { background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0; }\n  .badge-pending { background:#fef9c3;color:#a16207;border:1px solid #fde68a; }\n  .badge-info    { background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd; }\n  .badge-warn    { background:#fef3c7;color:#d97706;border:1px solid #fde68a; }\n  .badge-neutral { background:#f1f5f9;color:#475569;border:1px solid #e2e8f0; }\n\n  .totals-box { width: 260px; max-width: 100%; margin-left: auto; margin-top: 18px; }\n  .totals-box .row { display: flex; justify-content: space-between; padding: 5px 10px; font-size: 11px; gap: 8px; }\n  .totals-box .sep { border-top: 1px solid #e2e8f0; margin: 4px 0; }\n  .totals-box .total-final { background: #0f172a; color: white; border-radius: 14px; padding: 11px 14px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; }\n  .totals-box .total-final .lbl { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap; }\n  .totals-box .total-final .amt { font-size: 16px; font-weight: 900; white-space: nowrap; }\n\n  .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }\n  .kpi-card { background: linear-gradient(135deg, #f8fafc, #eef2ff); border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-align: center; overflow: hidden; }\n  .kpi-value { font-size: 20px; font-weight: 900; color: var(--primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n  .kpi-label { font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }\n\n  .footer { border-top: 1px solid #f1f5f9; padding-top: 14px; margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; overflow: hidden; }\n  .footer-note { font-size: 8.5px; color: #cbd5e1; font-weight: 700; text-transform: uppercase; line-height: 1.8; font-style: italic; overflow: hidden; word-break: break-word; }\n  .cachet-zone { text-align: center; width: 160px; flex-shrink: 0; }\n  .cachet-title { font-size: 9px; font-weight: 900; text-transform: uppercase; color: #0f172a; text-decoration: underline; text-underline-offset: 5px; text-decoration-color: var(--primary); margin-bottom: 8px; }\n  .cachet-box { height: 76px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0; border-radius: 12px; }\n  .sig-row { display: flex; gap: 28px; margin-top: 24px; }\n  .sig { flex: 1; text-align: center; min-width: 0; }\n  .sig-line { border-top: 1.5px solid #cbd5e1; padding-top: 8px; margin-top: 32px; font-size: 9px; color: #94a3b8; font-weight: 700; }\n  .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-35deg); font-size: 64px; font-weight: 900; color: rgba(99,102,241,0.05); pointer-events: none; letter-spacing: 6px; }\n\n  @media print {\n    html, body { width: 210mm; max-width: 210mm; padding: 0; background: white; }\n    .page { box-shadow: none; border: none; padding: 20mm 18mm; }\n  }\n`;\n\n// ═════════════════════════════════════════════════════════════════════════\n// TEMPLATES HTML par type de document\n// ═════════════════════════════════════════════════════════════════════════\n\nlet bodyHtml = '';\n\n// ─── Multi-page engine ────────────────────────────────────────────────────────\n// Nombre max de lignes de tableau avant de créer une nouvelle page\nconst ROWS_PER_PAGE = 28;\nconst chunkArray = (arr, n) => { const c=[]; for(let i=0;i<arr.length;i+=n) c.push(arr.slice(i,i+n)); return c.length?c:[[]]; };\n\n/**\n * Génère le HTML multi-pages à partir d'un tableau de chunks de lignes.\n * - Page 1 : header complet (logo, infos entreprise, titre document)\n * - Pages 2+ : header compact (titre + Page X/N)\n * - Toutes : footer avec Page X/N\n * @param {Array}    chunks      - Tableau de tableaux de lignes\n * @param {string}   theadHtml   - HTML du <thead> commun à toutes les pages\n * @param {Function} rowFn       - (row, idx) => '<tr>...</tr>'\n * @param {string}   firstHeader - HTML du header complet pour la page 1\n * @param {string}   kpisHtml    - HTML des KPIs (affiché seulement page 1, avant le tableau)\n * @returns {string} - HTML complet avec .page divs\n */\nconst buildPaginatedReport = (chunks, theadHtml, rowFn, firstHeader, kpisHtml) => {\n  const total = chunks.length;\n  return chunks.map((rows, idx) => {\n    const pageNum = idx + 1;\n    const isFirst = idx === 0;\n    const isLast  = idx === total - 1;\n\n    const hdr = isFirst ? firstHeader\n      : `<div style=\"display:flex;justify-content:space-between;align-items:center;padding-bottom:14px;margin-bottom:16px;border-bottom:2px solid #0f172a;\">\n          <div style=\"font-size:15px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;\">${docTitle.toUpperCase()}</div>\n          <div style=\"display:flex;align-items:center;gap:12px;\">\n            <span style=\"font-size:11px;color:#64748b;font-weight:600;\">${companyName}</span>\n            <span class=\"doc-ref\">Page ${pageNum}/${total}</span>\n          </div>\n        </div>`;\n\n    const tableSection = `<div class=\"section\">\n      ${isFirst ? `<div class=\"section-title\">Données — ${rawData.length} résultat(s)</div>` : ''}\n      <table class=\"items-table\">\n        ${theadHtml}\n        <tbody>${rows.map(rowFn).join('')}</tbody>\n      </table>\n    </div>`;\n\n    const footer = `<div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · ${today}<br>${footerMention}</div>\n      <div style=\"font-size:11px;font-weight:700;color:#94a3b8;\">Page ${pageNum} / ${total}</div>\n    </div>`;\n\n    return `<div class=\"page\"${!isLast ? ' style=\"page-break-after:always;margin-bottom:32px;\"' : ''}>\n${hdr}\n${isFirst && kpisHtml ? kpisHtml : ''}\n${tableSection}\n${footer}\n</div>`;\n  }).join('\\n');\n};\n\nlet isMultiPage = false;\n\n\n// ── 1. FACTURE / PROFORMA ─────────────────────────────────────────────────\nif (isInvoice) {\n  const status = (inv.status || '').toLowerCase();\n  const isPaid = status === 'paid' || status === 'payé' || status === 'completed';\n  const getAmt = r => parseFloat(r.total_ttc || r.amount || r.montant || r.total || 0);\n  const totalTTC = rawData.reduce((s, r) => s + getAmt(r), 0);\n  const totalHT  = totalTTC / (1 + taxRate / 100);\n  const totalTVA = totalTTC - totalHT;\n\n  const badge = isPaid\n    ? `<span class=\"badge badge-paid\">✓ Payée</span>`\n    : `<span class=\"badge badge-pending\">⏳ En attente</span>`;\n\n  const rows = rawData.map((item, i) => {\n    const qty  = parseFloat(item.quantity || item.qte || 1);\n    const ttc  = getAmt(item);\n    const ht   = ttc / (1 + taxRate / 100);\n    return `<tr>\n      <td><span class=\"sku\">${item.sku || '—'}</span></td>\n      <td><div class=\"item-name\">${item.article || item.name || item.produit || item.description || 'Article'}</div></td>\n      <td class=\"center\">${qty}</td>\n      <td class=\"right\">${fmt(ht / qty)}</td>\n      <td class=\"right\">${fmt(ht)} ${currency}</td>\n    </tr>`;\n  }).join('');\n\n  bodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">\n        ${logoBlock}\n        <div class=\"company-meta\">${[address,phone,email].filter(Boolean).join('<br>')}</div>\n      </div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">${isProforma ? 'FACTURE PROFORMA' : 'FACTURE'}</div>\n        <div class=\"doc-ref\">Réf: #${inv.id || inv.reference || refNum}</div>\n        <div class=\"doc-date\">Date : ${fmt(inv.invoice_date || inv.sale_date) || today}</div>\n        ${inv.due_date ? `<div class=\"doc-date\">Échéance : ${fmt(inv.due_date)}</div>` : ''}\n        <div style=\"margin-top:8px\">${badge}</div>\n      </div>\n    </div>\n    <div class=\"info-grid\">\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Émetteur</div>\n        <div class=\"info-card-value\">${companyName}</div>\n        <div class=\"info-card-detail\">${emetteurInfo || '—'}</div>\n      </div>\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Facturé à</div>\n        <div class=\"info-card-value\">${inv.company_name || inv.client || 'Client'}</div>\n        <div class=\"info-card-detail\">${[inv.address,inv.phone,inv.email].filter(Boolean).join('<br>') || '—'}</div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <div class=\"section-title\">Articles & Prestations</div>\n      <table class=\"items-table\">\n        <thead><tr><th>Réf.</th><th>Désignation</th><th style=\"text-align:center\">Qté</th><th style=\"text-align:right\">P.U HT</th><th style=\"text-align:right;border-radius:0 12px 12px 0\">Montant HT</th></tr></thead>\n        <tbody>${rows}</tbody>\n      </table>\n    </div>\n    <div class=\"totals-box\">\n      <div class=\"row\"><span>Sous-total HT</span><span>${fmt(totalHT)} ${currency}</span></div>\n      <div class=\"row\"><span>TVA (${taxRate}%)</span><span>${fmt(totalTVA)} ${currency}</span></div>\n      <div class=\"sep\"></div>\n      <div class=\"total-final\"><span class=\"lbl\">NET À PAYER</span><span class=\"amt\">${fmt(totalTTC)} ${currency}</span></div>\n    </div>\n    <div class=\"footer\" style=\"margin-top:24px\">\n      <div class=\"footer-note\">${companyName} · Kernel Cloud v3.2<br>ID: ${refNum.toUpperCase()}<br>${footerMention}${isProforma ? '<br><em>Document proforma sans valeur comptable</em>' : ''}</div>\n      <div class=\"cachet-zone\">\n        <div class=\"cachet-title\">VISA & CACHET</div>\n        <div class=\"cachet-box\">\n          ${isPaid && cachetUrl ? `<img src=\"${cachetUrl}\" style=\"height:68px;object-fit:contain;mix-blend-mode:multiply;\" alt=\"Cachet\">` :\n            isPaid ? `<div style=\"border:3px solid rgba(16,185,129,0.4);color:#10b981;border-radius:50%;padding:8px 14px;transform:rotate(-12deg);font-weight:900;font-size:14px\">PAYÉ</div>` : ''}\n        </div>\n      </div>\n    </div>\n    ${isProforma ? '<div class=\"watermark\">PROFORMA</div>' : ''}`;\n\n// ── 2. BON DE LIVRAISON ───────────────────────────────────────────────────\n} else if (isDelivery) {\n  const rows = rawData.map((r, i) => `<tr>\n    <td><span class=\"sku\">${r.sku || r.reference || '—'}</span></td>\n    <td><div class=\"item-name\">${r.name || r.produit || r.article || r.description || '—'}</div></td>\n    <td class=\"center\">${r.quantity || r.qte || '—'}</td>\n    <td class=\"center\">${r.quantity || r.qte || '—'}</td>\n    <td class=\"center\" style=\"color:#94a3b8;font-size:13px\">☐</td>\n  </tr>`).join('');\n\n  bodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">BON DE LIVRAISON</div>\n        <div class=\"doc-ref\">Réf: #${refNum}</div>\n        <div class=\"doc-date\">Date : ${today}</div>\n        <div class=\"doc-date\">Client : ${inv.company_name || inv.client || '—'}</div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <table class=\"items-table\">\n        <thead><tr><th>Réf.</th><th>Désignation</th><th style=\"text-align:center\">Qté commandée</th><th style=\"text-align:center\">Qté livrée</th><th style=\"text-align:center;border-radius:0 12px 12px 0\">✓</th></tr></thead>\n        <tbody>${rows}</tbody>\n      </table>\n    </div>\n    <div class=\"sig-row\">\n      <div class=\"sig\"><div class=\"sig-line\">Signature & cachet émetteur</div></div>\n      <div class=\"sig\"><div class=\"sig-line\">Signature récepteur + date</div></div>\n    </div>\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · ${footerMention}</div>\n      <div class=\"footer-note\">${refNum.toUpperCase()}</div>\n    </div>`;\n\n// ── 3. FICHE DE PAIE ──────────────────────────────────────────────────────\n} else if (isPayslip) {\n\n  // ─── Helper : calcule et retourne le HTML d'une fiche de paie pour UN employé\n  const buildOnePayslipHtml = (emp) => {\n    if (emp.contract_check === 'NO_CONTRACT' || (!emp.contract_salary && !emp.base_salary)) return null;\n\n    const baseSalary0   = parseFloat(emp.contract_salary || emp.base_salary || 0);\n    const primesMonth0  = parseFloat(emp.primes_mois || 0);\n    const deductAvance0 = parseFloat(emp.deduction_avance || 0);\n    const joursAbsNP0   = parseFloat(emp.jours_abs_non_payes || 0);\n    const salaireJour0  = baseSalary0 / 22;\n    const deductAbsence0= Math.round(salaireJour0 * joursAbsNP0);\n    const IPRES_RATE0=0.056; const IPRES_CAP0=432000; const CSS_RATE0=0.01; const IPM_RATE0=0.03;\n    const ipresBase0    = Math.min(baseSalary0, IPRES_CAP0);\n    const ipresEmp0     = Math.round(ipresBase0 * IPRES_RATE0);\n    const css0          = Math.round(baseSalary0 * CSS_RATE0);\n    const ipm0          = Math.round(baseSalary0 * IPM_RATE0);\n    const totalCotis0   = ipresEmp0 + css0 + ipm0;\n    const brutImp0      = baseSalary0 + primesMonth0 - totalCotis0;\n    let ir0 = 0;\n    if      (brutImp0 > 500000) ir0 = Math.round(brutImp0 * 0.40);\n    else if (brutImp0 > 250000) ir0 = Math.round(brutImp0 * 0.30);\n    else if (brutImp0 > 150000) ir0 = Math.round(brutImp0 * 0.20);\n    else if (brutImp0 > 100000) ir0 = Math.round(brutImp0 * 0.15);\n    else if (brutImp0 > 75000)  ir0 = Math.round(brutImp0 * 0.12);\n    else if (brutImp0 > 50000)  ir0 = Math.round(brutImp0 * 0.10);\n    const totalRet0   = totalCotis0 + ir0 + deductAvance0 + deductAbsence0;\n    const netSalary0  = baseSalary0 + primesMonth0 - totalRet0;\n    const month0      = emp.payroll_month || emp.mois || new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });\n    const cLabel0     = emp.contract_type && emp.contract_type !== 'AUCUN' ? emp.contract_type : 'CDI';\n    const cStart0     = emp.contract_start ? fmt(emp.contract_start) : (emp.hire_date ? fmt(emp.hire_date) : '—');\n    const empName0    = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || '—';\n\n    const empBodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">FICHE DE PAIE</div>\n        <div class=\"doc-ref\">${month0.toString().toUpperCase()}</div>\n        <div class=\"doc-date\">Émise le : ${today}</div>\n      </div>\n    </div>\n    <div class=\"info-grid\">\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Employé</div>\n        <div class=\"info-card-value\">${empName0}</div>\n        <div class=\"info-card-detail\">\n          ${emp.position ? `Poste : ${emp.position}<br>` : ''}\n          ${emp.department ? `Département : ${emp.department}<br>` : ''}\n          ${emp.hire_date ? `Embauché le : ${fmt(emp.hire_date)}` : ''}\n        </div>\n      </div>\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Contrat</div>\n        <div class=\"info-card-value\">${cLabel0}</div>\n        <div class=\"info-card-detail\">\n          ${emp.email ? `✉ ${emp.email}<br>` : ''}\n          Début contrat : ${cStart0}<br>\n          ${emp.status ? `Statut : <strong>${emp.status}</strong>` : ''}\n        </div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <div class=\"section-title\">Détail de la rémunération</div>\n      <table class=\"items-table\">\n        <thead><tr><th>Rubrique</th><th>Type</th><th style=\"text-align:right;border-radius:0 12px 12px 0\">Montant</th></tr></thead>\n        <tbody>\n          <tr><td class=\"item-name\">Salaire de base (contrat)</td><td><span class=\"badge badge-info\">Gain</span></td><td class=\"right\">${fmt(baseSalary0, true)}</td></tr>\n          ${primesMonth0 > 0 ? `<tr><td class=\"item-name\">Primes & Indemnités du mois</td><td><span class=\"badge badge-info\">Gain</span></td><td class=\"right\">${fmt(primesMonth0, true)}</td></tr>` : ''}\n          <tr><td class=\"item-name\" style=\"color:#64748b\">Brut imposable</td><td><span class=\"badge badge-neutral\">Référence</span></td><td class=\"right\" style=\"color:#64748b\">${fmt(brutImp0, true)}</td></tr>\n          ${ipresEmp0>0?`<tr><td class=\"item-name\">IPRES (5,6% ≤ 432 000)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(ipresEmp0,true)}</td></tr>`:''}\n          ${css0>0?`<tr><td class=\"item-name\">CSS (1%)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(css0,true)}</td></tr>`:''}\n          ${ipm0>0?`<tr><td class=\"item-name\">IPM / Assurance maladie (3%)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(ipm0,true)}</td></tr>`:''}\n          ${ir0>0?`<tr><td class=\"item-name\">IRPP (impôt sur le revenu)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(ir0,true)}</td></tr>`:''}\n          ${deductAvance0>0?`<tr><td class=\"item-name\">Remboursement avance sur salaire</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(deductAvance0,true)}</td></tr>`:''}\n          ${deductAbsence0>0?`<tr><td class=\"item-name\">Absence non rémunérée (${joursAbsNP0} j)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(deductAbsence0,true)}</td></tr>`:''}\n        </tbody>\n      </table>\n      <div class=\"totals-box\">\n        <div class=\"row\"><span>Total gains</span><span>${fmt(baseSalary0+primesMonth0,true)}</span></div>\n        <div class=\"row\" style=\"color:#dc2626\"><span>Total retenues</span><span>- ${fmt(totalRet0,true)}</span></div>\n        <div class=\"sep\"></div>\n        <div class=\"total-final\"><span class=\"lbl\">NET À PAYER</span><span class=\"amt\">${fmt(netSalary0)} ${currency}</span></div>\n      </div>\n    </div>\n    <div class=\"sig-row\" style=\"margin-top:28px\">\n      ${cachetUrl ? `<div class=\"sig\"><img src=\"${cachetUrl}\" style=\"height:80px;object-fit:contain;opacity:0.85;\"><div class=\"sig-line\">Cachet & Signature employeur</div></div>` : `<div class=\"sig\"><div class=\"sig-line\">Signature employeur</div></div>`}\n      <div class=\"sig\"><div class=\"sig-line\">Signature & accusé de réception</div></div>\n    </div>\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · Fiche de paie confidentielle · ${today}</div>\n      <div class=\"footer-note\">${refNum.toUpperCase()}</div>\n    </div>`;\n\n    return `<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"UTF-8\"><title>Fiche de paie — ${empName0}</title><style>${CSS}</style></head><body><div class=\"page\">${empBodyHtml}</div></body></html>`;\n  };\n\n  // ─── Génération en masse : plusieurs employés ──────────────────────────\n  if (rawData.length > 1) {\n    const validEmps = rawData.filter(e => e.contract_check !== 'NO_CONTRACT' && (e.contract_salary || e.base_salary));\n    if (!validEmps.length) {\n      return [{ json: {\n        formattedResponse: `❌ Aucun des ${rawData.length} employés trouvés n'a de contrat actif avec salaire.`,\n        format: 'general', resultCount: 0, sessionId\n      }}];\n    }\n    const documents = validEmps.map(emp => {\n      const ym2 = new Date().toLocaleDateString('fr-FR', { year: '2-digit', month: '2-digit' }).replace('/', '');\n      return {\n        html: buildOnePayslipHtml(emp),\n        title: `Fiche de paie — ${[emp.first_name, emp.last_name].filter(Boolean).join(' ')}`,\n        filename: `paie_${(emp.last_name||'employe').replace(/[^a-z0-9]/gi,'_')}_${ym2}.html`,\n      };\n    });\n    const skipped = rawData.length - validEmps.length;\n    const skipNote = skipped > 0 ? ` (${skipped} ignoré${skipped>1?'s':''} — pas de contrat actif)` : '';\n    return [{ json: {\n      formattedResponse: `📄 **${documents.length} fiche${documents.length>1?'s':''} de paie** générée${documents.length>1?'s':''} avec succès${skipNote}.`,\n      format: 'document_html',\n      resultCount: documents.length,\n      isMultiDoc: true,\n      documentArray: documents,\n      documentCount: documents.length,\n      createZip: documents.length > 5,\n      sessionId,\n      metadata: {\n        format: 'document_html',\n        title: `${documents.length} fiches de paie`,\n        isMultiDoc: true,\n        createZip: documents.length > 5,\n      }\n    }}];\n  }\n\n  // ─── Fiche de paie unique (code original) ─────────────────────────────\n  const emp = inv;\n\n  // ── Blocage : pas de contrat actif ─────────────────────────────────────\n  if (emp.contract_check === 'NO_CONTRACT' || (!emp.contract_salary && !emp.base_salary)) {\n    return [{ json: {\n      formattedResponse: `❌ Impossible de générer la fiche de paie de **${[emp.first_name, emp.last_name].filter(Boolean).join(' ') || 'cet employé'}** : aucun contrat actif trouvé.\\n\\nVeuillez d'abord créer un contrat actif (CDI, CDD, STAGE...) avec un salaire pour cet employé dans le module RH → Contrats.`,\n      format: 'general',\n      resultCount: 0,\n      sessionId\n    }}];\n  }\n\n  const baseSalary      = parseFloat(emp.contract_salary || emp.base_salary || 0);\n  const primesMonth     = parseFloat(emp.primes_mois || 0);\n  const deductAvance    = parseFloat(emp.deduction_avance || 0);\n  const joursAbsNP      = parseFloat(emp.jours_abs_non_payes || 0);\n\n  // Déduction absence non payée (salaire journalier = salaire / 22 jours ouvrés)\n  const salaireJour     = baseSalary / 22;\n  const deductAbsence   = Math.round(salaireJour * joursAbsNP);\n\n  // Calculs cotisations sociales (barème OHADA/Sénégal)\n  const IPRES_RATE = 0.056;   // 5.6% employé\n  const IPRES_CAP  = 432000;  // plafond mensuel IPRES\n  const CSS_RATE   = 0.01;    // 1% CSS\n  const IPM_RATE   = 0.03;    // 3% IPM/assurance maladie\n\n  const ipresBase  = Math.min(baseSalary, IPRES_CAP);\n  const ipresEmp   = Math.round(ipresBase * IPRES_RATE);\n  const css        = Math.round(baseSalary * CSS_RATE);\n  const ipm        = Math.round(baseSalary * IPM_RATE);\n  const totalCotisations = ipresEmp + css + ipm;\n\n  // IR progressif (IRPP simplifié Sénégal)\n  const brutImposable = baseSalary + primesMonth - totalCotisations;\n  let ir = 0;\n  if      (brutImposable > 600000) ir = Math.round(brutImposable * 0.30);\n  else if (brutImposable > 400000) ir = Math.round(brutImposable * 0.25);\n  else if (brutImposable > 200000) ir = Math.round(brutImposable * 0.20);\n  else if (brutImposable > 100000) ir = Math.round(brutImposable * 0.15);\n  else if (brutImposable > 50000)  ir = Math.round(brutImposable * 0.10);\n\n  const totalRetenues  = totalCotisations + ir + deductAvance + deductAbsence;\n  const netSalary      = baseSalary + primesMonth - totalRetenues;\n  const month          = emp.payroll_month || emp.mois || new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });\n  const contractLabel  = emp.contract_type && emp.contract_type !== 'AUCUN' ? emp.contract_type : 'CDI';\n  const contractStart  = emp.contract_start ? fmt(emp.contract_start) : (emp.hire_date ? fmt(emp.hire_date) : '—');\n\n  bodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">FICHE DE PAIE</div>\n        <div class=\"doc-ref\">${month.toString().toUpperCase()}</div>\n        <div class=\"doc-date\">Émise le : ${today}</div>\n      </div>\n    </div>\n    <div class=\"info-grid\">\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Employé</div>\n        <div class=\"info-card-value\">${[emp.first_name, emp.last_name].filter(Boolean).join(' ') || '—'}</div>\n        <div class=\"info-card-detail\">\n          ${emp.position ? `Poste : ${emp.position}<br>` : ''}\n          ${emp.department ? `Département : ${emp.department}<br>` : ''}\n          ${emp.hire_date ? `Embauché le : ${fmt(emp.hire_date)}` : ''}\n        </div>\n      </div>\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Contrat</div>\n        <div class=\"info-card-value\">${contractLabel}</div>\n        <div class=\"info-card-detail\">\n          ${emp.email ? `✉ ${emp.email}<br>` : ''}\n          Début contrat : ${contractStart}<br>\n          ${emp.status ? `Statut : <strong>${emp.status}</strong>` : ''}\n        </div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <div class=\"section-title\">Détail de la rémunération</div>\n      <table class=\"items-table\">\n        <thead><tr><th>Rubrique</th><th>Type</th><th style=\"text-align:right;border-radius:0 12px 12px 0\">Montant</th></tr></thead>\n        <tbody>\n          <tr><td class=\"item-name\">Salaire de base (contrat)</td><td><span class=\"badge badge-info\">Gain</span></td><td class=\"right\">${fmt(baseSalary, true)}</td></tr>\n          ${primesMonth > 0 ? `<tr><td class=\"item-name\">Primes & Indemnités du mois</td><td><span class=\"badge badge-info\">Gain</span></td><td class=\"right\">${fmt(primesMonth, true)}</td></tr>` : ''}\n          <tr><td class=\"item-name\" style=\"color:#64748b\">Brut imposable</td><td><span class=\"badge badge-neutral\">Référence</span></td><td class=\"right\" style=\"color:#64748b\">${fmt(brutImposable, true)}</td></tr>\n          ${ipresEmp > 0 ? `<tr><td class=\"item-name\">IPRES (5,6% ≤ 432 000)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(ipresEmp, true)}</td></tr>` : ''}\n          ${css > 0 ? `<tr><td class=\"item-name\">CSS (1%)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(css, true)}</td></tr>` : ''}\n          ${ipm > 0 ? `<tr><td class=\"item-name\">IPM / Assurance maladie (3%)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(ipm, true)}</td></tr>` : ''}\n          ${ir > 0 ? `<tr><td class=\"item-name\">IRPP (impôt sur le revenu)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(ir, true)}</td></tr>` : ''}\n          ${deductAvance > 0 ? `<tr><td class=\"item-name\">Remboursement avance sur salaire</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(deductAvance, true)}</td></tr>` : ''}\n          ${deductAbsence > 0 ? `<tr><td class=\"item-name\">Absence non rémunérée (${joursAbsNP} j × ${fmt(salaireJour)} ${currency}/j)</td><td><span class=\"badge badge-warn\">Retenue</span></td><td class=\"right\" style=\"color:#dc2626\">- ${fmt(deductAbsence, true)}</td></tr>` : ''}\n        </tbody>\n      </table>\n      <div class=\"totals-box\">\n        <div class=\"row\"><span>Total gains</span><span>${fmt(baseSalary + primesMonth, true)}</span></div>\n        <div class=\"row\" style=\"color:#dc2626\"><span>Total retenues</span><span>- ${fmt(totalRetenues, true)}</span></div>\n        <div class=\"sep\"></div>\n        <div class=\"total-final\"><span class=\"lbl\">NET À PAYER</span><span class=\"amt\">${fmt(netSalary)} ${currency}</span></div>\n      </div>\n    </div>\n    <div class=\"sig-row\" style=\"margin-top:28px\">\n      ${cachetUrl ? `<div class=\"sig\"><img src=\"${cachetUrl}\" style=\"height:80px;object-fit:contain;opacity:0.85;\"><div class=\"sig-line\">Cachet & Signature employeur</div></div>` : `<div class=\"sig\"><div class=\"sig-line\">Signature employeur</div></div>`}\n      <div class=\"sig\"><div class=\"sig-line\">Signature & accusé de réception</div></div>\n    </div>\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · Fiche de paie confidentielle · ${today}</div>\n      <div class=\"footer-note\">${refNum.toUpperCase()}</div>\n    </div>`;\n\n// ── 4. FICHE EMPLOYÉ ──────────────────────────────────────────────────────\n} else if (isEmployee) {\n  const emp = inv;\n  const cols = Object.keys(rawData[0] || {});\n  const employeeRows = rawData.map((emp, i) => `\n    <tr>\n      <td class=\"item-name\">${[emp.first_name, emp.last_name, emp.nom, emp.prenom, emp.name].filter(Boolean).join(' ') || '—'}</td>\n      <td>${emp.position || emp.poste || '—'}</td>\n      <td>${emp.department || emp.departement || '—'}</td>\n      <td>${emp.email || '—'}</td>\n      <td>${emp.status ? `<span class=\"badge ${emp.status === 'active' || emp.status === 'actif' ? 'badge-paid' : 'badge-neutral'}\">${emp.status}</span>` : '—'}</td>\n      <td class=\"right\">${emp.base_salary || emp.salary ? fmt(parseFloat(emp.base_salary || emp.salary), true) : '—'}</td>\n    </tr>`).join('');\n\n  bodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">FICHE EMPLOYÉ${rawData.length > 1 ? 'S' : ''}</div>\n        <div class=\"doc-ref\">Réf: #${refNum}</div>\n        <div class=\"doc-date\">Généré le : ${today}</div>\n        <div class=\"doc-date\">${rawData.length} employé${rawData.length > 1 ? 's' : ''}</div>\n      </div>\n    </div>\n    ${rawData.length === 1 ? `\n    <div class=\"info-grid\" style=\"margin-top:20px\">\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Identité</div>\n        <div class=\"info-card-value\">${[emp.first_name, emp.last_name, emp.nom, emp.prenom, emp.name].filter(Boolean).join(' ') || '—'}</div>\n        <div class=\"info-card-detail\">\n          ${emp.email ? `✉ ${emp.email}<br>` : ''}\n          ${emp.hire_date ? `Embauché le : ${fmt(emp.hire_date)}<br>` : ''}\n          ${emp.status ? `Statut : <strong>${emp.status}</strong>` : ''}\n        </div>\n      </div>\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Poste & Département</div>\n        <div class=\"info-card-value\">${emp.position || emp.poste || '—'}</div>\n        <div class=\"info-card-detail\">\n          ${emp.department || emp.departement ? `Département : ${emp.department || emp.departement}<br>` : ''}\n          ${emp.base_salary || emp.salary ? `Salaire : ${fmt(parseFloat(emp.base_salary || emp.salary), true)}` : ''}\n        </div>\n      </div>\n    </div>` : `\n    <div class=\"section\">\n      <div class=\"section-title\">Liste des employés — ${rawData.length} résultat(s)</div>\n      <table class=\"items-table\">\n        <thead><tr><th>Nom complet</th><th>Poste</th><th>Département</th><th>Email</th><th>Statut</th><th style=\"text-align:right;border-radius:0 12px 12px 0\">Salaire</th></tr></thead>\n        <tbody>${employeeRows}</tbody>\n      </table>\n    </div>`}\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · Document RH confidentiel · ${today}</div>\n      <div class=\"cachet-zone\">\n        <div class=\"cachet-title\">VISA DRH</div>\n        <div class=\"cachet-box\">${cachetUrl ? `<img src=\"${cachetUrl}\" style=\"height:60px;object-fit:contain;mix-blend-mode:multiply;\">` : ''}</div>\n      </div>\n    </div>`;\n\n// ── 5. BON DE COMMANDE ────────────────────────────────────────────────────\n} else if (isOrder) {\n  const getAmt = r => parseFloat(r.total_ttc || r.amount || r.montant || r.price || r.prix || 0);\n  const totalTTC = rawData.reduce((s, r) => s + getAmt(r), 0);\n  const rows = rawData.map((item, i) => `<tr>\n    <td><span class=\"sku\">${item.sku || item.reference || '—'}</span></td>\n    <td><div class=\"item-name\">${item.name || item.produit || item.article || item.description || 'Article'}</div></td>\n    <td class=\"center\">${item.quantity || item.qte || 1}</td>\n    <td class=\"right\">${fmt(parseFloat(item.unit_price || item.prix_unitaire || item.unit_price || getAmt(item) / (parseFloat(item.quantity||1))))}</td>\n    <td class=\"right\">${fmt(getAmt(item))} ${currency}</td>\n  </tr>`).join('');\n\n  bodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">BON DE COMMANDE</div>\n        <div class=\"doc-ref\">Réf: #${refNum}</div>\n        <div class=\"doc-date\">Date : ${today}</div>\n        <div style=\"margin-top:8px\"><span class=\"badge badge-warn\">🕐 En attente</span></div>\n      </div>\n    </div>\n    <div class=\"info-grid\">\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Commanditaire</div>\n        <div class=\"info-card-value\">${companyName}</div>\n        <div class=\"info-card-detail\">${emetteurInfo || '—'}</div>\n      </div>\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Fournisseur / Destinataire</div>\n        <div class=\"info-card-value\">${inv.company_name || inv.supplier || inv.fournisseur || 'Fournisseur'}</div>\n        <div class=\"info-card-detail\">${[inv.address, inv.email, inv.phone].filter(Boolean).join('<br>') || '—'}</div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <div class=\"section-title\">Articles commandés</div>\n      <table class=\"items-table\">\n        <thead><tr><th>Réf.</th><th>Désignation</th><th style=\"text-align:center\">Qté</th><th style=\"text-align:right\">P.U</th><th style=\"text-align:right;border-radius:0 12px 12px 0\">Total</th></tr></thead>\n        <tbody>${rows}</tbody>\n      </table>\n    </div>\n    <div class=\"totals-box\">\n      <div class=\"sep\"></div>\n      <div class=\"total-final\"><span class=\"lbl\">TOTAL COMMANDE</span><span class=\"amt\">${fmt(totalTTC)} ${currency}</span></div>\n    </div>\n    <div class=\"sig-row\" style=\"margin-top:28px\">\n      <div class=\"sig\"><div class=\"sig-line\">Approuvé par</div></div>\n      <div class=\"sig\"><div class=\"sig-line\">Signature fournisseur</div></div>\n    </div>\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · Bon de commande · ${today}<br>${footerMention}</div>\n      <div class=\"footer-note\">${refNum.toUpperCase()}</div>\n    </div>`;\n\n// ── 6. REÇU DE PAIEMENT ──────────────────────────────────────────────────\n} else if (isReceipt) {\n  const paymentRows = rawData.map((r, i) => `<tr>\n    <td><div class=\"item-name\">${r.description || r.article || r.name || `Paiement ${i+1}`}</div></td>\n    <td class=\"center\">${r.mode_paiement || r.payment_method || 'Virement bancaire'}</td>\n    <td class=\"right\">${fmt(parseFloat(r.total_ttc || r.amount || r.montant || 0), true)}</td>\n  </tr>`).join('');\n  const totalRecu = rawData.reduce((s, r) => s + parseFloat(r.total_ttc || r.amount || r.montant || 0), 0);\n\n  bodyHtml = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">REÇU DE PAIEMENT</div>\n        <div class=\"doc-ref\">Réf: #${inv.id || refNum}</div>\n        <div class=\"doc-date\">Date : ${fmt(inv.paid_date || inv.date) || today}</div>\n        <div style=\"margin-top:8px\"><span class=\"badge badge-paid\">✓ Payé</span></div>\n      </div>\n    </div>\n    <div class=\"info-grid\">\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Reçu de</div>\n        <div class=\"info-card-value\">${inv.company_name || inv.client || 'Client'}</div>\n        <div class=\"info-card-detail\">${[inv.email, inv.phone, inv.main_contact].filter(Boolean).join('<br>') || '—'}</div>\n      </div>\n      <div class=\"info-card\">\n        <div class=\"info-card-label\">Émetteur</div>\n        <div class=\"info-card-value\">${companyName}</div>\n        <div class=\"info-card-detail\">${emetteurInfo || '—'}</div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <div class=\"section-title\">Détail du paiement</div>\n      <table class=\"items-table\">\n        <thead><tr><th>Désignation</th><th style=\"text-align:center\">Mode de paiement</th><th style=\"text-align:right;border-radius:0 12px 12px 0\">Montant</th></tr></thead>\n        <tbody>${paymentRows}</tbody>\n      </table>\n    </div>\n    <div class=\"totals-box\">\n      <div class=\"sep\"></div>\n      <div class=\"total-final\"><span class=\"lbl\">MONTANT REÇU</span><span class=\"amt\">${fmt(totalRecu)} ${currency}</span></div>\n    </div>\n    <div class=\"section\" style=\"margin-top:20px\">\n      <div class=\"kpi-row\" style=\"grid-template-columns:repeat(2,1fr)\">\n        <div class=\"kpi-card\"><div class=\"kpi-value\" style=\"font-size:14px\">${fmt(inv.paid_date || inv.date) || today}</div><div class=\"kpi-label\">Date de paiement</div></div>\n        <div class=\"kpi-card\"><div class=\"kpi-value\" style=\"font-size:14px\">${inv.mode_paiement || 'Virement bancaire'}</div><div class=\"kpi-label\">Mode de paiement</div></div>\n      </div>\n    </div>\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · Reçu officiel · ${today}<br>${footerMention}</div>\n      <div class=\"cachet-zone\">\n        <div class=\"cachet-title\">VISA & CACHET</div>\n        <div class=\"cachet-box\">${cachetUrl ? `<img src=\"${cachetUrl}\" style=\"height:68px;object-fit:contain;mix-blend-mode:multiply;\" alt=\"Cachet\">` : `<div style=\"border:3px solid rgba(16,185,129,0.4);color:#10b981;border-radius:50%;padding:8px 14px;transform:rotate(-12deg);font-weight:900;font-size:14px\">PAYÉ</div>`}</div>\n      </div>\n    </div>`;\n\n// ── 7. RAPPORT (défaut) — multi-pages automatique ─────────────────────────\n} else {\n  const cols = Object.keys(rawData[0] || {}).filter(c => !c.startsWith('_'));\n  const numCols = cols.filter(c => !isNaN(parseFloat(rawData[0]?.[c])));\n  const kpis = numCols.slice(0, 3).map(c => ({\n    label: c.replace(/_/g, ' ').toUpperCase(),\n    value: rawData.reduce((s, r) => s + (parseFloat(r[c]) || 0), 0),\n  }));\n\n  const kpisHtml = kpis.length ? `<div class=\"kpi-row\">\n    ${kpis.map(k => `<div class=\"kpi-card\"><div class=\"kpi-value\">${fmt(k.value)}</div><div class=\"kpi-label\">${k.label}</div></div>`).join('')}\n  </div>` : '';\n\n  const firstHeader = `\n    <div class=\"header\">\n      <div class=\"header-left\">${logoBlock}<div class=\"company-meta\">${emetteurInfo}</div></div>\n      <div class=\"header-right\">\n        <div class=\"doc-title\">${docTitle.toUpperCase()}</div>\n        <div class=\"doc-ref\">Réf: #${refNum}</div>\n        <div class=\"doc-date\">Généré le : ${today}</div>\n        <div class=\"doc-date\">${rawData.length} enregistrement(s)</div>\n      </div>\n    </div>`;\n\n  const theadHtml = `<thead><tr>${cols.map((c,i) => `<th${i===cols.length-1?' style=\"border-radius:0 12px 12px 0\"':''}>${c.replace(/_/g,' ')}</th>`).join('')}</tr></thead>`;\n  const rowFn = (row) => `<tr>${cols.map(c => `<td>${fmt(row[c])}</td>`).join('')}</tr>`;\n\n  const chunks = chunkArray(rawData, ROWS_PER_PAGE);\n\n  if (chunks.length > 1) {\n    // Multi-page report\n    isMultiPage = true;\n    bodyHtml = buildPaginatedReport(chunks, theadHtml, rowFn, firstHeader, kpisHtml);\n  } else {\n    // Single page\n    const rows = rawData.map(rowFn).join('');\n    bodyHtml = `\n    ${firstHeader}\n    ${kpisHtml}\n    <div class=\"section\">\n      <div class=\"section-title\">Données — ${rawData.length} résultat(s)</div>\n      <table class=\"items-table\">\n        ${theadHtml}\n        <tbody>${rows}</tbody>\n      </table>\n    </div>\n    <div class=\"footer\" style=\"margin-top:auto\">\n      <div class=\"footer-note\">${companyName} · Rapport analytique · ${today}<br>${footerMention}</div>\n      <div class=\"footer-note\">${refNum.toUpperCase()}</div>\n    </div>`;\n  }\n}\n\n// ── HTML final ────────────────────────────────────────────────────────────\nconst html = `<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">\n<title>${docTitle} — ${companyName}</title>\n<style>${CSS}</style>\n</head>\n<body>${isMultiPage ? bodyHtml : `<div class=\"page\">${bodyHtml}</div>`}</body>\n</html>`;\n\n// ── DocumentPreview React : UNIQUEMENT pour FACTURE et BON_SORTIE ─────────\n// Les autres types utilisent l'iframe HTML (templates dédiés ci-dessus)\nconst REACT_TYPE_MAP = {\n  true: isInvoice ? 'FACTURE' : isDelivery ? 'BON_SORTIE' : null,\n};\nconst reactDocType = isInvoice ? 'FACTURE' : isDelivery ? 'BON_SORTIE' : null;\n\nconst saleData = reactDocType ? {\n  id:          refNum,\n  reference:   inv.id || inv.reference || refNum,\n  createdAt:   new Date().toISOString(),\n  totalTtc:    rawData.reduce((s, r) => s + parseFloat(r.total_ttc || r.amount || 0), 0),\n  amountPaid:  rawData.reduce((s, r) => s + parseFloat(r.total_ttc || r.amount || 0), 0),\n  isValidated: false,\n  customer: {\n    companyName: inv.company_name || inv.client || 'Client',\n    name:        inv.main_contact || inv.company_name || 'Client',\n    address:     inv.address || '',\n    phone:       inv.phone   || '',\n    email:       inv.email   || '',\n  },\n  items: rawData.map(r => ({\n    name:       r.article || r.name || r.produit || r.description || 'Article',\n    stock_item: { name: r.article || r.name || r.produit || 'Article', sku: r.sku || '' },\n    quantity:   parseFloat(r.quantity || r.qte || 1),\n    unitPrice:  parseFloat(r.prix_unitaire || r.unit_price || 0),\n    totalTtc:   parseFloat(r.total_ttc || r.amount || 0),\n    discount:   parseFloat(r.discount || 0),\n  }))\n} : null;\n\nconst tenantData = reactDocType ? {\n  name:          companyName,\n  address:       address,\n  phone:         phone,\n  email:         email,\n  logoUrl:       logoUrl,\n  cachetUrl:     cachetUrl,\n  invoiceFooter: footerMention,\n} : null;\n\nconst documentData = reactDocType ? {\n  type:     reactDocType,\n  sale:     saleData,\n  tenant:   tenantData,\n  currency: currency,\n} : null;\n\nreturn [{\n  json: {\n    formattedResponse: `📄 **${docTitle}** généré avec succès.`,\n    format:        'document_html',\n    resultCount:   rawData.length,\n    rawResults:    rawData,\n    documentHtml:  html,\n    documentType:  docType,\n    documentTitle: docTitle,\n    refNumber:     refNum,\n    sessionId,\n    documentData,\n    metadata: {\n      format:        'document_html',\n      title:         docTitle,\n      document_type: docType,\n      ref:           refNum,\n      company_name:  companyName,\n      generated_at:  new Date().toISOString(),\n      documentData,\n    }\n  }\n}];\n"
+      },
+      "id": "51366d24-ee22-4395-950a-306a873126e9",
+      "name": "Generate Document HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        28272,
+        4480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "gr-1",
+              "name": "formattedResponse",
+              "value": "={{ $json.response || $json.output || $json.text || $json.message || 'Réponse reçue.' }}",
+              "type": "string"
+            },
+            {
+              "id": "gr-2",
+              "name": "format",
+              "value": "general",
+              "type": "string"
+            },
+            {
+              "id": "gr-3",
+              "name": "resultCount",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "gr-4",
+              "name": "status",
+              "value": "SUCCESS",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "220171d1-db54-425d-8a06-f37427f83b2d",
+      "name": "Format réponse générale2",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        28032,
+        4560
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pr4-1",
+              "name": "formattedResponse",
+              "value": "={{ $json.formattedResponse }}",
+              "type": "string"
+            },
+            {
+              "id": "pr4-2",
+              "name": "format",
+              "value": "={{ $('Format SQL Results Enhanced2').item.json.format }}",
+              "type": "string"
+            },
+            {
+              "id": "pr4-3",
+              "name": "resultCount",
+              "value": "={{ $('Format SQL Results Enhanced2').item.json.resultCount }}",
+              "type": "number"
+            },
+            {
+              "id": "pr4-4",
+              "name": "rawResults",
+              "value": "={{ $('Format SQL Results Enhanced2').item.json.rawResults }}",
+              "type": "json"
+            },
+            {
+              "id": "pr4-5",
+              "name": "metadata",
+              "value": "={{ $('Format SQL Results Enhanced2').item.json.metadata }}",
+              "type": "json"
+            },
+            {
+              "id": "pr4-6",
+              "name": "status",
+              "value": "SUCCESS",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b3c7549c-6dd4-4c68-9206-9df4c03f3980",
+      "name": "Prepare Response4",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        29184,
+        4288
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pr5-1",
+              "name": "formattedResponse",
+              "value": "={{ $json.formattedResponse }}",
+              "type": "string"
+            },
+            {
+              "id": "pr5-2",
+              "name": "format",
+              "value": "={{ $json.format }}",
+              "type": "string"
+            },
+            {
+              "id": "pr5-3",
+              "name": "resultCount",
+              "value": "={{ $json.resultCount }}",
+              "type": "number"
+            },
+            {
+              "id": "pr5-4",
+              "name": "status",
+              "value": "SUCCESS",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ef362f06-ec7c-4939-b46a-6825a9329b02",
+      "name": "Prepare Response5",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        28912,
+        4704
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pdr-1",
+              "name": "formattedResponse",
+              "value": "={{ $json.formattedResponse }}",
+              "type": "string"
+            },
+            {
+              "id": "pdr-2",
+              "name": "format",
+              "value": "={{ $json.format }}",
+              "type": "string"
+            },
+            {
+              "id": "pdr-3",
+              "name": "resultCount",
+              "value": "={{ $json.resultCount }}",
+              "type": "number"
+            },
+            {
+              "id": "pdr-4",
+              "name": "rawResults",
+              "value": "={{ $json.rawResults }}",
+              "type": "json"
+            },
+            {
+              "id": "pdr-5",
+              "name": "documentHtml",
+              "value": "={{ $json.documentHtml }}",
+              "type": "string"
+            },
+            {
+              "id": "pdr-6",
+              "name": "metadata",
+              "value": "={{ $json.metadata }}",
+              "type": "json"
+            },
+            {
+              "id": "pdr-7",
+              "name": "status",
+              "value": "SUCCESS",
+              "type": "string"
+            },
+            {
+              "id": "pdr-8",
+              "name": "isMultiDoc",
+              "value": "={{ $json.isMultiDoc ?? false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "pdr-9",
+              "name": "documentArray",
+              "value": "={{ $json.documentArray ?? null }}",
+              "type": "json"
+            },
+            {
+              "id": "pdr-10",
+              "name": "documentCount",
+              "value": "={{ $json.documentCount ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "pdr-11",
+              "name": "createZip",
+              "value": "={{ $json.createZip ?? false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "pdr-12",
+              "name": "documentData",
+              "value": "={{ $json.documentData ?? null }}",
+              "type": "json"
+            },
+            {
+              "id": "pdr-13",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e01a26c7-5747-492b-876c-e77c297d0dca",
+      "name": "Prepare Document Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        28864,
+        4480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "09b52465-0a39-4a50-8e57-6805b6dd58b8",
+      "name": "Respond to Webhook2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        29840,
+        4320
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "n8n_chat_histories",
+          "mode": "list",
+          "cachedResultName": "n8n_chat_histories"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Webhook2').item.json.body.sessionId }}",
+            "message": "={{ JSON.stringify({ formattedResponse: $json.formattedResponse, format: $('Format SQL Results Enhanced2').item.json.format || $json.format, rawResults: $('Format SQL Results Enhanced2').item.json.rawResults || $json.rawResults, metadata: $('Format SQL Results Enhanced2').item.json.metadata || $json.metadata, resultCount: $('Format SQL Results Enhanced2').item.json.resultCount || $json.resultCount, documentData: $json.documentData || null }) }}",
+            "sender": "assistant"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender",
+              "displayName": "sender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "4fff0093-505b-4df5-890b-55f5461ad7da",
+      "name": "Insert rows in a table7",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        29824,
+        4016
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "XsmPz0YKsvPhIWkK",
+          "name": "gestionapp_stockgestion_13_janv_2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "n8n_chat_histories",
+          "mode": "list",
+          "cachedResultName": "n8n_chat_histories"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Merge Tenant Branding').item.json.sessionId }}",
+            "message": "={{ JSON.stringify({ formattedResponse: $json.formattedResponse, format: $json.format || 'general', rawResults: null, metadata: null, resultCount: 0 }) }}",
+            "sender": "assistant"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender",
+              "displayName": "sender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "96465bc5-a293-4dfb-ad4e-70479c266a98",
+      "name": "Insert rows in a table8",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        29888,
+        4656
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "XsmPz0YKsvPhIWkK",
+          "name": "gestionapp_stockgestion_13_janv_2026"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 🚀 GeStockPro IA — Workflow v3\n## ✅ Fix: Parse AI Output node (JSON robuste), Fetch Tenant Branding, contextWindow réduit, prompt anti-memory-pollution",
+        "height": 1616,
+        "width": 5648,
+        "color": 5
+      },
+      "id": "ee996362-8cd8-4c80-889f-ccd8f2a2be71",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        24736,
+        3888
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "n8n_chat_histories",
+          "mode": "list",
+          "cachedResultName": "n8n_chat_histories"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Merge Tenant Branding').item.json.sessionId }}",
+            "message": "={{ JSON.stringify({ formattedResponse: $json.formattedResponse, format: $json.format, rawResults: $json.rawResults, metadata: $json.metadata, resultCount: $json.resultCount, documentData: $json.metadata.documentData || null }) }}",
+            "sender": "assistant"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender",
+              "displayName": "sender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "12187b68-181a-42c9-9ba0-bdc3ad005983",
+      "name": "Insert Document History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        29680,
+        4896
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "XsmPz0YKsvPhIWkK",
+          "name": "gestionapp_stockgestion_13_janv_2026"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook2": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table6": {
+      "main": [
+        [
+          {
+            "node": "Fetch Tenant Branding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Tenant Branding": {
+      "main": [
+        [
+          {
+            "node": "Merge Tenant Branding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Tenant Branding": {
+      "main": [
+        [
+          {
+            "node": "AI Agent de Classification2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent de Classification2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent de Classification2",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent de Classification2": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Output": {
+      "main": [
+        [
+          {
+            "node": "Routeur de questions2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routeur de questions2": {
+      "main": [
+        [
+          {
+            "node": "SaaS GESTOCKPRO2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format réponse générale2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SaaS GESTOCKPRO2": {
+      "main": [
+        [
+          {
+            "node": "Error Handler2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler2": {
+      "main": [
+        [
+          {
+            "node": "Format Error2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Document Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Router": {
+      "main": [
+        [
+          {
+            "node": "Generate Document HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyze Data Type2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Data Type2": {
+      "main": [
+        [
+          {
+            "node": "Format SQL Results Enhanced2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format SQL Results Enhanced2": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error2": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Document HTML": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format réponse générale2": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response4": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert rows in a table7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response5": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert rows in a table8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert Document History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "915e32914f81ccfd57b182e801f5741b5d3cf32b786354a1ad1a34c6c276aa1d"
+  }
+}

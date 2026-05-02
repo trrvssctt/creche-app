@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Upload Congé Maladie</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 10px 5px 0 0; }
+        button:hover { background: #0056b3; }
+        .result { margin: 20px 0; padding: 15px; border-radius: 4px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>🏥 Test Upload Justificatif Congé Maladie</h1>
+    
+    <div class="info">
+        <p><strong>Instructions :</strong></p>
+        <ul>
+            <li>Sélectionnez un congé existant dans la liste</li>
+            <li>Ajoutez un fichier PDF, JPG ou PNG (max 10MB)</li>
+            <li>Cliquez sur "Tester Upload" pour voir si ça fonctionne</li>
+        </ul>
+    </div>
+
+    <form id="uploadForm">
+        <div class="form-group">
+            <label for="leaveId">Congé à modifier (ID) :</label>
+            <input type="text" id="leaveId" placeholder="Ex: d2a91fed-7e90-44a6-b881-b08f54b6342a" required>
+            <small>Copiez l'ID d'un congé existant depuis l'interface</small>
+        </div>
+
+        <div class="form-group">
+            <label for="document">Justificatif médical :</label>
+            <input type="file" id="document" accept=".pdf,.jpg,.jpeg,.png" required>
+        </div>
+
+        <div class="form-group">
+            <label for="reason">Nouveau motif (optionnel) :</label>
+            <textarea id="reason" rows="3" placeholder="Mise à jour du motif..."></textarea>
+        </div>
+
+        <button type="submit">🚀 Tester Upload</button>
+        <button type="button" onclick="loadLeaves()">📋 Charger liste des congés</button>
+    </form>
+
+    <div id="result"></div>
+
+    <div id="leavesList"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        
+        // Token de test - remplacez par un vrai token
+        const TEST_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; // À mettre à jour avec un vrai token
+        
+        function showResult(message, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        async function loadLeaves() {
+            try {
+                showResult('🔄 Chargement des congés...', 'info');
+                
+                const response = await fetch(`${API_BASE}/hr/leaves?type=SICK&perPage=10`, {
+                    headers: {
+                        'Authorization': `Bearer ${TEST_TOKEN}`,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                showResult(`✅ ${data.count} congés trouvés`, 'success');
+
+                const listDiv = document.getElementById('leavesList');
+                let html = '<h3>📋 Congés Maladie Existants :</h3><ul>';
+                
+                data.rows.forEach(leave => {
+                    const employee = leave.employee || { firstName: 'N/A', lastName: 'N/A' };
+                    html += `<li>
+                        <strong>ID:</strong> ${leave.id}<br>
+                        <strong>Employé:</strong> ${employee.firstName} ${employee.lastName}<br>
+                        <strong>Dates:</strong> ${new Date(leave.startDate).toLocaleDateString()} - ${new Date(leave.endDate).toLocaleDateString()}<br>
+                        <strong>Status:</strong> ${leave.status}<br>
+                        <strong>Document actuel:</strong> ${leave.documentUrl ? '✅ Oui' : '❌ Non'}<br>
+                        <button onclick="document.getElementById('leaveId').value='${leave.id}'">Sélectionner</button>
+                        <hr style="margin: 10px 0;">
+                    </li>`;
+                });
+                
+                html += '</ul>';
+                listDiv.innerHTML = html;
+                
+            } catch (error) {
+                showResult(`❌ Erreur chargement : ${error.message}`, 'error');
+            }
+        }
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const leaveId = document.getElementById('leaveId').value;
+            const fileInput = document.getElementById('document');
+            const reason = document.getElementById('reason').value;
+            
+            if (!fileInput.files[0]) {
+                showResult('❌ Veuillez sélectionner un fichier', 'error');
+                return;
+            }
+
+            try {
+                showResult('🔄 Upload en cours...', 'info');
+                
+                const formData = new FormData();
+                formData.append('document', fileInput.files[0]);
+                if (reason) {
+                    formData.append('reason', reason);
+                }
+                
+                console.log('📤 Envoi vers:', `${API_BASE}/hr/leaves/${leaveId}`);
+                console.log('📤 Fichier:', fileInput.files[0].name, fileInput.files[0].size, 'bytes');
+                
+                const response = await fetch(`${API_BASE}/hr/leaves/${leaveId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${TEST_TOKEN}`
+                        // Ne pas spécifier Content-Type pour FormData
+                    },
+                    body: formData
+                });
+
+                const responseText = await response.text();
+                console.log('📥 Réponse serveur:', response.status, responseText);
+
+                if (!response.ok) {
+                    throw new Error(`Erreur ${response.status}: ${responseText}`);
+                }
+
+                const result = JSON.parse(responseText);
+                showResult(`✅ Upload réussi ! Document URL: ${result.documentUrl || 'Non définie'}`, 'success');
+                
+            } catch (error) {
+                console.error('❌ Erreur:', error);
+                showResult(`❌ Erreur upload : ${error.message}`, 'error');
+            }
+        });
+
+        // Charger les congés au démarrage
+        // loadLeaves(); // Décommentez quand vous avez un token valide
+    </script>
+</body>
+</html>

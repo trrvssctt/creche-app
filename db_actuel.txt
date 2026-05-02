@@ -1,0 +1,4812 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict xGn4eUeRIjYkGmdVIe1BHezy8wkapAfigpzxzMEcE9YZpQtFs0KValmCOFDoGsv
+
+-- Dumped from database version 16.13
+-- Dumped by pg_dump version 18.3
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: gestionapp
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+ALTER SCHEMA public OWNER TO gestionapp;
+
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+--
+-- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
+
+
+--
+-- Name: enum_contact_messages_status; Type: TYPE; Schema: public; Owner: gestionapp
+--
+
+CREATE TYPE public.enum_contact_messages_status AS ENUM (
+    'non_lus',
+    'lus'
+);
+
+
+ALTER TYPE public.enum_contact_messages_status OWNER TO gestionapp;
+
+--
+-- Name: enum_customers_health_status; Type: TYPE; Schema: public; Owner: gestionapp
+--
+
+CREATE TYPE public.enum_customers_health_status AS ENUM (
+    'GOOD',
+    'WARNING',
+    'CRITICAL'
+);
+
+
+ALTER TYPE public.enum_customers_health_status OWNER TO gestionapp;
+
+--
+-- Name: enum_documents_linked_entity_type; Type: TYPE; Schema: public; Owner: gestionapp
+--
+
+CREATE TYPE public.enum_documents_linked_entity_type AS ENUM (
+    'INVOICE',
+    'PRODUCT',
+    'CUSTOMER',
+    'CONTRACT'
+);
+
+
+ALTER TYPE public.enum_documents_linked_entity_type OWNER TO gestionapp;
+
+--
+-- Name: prevent_category_change_if_subcats_exist(); Type: FUNCTION; Schema: public; Owner: gestionapp
+--
+
+CREATE FUNCTION public.prevent_category_change_if_subcats_exist() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+
+BEGIN
+
+  IF (TG_OP = 'DELETE' OR TG_OP = 'UPDATE') THEN
+
+    IF EXISTS (SELECT 1 FROM subcategories WHERE category_id = OLD.id) THEN
+
+      RAISE EXCEPTION 'Operation % disallowed: category % has linked subcategories', TG_OP, OLD.id;
+
+    END IF;
+
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+
+    RETURN OLD;
+
+  ELSE
+
+    RETURN NEW;
+
+  END IF;
+
+END;
+
+$$;
+
+
+ALTER FUNCTION public.prevent_category_change_if_subcats_exist() OWNER TO gestionapp;
+
+--
+-- Name: prevent_subcategory_change_if_items_exist(); Type: FUNCTION; Schema: public; Owner: gestionapp
+--
+
+CREATE FUNCTION public.prevent_subcategory_change_if_items_exist() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+
+BEGIN
+
+  IF (TG_OP = 'DELETE' OR TG_OP = 'UPDATE') THEN
+
+    IF EXISTS (SELECT 1 FROM stock_items WHERE subcategory_id = OLD.id) THEN
+
+      RAISE EXCEPTION 'Operation % disallowed: subcategory % has linked stock_items', TG_OP, OLD.id;
+
+    END IF;
+
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+
+    RETURN OLD;
+
+  ELSE
+
+    RETURN NEW;
+
+  END IF;
+
+END;
+
+$$;
+
+
+ALTER FUNCTION public.prevent_subcategory_change_if_items_exist() OWNER TO gestionapp;
+
+--
+-- Name: update_employee_documents_updated_at(); Type: FUNCTION; Schema: public; Owner: gestionapp
+--
+
+CREATE FUNCTION public.update_employee_documents_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+
+BEGIN
+
+    NEW.updated_at = CURRENT_TIMESTAMP;
+
+    RETURN NEW;
+
+END;
+
+$$;
+
+
+ALTER FUNCTION public.update_employee_documents_updated_at() OWNER TO gestionapp;
+
+--
+-- Name: update_payroll_items_updated_at(); Type: FUNCTION; Schema: public; Owner: gestionapp
+--
+
+CREATE FUNCTION public.update_payroll_items_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+
+BEGIN
+
+    NEW.updated_at = CURRENT_TIMESTAMP;
+
+    RETURN NEW;
+
+END;
+
+$$;
+
+
+ALTER FUNCTION public.update_payroll_items_updated_at() OWNER TO gestionapp;
+
+--
+-- Name: update_sessions_updated_at(); Type: FUNCTION; Schema: public; Owner: gestionapp
+--
+
+CREATE FUNCTION public.update_sessions_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_sessions_updated_at() OWNER TO gestionapp;
+
+--
+-- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: gestionapp
+--
+
+CREATE FUNCTION public.update_updated_at_column() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+
+BEGIN
+
+    NEW.updated_at = CURRENT_TIMESTAMP;
+
+    RETURN NEW;
+
+END;
+
+$$;
+
+
+ALTER FUNCTION public.update_updated_at_column() OWNER TO gestionapp;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: advances; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.advances (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    employee_id uuid NOT NULL,
+    amount numeric(15,2) NOT NULL,
+    months integer DEFAULT 1 NOT NULL,
+    reason text NOT NULL,
+    currency character varying(10) DEFAULT 'F CFA'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    approved_by uuid,
+    approved_at timestamp without time zone,
+    rejection_reason text,
+    start_date date,
+    end_date date,
+    remaining_amount numeric(15,2) DEFAULT 0,
+    tenant_id uuid NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT advances_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT advances_months_check CHECK (((months >= 1) AND (months <= 12))),
+    CONSTRAINT advances_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('APPROVED'::character varying)::text, ('REJECTED'::character varying)::text])))
+);
+
+
+ALTER TABLE public.advances OWNER TO gestionapp;
+
+--
+-- Name: TABLE advances; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON TABLE public.advances IS 'Table des avances sur salaire accordées aux employés';
+
+
+--
+-- Name: COLUMN advances.months; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.advances.months IS 'Nombre de mois pour lesquels l''avance est accordée';
+
+
+--
+-- Name: COLUMN advances.remaining_amount; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.advances.remaining_amount IS 'Montant restant à déduire des salaires futurs';
+
+
+--
+-- Name: announcements; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.announcements (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    title character varying(255) NOT NULL,
+    body text NOT NULL,
+    type character varying(20) DEFAULT 'INFO'::character varying,
+    target_plan character varying(50),
+    is_active boolean DEFAULT true,
+    is_pinned boolean DEFAULT false,
+    expires_at timestamp with time zone,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT announcements_type_check CHECK (((type)::text = ANY (ARRAY[('INFO'::character varying)::text, ('WARNING'::character varying)::text, ('UPDATE'::character varying)::text, ('PROMO'::character varying)::text, ('MAINTENANCE'::character varying)::text])))
+);
+
+
+ALTER TABLE public.announcements OWNER TO gestionapp;
+
+--
+-- Name: attendances; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.attendances (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    date date,
+    clock_in timestamp with time zone,
+    clock_out timestamp with time zone,
+    source character varying(50) DEFAULT 'manual'::character varying,
+    status character varying(50) DEFAULT 'PRESENT'::character varying,
+    overtime_minutes integer DEFAULT 0,
+    meta jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.attendances OWNER TO gestionapp;
+
+--
+-- Name: audit_logs; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.audit_logs (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    user_id uuid,
+    user_name character varying(255),
+    action character varying(100) NOT NULL,
+    resource character varying(255),
+    status character varying(20),
+    severity character varying(20),
+    sha256_signature text NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.audit_logs OWNER TO gestionapp;
+
+--
+-- Name: backups; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.backups (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid,
+    type character varying(20) DEFAULT 'AUTOMATIC'::character varying,
+    status character varying(20) DEFAULT 'SUCCESS'::character varying,
+    size bigint,
+    storage_path text,
+    checksum text,
+    metadata jsonb,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    retain_until timestamp with time zone
+);
+
+
+ALTER TABLE public.backups OWNER TO gestionapp;
+
+--
+-- Name: candidates; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.candidates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    job_offer_id uuid NOT NULL,
+    first_name character varying(255) NOT NULL,
+    last_name character varying(255) NOT NULL,
+    email character varying(255) NOT NULL,
+    phone character varying(100),
+    resume_url text,
+    cover_letter text,
+    status character varying(50) DEFAULT 'NEW'::character varying,
+    rating integer,
+    notes text,
+    interview_date timestamp without time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT candidates_rating_check CHECK (((rating >= 1) AND (rating <= 5)))
+);
+
+
+ALTER TABLE public.candidates OWNER TO gestionapp;
+
+--
+-- Name: categories; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.categories (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(150) NOT NULL,
+    description text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    status character varying(20) DEFAULT 'actif'::character varying,
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.categories OWNER TO gestionapp;
+
+--
+-- Name: company_declaration_settings; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.company_declaration_settings (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    company_name character varying(255) NOT NULL,
+    siret character varying(14),
+    naf_code character varying(5),
+    legal_form character varying(20) DEFAULT 'SARL'::character varying NOT NULL,
+    collective_agreement character varying(255),
+    address text,
+    city character varying(100),
+    postal_code character varying(10),
+    country character varying(100) DEFAULT 'Sénégal'::character varying NOT NULL,
+    ipres_number character varying(50),
+    css_number character varying(50),
+    cfce_number character varying(50),
+    tax_number character varying(50),
+    vat_number character varying(50),
+    tax_regime character varying(20) DEFAULT 'RSI'::character varying NOT NULL,
+    ipres_employee_rate numeric(5,2) DEFAULT 5.6 NOT NULL,
+    ipres_employer_rate numeric(5,2) DEFAULT 8.4 NOT NULL,
+    css_employee_rate numeric(5,2) DEFAULT 3.5 NOT NULL,
+    css_employer_rate numeric(5,2) DEFAULT 7.0 NOT NULL,
+    cfce_employer_rate numeric(5,2) DEFAULT 7.0 NOT NULL,
+    accident_work_rate numeric(5,2) DEFAULT 3.0 NOT NULL,
+    declaration_day integer DEFAULT 15 NOT NULL,
+    fiscal_year_start date DEFAULT CURRENT_DATE NOT NULL,
+    responsible_name character varying(255),
+    responsible_email character varying(255),
+    responsible_phone character varying(50),
+    is_active boolean DEFAULT true,
+    last_updated_by uuid,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT company_declaration_settings_declaration_day_check CHECK (((declaration_day >= 1) AND (declaration_day <= 31))),
+    CONSTRAINT company_declaration_settings_legal_form_check CHECK (((legal_form)::text = ANY (ARRAY[('SARL'::character varying)::text, ('SA'::character varying)::text, ('SAS'::character varying)::text, ('SASU'::character varying)::text, ('EURL'::character varying)::text, ('EI'::character varying)::text, ('SNC'::character varying)::text, ('SCS'::character varying)::text, ('OTHER'::character varying)::text]))),
+    CONSTRAINT company_declaration_settings_tax_regime_check CHECK (((tax_regime)::text = ANY (ARRAY[('RSI'::character varying)::text, ('RNI'::character varying)::text, ('OTHER'::character varying)::text])))
+);
+
+
+ALTER TABLE public.company_declaration_settings OWNER TO gestionapp;
+
+--
+-- Name: TABLE company_declaration_settings; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON TABLE public.company_declaration_settings IS 'Paramètres de configuration pour les déclarations sociales et fiscales par entreprise';
+
+
+--
+-- Name: COLUMN company_declaration_settings.ipres_employee_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.ipres_employee_rate IS 'Taux de cotisation IPRES salarié (défaut: 5.6%)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.ipres_employer_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.ipres_employer_rate IS 'Taux de cotisation IPRES employeur (défaut: 8.4%)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.css_employee_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.css_employee_rate IS 'Taux de cotisation CSS salarié (défaut: 3.5%)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.css_employer_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.css_employer_rate IS 'Taux de cotisation CSS employeur (défaut: 7.0%)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.cfce_employer_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.cfce_employer_rate IS 'Taux de cotisation CFCE employeur uniquement (défaut: 7.0%)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.accident_work_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.accident_work_rate IS 'Taux accidents du travail (défaut: 3.0%)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.declaration_day; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.declaration_day IS 'Jour du mois pour les déclarations (ex: 15 = avant le 15 de chaque mois)';
+
+
+--
+-- Name: COLUMN company_declaration_settings.fiscal_year_start; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.company_declaration_settings.fiscal_year_start IS 'Début de l''exercice fiscal';
+
+
+--
+-- Name: contact_messages; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.contact_messages (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    full_name character varying(255) NOT NULL,
+    email character varying(255) NOT NULL,
+    phone character varying(50),
+    subject character varying(500),
+    message text NOT NULL,
+    status character varying(20) DEFAULT 'non_lus'::character varying,
+    ip_address inet,
+    user_agent text,
+    source character varying(100) DEFAULT 'landing_page'::character varying,
+    admin_notes text,
+    replied_at timestamp without time zone,
+    replied_by character varying(255),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT contact_messages_status_check CHECK (((status)::text = ANY (ARRAY[('non_lus'::character varying)::text, ('lus'::character varying)::text])))
+);
+
+
+ALTER TABLE public.contact_messages OWNER TO gestionapp;
+
+--
+-- Name: contracts; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.contracts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    type character varying(50) DEFAULT 'CDI'::character varying NOT NULL,
+    start_date timestamp without time zone NOT NULL,
+    end_date timestamp without time zone,
+    salary numeric NOT NULL,
+    status character varying(50) DEFAULT 'ACTIVE'::character varying,
+    trial_period_end timestamp without time zone,
+    document_url text,
+    signed_date timestamp without time zone,
+    working_hours integer DEFAULT 40,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    contract_type character varying(100),
+    currency character varying(50),
+    meta jsonb DEFAULT '{}'::jsonb,
+    termination_date date,
+    termination_reason text,
+    suspension_date date,
+    suspension_reason text,
+    work_location character varying(255),
+    previous_contract_id uuid,
+    is_renewal boolean DEFAULT false NOT NULL,
+    renewal_reason text,
+    renewal_count integer DEFAULT 0 NOT NULL,
+    max_renewals integer,
+    renewed_at timestamp with time zone,
+    renewed_by uuid,
+    created_by uuid,
+    terminated_by uuid,
+    terminated_at timestamp with time zone,
+    last_modification_reason text
+);
+
+
+ALTER TABLE public.contracts OWNER TO gestionapp;
+
+--
+-- Name: customers; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.customers (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    company_name character varying(255),
+    main_contact character varying(255),
+    email character varying(255) NOT NULL,
+    phone character varying(255),
+    billing_address text,
+    siret character varying(255),
+    outstanding_balance double precision DEFAULT '0'::double precision,
+    health_status character varying(20) DEFAULT 'GOOD'::character varying,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    tva_intra character varying(255),
+    max_credit_limit double precision DEFAULT '5000'::double precision,
+    payment_terms integer DEFAULT 30,
+    is_active boolean DEFAULT true,
+    name text,
+    status character varying(20) DEFAULT 'actif'::character varying,
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.customers OWNER TO gestionapp;
+
+--
+-- Name: declarations; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.declarations (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    declaration_type character varying(30) NOT NULL,
+    period character varying(7) NOT NULL,
+    fiscal_year integer NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    status character varying(20) DEFAULT 'DRAFT'::character varying NOT NULL,
+    due_date date NOT NULL,
+    submitted_at timestamp with time zone,
+    validated_at timestamp with time zone,
+    total_amount numeric(15,2) DEFAULT 0 NOT NULL,
+    employee_cotisations numeric(15,2) DEFAULT 0 NOT NULL,
+    employer_cotisations numeric(15,2) DEFAULT 0 NOT NULL,
+    tax_amount numeric(15,2) DEFAULT 0 NOT NULL,
+    number_of_employees integer DEFAULT 0 NOT NULL,
+    total_salary_base numeric(15,2) DEFAULT 0 NOT NULL,
+    reference_number character varying(100),
+    file_reference character varying(255),
+    organisme character varying(20) NOT NULL,
+    generated_files jsonb,
+    attachments jsonb,
+    notes text,
+    rejection_reason text,
+    created_by uuid,
+    submitted_by uuid,
+    last_modified_by uuid,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT declarations_declaration_type_check CHECK (((declaration_type)::text = ANY (ARRAY[('IPRES_MONTHLY'::character varying)::text, ('CSS_MONTHLY'::character varying)::text, ('CFCE_MONTHLY'::character varying)::text, ('VRS_MONTHLY'::character varying)::text, ('TAX_QUARTERLY'::character varying)::text, ('TAX_ANNUAL'::character varying)::text, ('SOCIAL_ANNUAL'::character varying)::text, ('DADS'::character varying)::text, ('OTHER'::character varying)::text]))),
+    CONSTRAINT declarations_organisme_check CHECK (((organisme)::text = ANY (ARRAY[('IPRES'::character varying)::text, ('CSS'::character varying)::text, ('CFCE'::character varying)::text, ('DGI'::character varying)::text, ('OTHER'::character varying)::text]))),
+    CONSTRAINT declarations_status_check CHECK (((status)::text = ANY (ARRAY[('DRAFT'::character varying)::text, ('READY'::character varying)::text, ('SUBMITTED'::character varying)::text, ('VALIDATED'::character varying)::text, ('REJECTED'::character varying)::text, ('PAID'::character varying)::text])))
+);
+
+
+ALTER TABLE public.declarations OWNER TO gestionapp;
+
+--
+-- Name: TABLE declarations; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON TABLE public.declarations IS 'Historique et suivi des déclarations sociales et fiscales';
+
+
+--
+-- Name: COLUMN declarations.period; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.period IS 'Période de déclaration (ex: 2024-03 ou 2024-Q1)';
+
+
+--
+-- Name: COLUMN declarations.due_date; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.due_date IS 'Date limite de déclaration';
+
+
+--
+-- Name: COLUMN declarations.submitted_at; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.submitted_at IS 'Date de soumission effective';
+
+
+--
+-- Name: COLUMN declarations.validated_at; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.validated_at IS 'Date de validation par l''organisme';
+
+
+--
+-- Name: COLUMN declarations.total_amount; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.total_amount IS 'Montant total de la déclaration';
+
+
+--
+-- Name: COLUMN declarations.employee_cotisations; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.employee_cotisations IS 'Cotisations salariales';
+
+
+--
+-- Name: COLUMN declarations.employer_cotisations; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.employer_cotisations IS 'Cotisations patronales';
+
+
+--
+-- Name: COLUMN declarations.tax_amount; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.tax_amount IS 'Montant des impôts';
+
+
+--
+-- Name: COLUMN declarations.number_of_employees; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.number_of_employees IS 'Nombre d''employés concernés';
+
+
+--
+-- Name: COLUMN declarations.total_salary_base; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.total_salary_base IS 'Masse salariale de base';
+
+
+--
+-- Name: COLUMN declarations.reference_number; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.reference_number IS 'Numéro de référence organisme';
+
+
+--
+-- Name: COLUMN declarations.file_reference; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.file_reference IS 'Référence du fichier généré';
+
+
+--
+-- Name: COLUMN declarations.generated_files; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.generated_files IS 'Liste des fichiers générés (PDF, XML, etc.)';
+
+
+--
+-- Name: COLUMN declarations.attachments; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.attachments IS 'Documents joints à la déclaration';
+
+
+--
+-- Name: COLUMN declarations.notes; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.notes IS 'Notes internes sur la déclaration';
+
+
+--
+-- Name: COLUMN declarations.rejection_reason; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.declarations.rejection_reason IS 'Motif de rejet si applicable';
+
+
+--
+-- Name: deliveries; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.deliveries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    reference character varying(50) NOT NULL,
+    supplier_id uuid,
+    delivery_date date,
+    total_ht numeric(15,2) DEFAULT 0,
+    status character varying(20) DEFAULT 'PENDING'::character varying,
+    notes text,
+    purchase_order_ref character varying(100),
+    deleted_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT deliveries_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('RECEIVED'::character varying)::text, ('PARTIAL'::character varying)::text, ('CANCELLED'::character varying)::text])))
+);
+
+
+ALTER TABLE public.deliveries OWNER TO gestionapp;
+
+--
+-- Name: delivery_items; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.delivery_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    delivery_id uuid NOT NULL,
+    stock_item_id uuid NOT NULL,
+    quantity_received integer DEFAULT 0 NOT NULL,
+    purchase_price numeric(15,2) DEFAULT 0 NOT NULL,
+    total_ht numeric(15,2) DEFAULT 0,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.delivery_items OWNER TO gestionapp;
+
+--
+-- Name: departments; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.departments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    manager_id uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.departments OWNER TO gestionapp;
+
+--
+-- Name: documents; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.documents (
+    id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    original_name character varying(255) NOT NULL,
+    mime_type character varying(255),
+    size integer,
+    path character varying(255) NOT NULL,
+    sha256 character varying(255) NOT NULL,
+    linked_entity_type public.enum_documents_linked_entity_type,
+    linked_entity_id character varying(255),
+    uploaded_by uuid NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.documents OWNER TO gestionapp;
+
+--
+-- Name: employee_documents; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.employee_documents (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    type character varying(50) NOT NULL,
+    category character varying(255),
+    file_url text NOT NULL,
+    file_size bigint,
+    mime_type character varying(100),
+    uploaded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    uploaded_by uuid,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT employee_documents_type_check CHECK (((type)::text = ANY (ARRAY[('ID_CARD'::character varying)::text, ('CONTRACT'::character varying)::text, ('DIPLOMA'::character varying)::text, ('BANK_DETAILS'::character varying)::text, ('MEDICAL'::character varying)::text, ('OTHER'::character varying)::text])))
+);
+
+
+ALTER TABLE public.employee_documents OWNER TO gestionapp;
+
+--
+-- Name: employees; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.employees (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    first_name character varying(255) NOT NULL,
+    last_name character varying(255) NOT NULL,
+    email character varying(255),
+    phone character varying(100),
+    dob date,
+    hire_date timestamp without time zone,
+    "position" character varying(255),
+    department_id uuid,
+    contract_type character varying(100),
+    status character varying(50) DEFAULT 'ACTIVE'::character varying,
+    meta jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    birth_date date,
+    gender character varying(10),
+    address text,
+    city character varying(255),
+    country character varying(255) DEFAULT 'Sénégal'::character varying,
+    manager_id uuid,
+    base_salary numeric,
+    bank_info jsonb,
+    photo_url text
+);
+
+
+ALTER TABLE public.employees OWNER TO gestionapp;
+
+--
+-- Name: hr_rules; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.hr_rules (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(200) NOT NULL,
+    description text,
+    type character varying(20) NOT NULL,
+    condition_operator character varying(5) DEFAULT 'GT'::character varying,
+    condition_value numeric(10,2) DEFAULT 0,
+    condition_unit character varying(10) DEFAULT 'MINUTES'::character varying,
+    action_type character varying(30) NOT NULL,
+    action_value numeric(10,2) DEFAULT 0,
+    is_active boolean DEFAULT true,
+    sort_order integer DEFAULT 0,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.hr_rules OWNER TO gestionapp;
+
+--
+-- Name: inventory_campaign_items; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.inventory_campaign_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    campaign_id uuid NOT NULL,
+    stock_item_id uuid NOT NULL,
+    system_qty integer DEFAULT 0 NOT NULL,
+    counted_qty integer DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.inventory_campaign_items OWNER TO gestionapp;
+
+--
+-- Name: inventory_campaigns; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.inventory_campaigns (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    status character varying(20) DEFAULT 'DRAFT'::character varying,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.inventory_campaigns OWNER TO gestionapp;
+
+--
+-- Name: invoice_items; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.invoice_items (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    invoice_id character varying(50),
+    product_id uuid,
+    name character varying(255) NOT NULL,
+    qty integer NOT NULL,
+    price numeric(15,2) NOT NULL,
+    tva numeric(5,2) NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.invoice_items OWNER TO gestionapp;
+
+--
+-- Name: invoices; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.invoices (
+    id character varying(50) NOT NULL,
+    tenant_id uuid NOT NULL,
+    customer_id uuid,
+    invoice_date timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    due_date timestamp with time zone,
+    amount numeric(15,2) NOT NULL,
+    tax_amount numeric(15,2) NOT NULL,
+    currency character varying(10) DEFAULT 'F CFA'::character varying,
+    status character varying(20) DEFAULT 'DRAFT'::character varying,
+    type character varying(20) DEFAULT 'FACTUR-X'::character varying,
+    transmission_status character varying(20) DEFAULT 'PENDING'::character varying,
+    sha256_signature text,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    sale_id uuid
+);
+
+
+ALTER TABLE public.invoices OWNER TO gestionapp;
+
+--
+-- Name: job_offers; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.job_offers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    requirements text,
+    location character varying(255),
+    salary_min numeric,
+    salary_max numeric,
+    currency character varying(20) DEFAULT 'F CFA'::character varying,
+    employment_type character varying(50),
+    department character varying(255),
+    status character varying(50) DEFAULT 'OPEN'::character varying,
+    published_at timestamp without time zone,
+    expires_at timestamp without time zone,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.job_offers OWNER TO gestionapp;
+
+--
+-- Name: leaves; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.leaves (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    type character varying(50) NOT NULL,
+    start_date timestamp without time zone NOT NULL,
+    end_date timestamp without time zone NOT NULL,
+    days_count integer NOT NULL,
+    status character varying(50) DEFAULT 'PENDING'::character varying,
+    reason text,
+    approved_by uuid,
+    approved_at timestamp without time zone,
+    rejection_reason text,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    document_url character varying(255),
+    document_name character varying(255)
+);
+
+
+ALTER TABLE public.leaves OWNER TO gestionapp;
+
+--
+-- Name: n8n_chat_histories; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.n8n_chat_histories (
+    id integer NOT NULL,
+    session_id character varying(255) NOT NULL,
+    message json NOT NULL,
+    sender text DEFAULT 'user'::text,
+    created_at timestamp without time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.n8n_chat_histories OWNER TO gestionapp;
+
+--
+-- Name: n8n_chat_histories_id_seq; Type: SEQUENCE; Schema: public; Owner: gestionapp
+--
+
+CREATE SEQUENCE public.n8n_chat_histories_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.n8n_chat_histories_id_seq OWNER TO gestionapp;
+
+--
+-- Name: n8n_chat_histories_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gestionapp
+--
+
+ALTER SEQUENCE public.n8n_chat_histories_id_seq OWNED BY public.n8n_chat_histories.id;
+
+
+--
+-- Name: notification_reads; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.notification_reads (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    notification_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    read_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.notification_reads OWNER TO gestionapp;
+
+--
+-- Name: notifications; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.notifications (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    target_user_id uuid,
+    title character varying(255) NOT NULL,
+    body text NOT NULL,
+    type character varying(20) DEFAULT 'INFO'::character varying NOT NULL,
+    action_link character varying(255),
+    created_by uuid,
+    expires_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.notifications OWNER TO gestionapp;
+
+--
+-- Name: overtime_requests; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.overtime_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    requested_date date NOT NULL,
+    start_time character varying(5),
+    end_time character varying(5),
+    requested_minutes integer DEFAULT 0,
+    reason text,
+    status character varying(20) DEFAULT 'PENDING'::character varying,
+    reviewed_by uuid,
+    review_note text,
+    actual_minutes integer DEFAULT 0,
+    meta jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.overtime_requests OWNER TO gestionapp;
+
+--
+-- Name: payment_records; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.payment_records (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    payment_date timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    amount numeric(15,2) NOT NULL,
+    method character varying(50),
+    status character varying(20),
+    transaction_id character varying(255),
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.payment_records OWNER TO gestionapp;
+
+--
+-- Name: payments; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.payments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    sale_id uuid,
+    amount numeric(15,2) NOT NULL,
+    method character varying(30) NOT NULL,
+    reference character varying(100),
+    payment_date timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    statut text DEFAULT 'ACTIVE'::text,
+    proof_image text,
+    cheque_number character varying(50),
+    bank_name character varying(100),
+    cheque_date date,
+    cheque_order character varying(150)
+);
+
+
+ALTER TABLE public.payments OWNER TO gestionapp;
+
+--
+-- Name: payroll_items; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.payroll_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    code character varying(50) NOT NULL,
+    type character varying(20) NOT NULL,
+    category character varying(30) NOT NULL,
+    calculation_type character varying(20) DEFAULT 'FIXED'::character varying NOT NULL,
+    default_value numeric(15,2) DEFAULT 0,
+    percentage numeric(5,2) DEFAULT 0,
+    formula text,
+    is_active boolean DEFAULT true,
+    is_system_item boolean DEFAULT false,
+    description text,
+    sort_order integer DEFAULT 0,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT payroll_items_calculation_type_check CHECK (((calculation_type)::text = ANY (ARRAY[('FIXED'::character varying)::text, ('PERCENTAGE'::character varying)::text, ('FORMULA'::character varying)::text]))),
+    CONSTRAINT payroll_items_category_check CHECK (((category)::text = ANY (ARRAY[('BASE_SALARY'::character varying)::text, ('ALLOWANCE'::character varying)::text, ('BONUS'::character varying)::text, ('OVERTIME'::character varying)::text, ('SOCIAL_CHARGE'::character varying)::text, ('TAX'::character varying)::text, ('ADVANCE'::character varying)::text, ('OTHER'::character varying)::text]))),
+    CONSTRAINT payroll_items_percentage_check CHECK (((percentage >= (0)::numeric) AND (percentage <= (100)::numeric))),
+    CONSTRAINT payroll_items_type_check CHECK (((type)::text = ANY (ARRAY[('EARNING'::character varying)::text, ('DEDUCTION'::character varying)::text])))
+);
+
+
+ALTER TABLE public.payroll_items OWNER TO gestionapp;
+
+--
+-- Name: COLUMN payroll_items.type; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.type IS 'Type: EARNING (gain) ou DEDUCTION (retenue)';
+
+
+--
+-- Name: COLUMN payroll_items.category; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.category IS 'Catégorie de la rubrique (salaire de base, prime, charge sociale, etc.)';
+
+
+--
+-- Name: COLUMN payroll_items.calculation_type; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.calculation_type IS 'Mode de calcul: FIXED (montant fixe), PERCENTAGE (pourcentage), FORMULA (formule personnalisée)';
+
+
+--
+-- Name: COLUMN payroll_items.default_value; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.default_value IS 'Valeur par défaut en montant fixe';
+
+
+--
+-- Name: COLUMN payroll_items.percentage; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.percentage IS 'Pourcentage si calculation_type=PERCENTAGE';
+
+
+--
+-- Name: COLUMN payroll_items.formula; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.formula IS 'Formule JavaScript si calculation_type=FORMULA';
+
+
+--
+-- Name: COLUMN payroll_items.is_system_item; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.is_system_item IS 'Les éléments système ne peuvent pas être supprimés';
+
+
+--
+-- Name: COLUMN payroll_items.sort_order; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_items.sort_order IS 'Ordre d''affichage dans les listes';
+
+
+--
+-- Name: payroll_settings; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.payroll_settings (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    tax_rate numeric(5,2) DEFAULT 0.1,
+    minimum_wage numeric DEFAULT 60000,
+    currency character varying(20) DEFAULT 'F CFA'::character varying,
+    payment_day integer DEFAULT 28,
+    overtime_rate numeric DEFAULT 1.5,
+    updated_at timestamp with time zone DEFAULT now(),
+    employer_social_charge_rate numeric(5,2) DEFAULT 18.5,
+    employee_social_charge_rate numeric(5,2) DEFAULT 8.2,
+    social_charge_rate numeric(5,2),
+    created_at timestamp without time zone,
+    deduction_enabled boolean DEFAULT false NOT NULL,
+    work_start_time character varying(5) DEFAULT '08:00'::character varying NOT NULL,
+    work_end_time character varying(5) DEFAULT '17:00'::character varying NOT NULL,
+    working_days_per_month integer DEFAULT 26 NOT NULL,
+    CONSTRAINT check_employee_social_rate CHECK (((employee_social_charge_rate >= (0)::numeric) AND (employee_social_charge_rate <= (100)::numeric))),
+    CONSTRAINT check_employer_social_rate CHECK (((employer_social_charge_rate >= (0)::numeric) AND (employer_social_charge_rate <= (100)::numeric))),
+    CONSTRAINT check_tax_rate CHECK (((tax_rate >= (0)::numeric) AND (tax_rate <= (100)::numeric)))
+);
+
+
+ALTER TABLE public.payroll_settings OWNER TO gestionapp;
+
+--
+-- Name: COLUMN payroll_settings.tax_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_settings.tax_rate IS 'Taux d''imposition en pourcentage';
+
+
+--
+-- Name: COLUMN payroll_settings.employer_social_charge_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_settings.employer_social_charge_rate IS 'Taux des charges sociales employeur en pourcentage';
+
+
+--
+-- Name: COLUMN payroll_settings.employee_social_charge_rate; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.payroll_settings.employee_social_charge_rate IS 'Taux des charges sociales salarié en pourcentage';
+
+
+--
+-- Name: performance_reviews; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.performance_reviews (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    reviewer_id uuid NOT NULL,
+    review_period character varying(50),
+    period_start date,
+    period_end date,
+    overall_rating integer,
+    goals_achievement integer,
+    communication_skills integer,
+    technical_skills integer,
+    leadership_skills integer,
+    strengths text,
+    areas_for_improvement text,
+    goals_next_period text,
+    comments text,
+    status character varying(50) DEFAULT 'DRAFT'::character varying,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT performance_reviews_communication_skills_check CHECK (((communication_skills >= 1) AND (communication_skills <= 5))),
+    CONSTRAINT performance_reviews_goals_achievement_check CHECK (((goals_achievement >= 1) AND (goals_achievement <= 5))),
+    CONSTRAINT performance_reviews_leadership_skills_check CHECK (((leadership_skills >= 1) AND (leadership_skills <= 5))),
+    CONSTRAINT performance_reviews_overall_rating_check CHECK (((overall_rating >= 1) AND (overall_rating <= 5))),
+    CONSTRAINT performance_reviews_technical_skills_check CHECK (((technical_skills >= 1) AND (technical_skills <= 5)))
+);
+
+
+ALTER TABLE public.performance_reviews OWNER TO gestionapp;
+
+--
+-- Name: plans; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.plans (
+    id character varying(50) NOT NULL,
+    name character varying(100) NOT NULL,
+    price_monthly numeric(10,2) DEFAULT 0 NOT NULL,
+    price_yearly numeric(10,2) DEFAULT 0 NOT NULL,
+    trial_days integer DEFAULT 14,
+    max_users integer DEFAULT 1,
+    has_ai_chatbot boolean DEFAULT false,
+    has_stock_forecast boolean DEFAULT false,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    level integer DEFAULT 1,
+    features jsonb DEFAULT '[]'::jsonb,
+    price_three_months double precision
+);
+
+
+ALTER TABLE public.plans OWNER TO gestionapp;
+
+--
+-- Name: primes; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.primes (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    employee_id uuid NOT NULL,
+    amount numeric(15,2) NOT NULL,
+    reason text NOT NULL,
+    type character varying(50) DEFAULT 'PERFORMANCE'::character varying NOT NULL,
+    currency character varying(10) DEFAULT 'F CFA'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'APPROVED'::character varying NOT NULL,
+    approved_by uuid,
+    approved_at timestamp without time zone,
+    rejection_reason text,
+    payroll_month character varying(7),
+    is_paid boolean DEFAULT false NOT NULL,
+    paid_at timestamp without time zone,
+    category character varying(100),
+    tenant_id uuid NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT primes_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT primes_status_check CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('APPROVED'::character varying)::text, ('REJECTED'::character varying)::text]))),
+    CONSTRAINT primes_type_check CHECK (((type)::text = ANY (ARRAY[('PERFORMANCE'::character varying)::text, ('EXCEPTIONAL'::character varying)::text, ('ANNUAL_BONUS'::character varying)::text, ('PROJECT_BONUS'::character varying)::text, ('OTHER'::character varying)::text])))
+);
+
+
+ALTER TABLE public.primes OWNER TO gestionapp;
+
+--
+-- Name: TABLE primes; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON TABLE public.primes IS 'Table des primes exceptionnelles accordées aux employés';
+
+
+--
+-- Name: COLUMN primes.payroll_month; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.primes.payroll_month IS 'Mois de paie où cette prime sera incluse (format YYYY-MM)';
+
+
+--
+-- Name: COLUMN primes.category; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.primes.category IS 'Catégorie de la prime pour les rapports et classifications';
+
+
+--
+-- Name: product_movements; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.product_movements (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    stock_item_id uuid NOT NULL,
+    movement_date timestamp with time zone,
+    type character varying(20) NOT NULL,
+    qty integer NOT NULL,
+    previous_level integer,
+    new_level integer,
+    reason character varying(255) NOT NULL,
+    tenant_id uuid NOT NULL,
+    ref character varying(100),
+    "user" character varying(255),
+    created_at timestamp without time zone
+);
+
+
+ALTER TABLE public.product_movements OWNER TO gestionapp;
+
+--
+-- Name: registration_intents; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.registration_intents (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    stripe_session_id character varying(255),
+    registration_data text NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.registration_intents OWNER TO gestionapp;
+
+--
+-- Name: sale_items; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.sale_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    sale_id uuid NOT NULL,
+    stock_item_id uuid,
+    quantity integer NOT NULL,
+    unit_price numeric(15,2) NOT NULL,
+    tax_rate numeric(5,2) DEFAULT 18.00,
+    total_ttc numeric(15,2) NOT NULL,
+    quantity_delivered integer DEFAULT 0,
+    service_id uuid,
+    CONSTRAINT sale_items_quantity_check CHECK ((quantity > 0))
+);
+
+
+ALTER TABLE public.sale_items OWNER TO gestionapp;
+
+--
+-- Name: sales; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.sales (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    customer_id uuid,
+    reference character varying(50) NOT NULL,
+    status character varying(20) DEFAULT 'EN_COURS'::character varying,
+    total_ht numeric(15,2) DEFAULT 0,
+    total_ttc numeric(15,2) DEFAULT 0,
+    tax_amount numeric(15,2) DEFAULT 0,
+    amount_paid numeric(15,2) DEFAULT 0,
+    sale_date timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    walkin_name character varying(150),
+    walkin_phone character varying(50)
+);
+
+
+ALTER TABLE public.sales OWNER TO gestionapp;
+
+--
+-- Name: services; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.services (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    price numeric(15,2) DEFAULT 0 NOT NULL,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    status character varying(20) DEFAULT 'actif'::character varying,
+    deleted_at timestamp with time zone,
+    image_url text NOT NULL
+);
+
+
+ALTER TABLE public.services OWNER TO gestionapp;
+
+--
+-- Name: services_image_url_seq; Type: SEQUENCE; Schema: public; Owner: gestionapp
+--
+
+CREATE SEQUENCE public.services_image_url_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.services_image_url_seq OWNER TO gestionapp;
+
+--
+-- Name: services_image_url_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: gestionapp
+--
+
+ALTER SEQUENCE public.services_image_url_seq OWNED BY public.services.image_url;
+
+
+--
+-- Name: sessions; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    session_token character varying(255) NOT NULL,
+    jwt_token text NOT NULL,
+    ip_address inet,
+    user_agent text,
+    device_info text,
+    is_active boolean DEFAULT true,
+    last_activity timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    login_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    logout_at timestamp with time zone,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.sessions OWNER TO gestionapp;
+
+--
+-- Name: TABLE sessions; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON TABLE public.sessions IS 'Table pour gérer les sessions utilisateur actives avec JWT et suivi de l''activité';
+
+
+--
+-- Name: COLUMN sessions.session_token; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.sessions.session_token IS 'Token de session unique généré côté serveur';
+
+
+--
+-- Name: COLUMN sessions.jwt_token; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.sessions.jwt_token IS 'Token JWT associé à la session';
+
+
+--
+-- Name: COLUMN sessions.last_activity; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.sessions.last_activity IS 'Dernière activité de l''utilisateur dans cette session';
+
+
+--
+-- Name: COLUMN sessions.expires_at; Type: COMMENT; Schema: public; Owner: gestionapp
+--
+
+COMMENT ON COLUMN public.sessions.expires_at IS 'Date d''expiration de la session';
+
+
+--
+-- Name: stock_items; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.stock_items (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    sku character varying(100) NOT NULL,
+    name character varying(255) NOT NULL,
+    current_level integer DEFAULT 0,
+    min_threshold integer DEFAULT 5,
+    forecasted_level integer,
+    unit_price numeric(15,2) DEFAULT 0 NOT NULL,
+    location character varying(100),
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    quantity integer DEFAULT 0,
+    subcategory_id uuid,
+    category character varying(100),
+    status character varying(20) DEFAULT 'actif'::character varying NOT NULL,
+    deleted_at timestamp with time zone,
+    image_url text,
+    purchase_price numeric(15,2) DEFAULT 0
+);
+
+
+ALTER TABLE public.stock_items OWNER TO gestionapp;
+
+--
+-- Name: subcategories; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.subcategories (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    category_id uuid NOT NULL,
+    name character varying(150) NOT NULL,
+    description text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    status character varying(20) DEFAULT 'actif'::character varying,
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.subcategories OWNER TO gestionapp;
+
+--
+-- Name: subscriptions; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.subscriptions (
+    tenant_id uuid NOT NULL,
+    plan_id character varying(50),
+    status character varying(20) DEFAULT 'TRIAL'::character varying,
+    next_billing_date timestamp with time zone,
+    auto_renew boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    current_period character varying(10) DEFAULT '1M'::character varying
+);
+
+
+ALTER TABLE public.subscriptions OWNER TO gestionapp;
+
+--
+-- Name: super_admins; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.super_admins (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    email character varying(255) NOT NULL,
+    password character varying(255) NOT NULL,
+    last_login timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.super_admins OWNER TO gestionapp;
+
+--
+-- Name: suppliers; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.suppliers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    company_name character varying(255) NOT NULL,
+    main_contact character varying(255),
+    email character varying(255),
+    phone character varying(50) NOT NULL,
+    address text,
+    siret character varying(50),
+    tva_intra character varying(50),
+    website character varying(255),
+    payment_terms integer DEFAULT 30,
+    status character varying(20) DEFAULT 'actif'::character varying,
+    deleted_at timestamp with time zone,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.suppliers OWNER TO gestionapp;
+
+--
+-- Name: support_tickets; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.support_tickets (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    user_id uuid,
+    user_name character varying(255),
+    user_email character varying(255),
+    subject character varying(500) NOT NULL,
+    message text NOT NULL,
+    category character varying(32) DEFAULT 'OTHER'::character varying NOT NULL,
+    priority character varying(16) DEFAULT 'NORMAL'::character varying NOT NULL,
+    status character varying(16) DEFAULT 'OPEN'::character varying NOT NULL,
+    admin_reply text,
+    admin_id character varying(255),
+    resolved_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.support_tickets OWNER TO gestionapp;
+
+--
+-- Name: tenants; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.tenants (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    name character varying(255) NOT NULL,
+    domain character varying(255) NOT NULL,
+    is_active boolean DEFAULT true,
+    siret character varying(255),
+    address text,
+    phone character varying(255),
+    email character varying(255),
+    currency character varying(255) DEFAULT 'F CFA'::character varying,
+    timezone character varying(255) DEFAULT 'UTC'::character varying,
+    language character varying(255) DEFAULT 'fr'::character varying,
+    tax_rate numeric(5,2) DEFAULT 18,
+    logo_url text,
+    primary_color character varying(7) DEFAULT '#4f46e5'::character varying,
+    invoice_prefix character varying(20) DEFAULT 'INV-'::character varying,
+    enforce_mfa boolean DEFAULT false,
+    onboarding_completed boolean DEFAULT false,
+    mrr numeric(15,2) DEFAULT 0,
+    payment_status character varying(20) DEFAULT 'PENDING'::character varying,
+    last_payment_date timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    invoice_footer text,
+    cachet_url text,
+    theme character varying(10) DEFAULT 'light'::character varying,
+    font_family character varying(255),
+    base_font_size integer DEFAULT 14,
+    button_color character varying(7),
+    last_payment_amount numeric(15,2) DEFAULT 0,
+    pending_plan_id character varying(50),
+    pending_period character varying(10),
+    plan_id character varying(50),
+    subscription_ends_at timestamp with time zone,
+    storage_used_bytes bigint DEFAULT 0,
+    is_suspended boolean DEFAULT false NOT NULL,
+    suspended_at timestamp with time zone,
+    suspension_reason text,
+    pending_deletion boolean DEFAULT false NOT NULL,
+    deletion_requested_at timestamp with time zone,
+    deletion_scheduled_for timestamp with time zone,
+    deletion_reason text,
+    deletion_backup_path character varying(500)
+);
+
+
+ALTER TABLE public.tenants OWNER TO gestionapp;
+
+--
+-- Name: training_participants; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.training_participants (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    training_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    status character varying(50) DEFAULT 'ENROLLED'::character varying,
+    completion_date timestamp without time zone,
+    grade character varying(10),
+    certificate_url text,
+    feedback text,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.training_participants OWNER TO gestionapp;
+
+--
+-- Name: trainings; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.trainings (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    provider character varying(255),
+    trainer character varying(255),
+    duration_hours integer,
+    start_date timestamp without time zone,
+    end_date timestamp without time zone,
+    location character varying(255),
+    max_participants integer,
+    cost numeric DEFAULT 0,
+    currency character varying(20) DEFAULT 'F CFA'::character varying,
+    status character varying(50) DEFAULT 'PLANNED'::character varying,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.trainings OWNER TO gestionapp;
+
+--
+-- Name: users; Type: TABLE; Schema: public; Owner: gestionapp
+--
+
+CREATE TABLE public.users (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tenant_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    email character varying(255) NOT NULL,
+    password text NOT NULL,
+    role character varying(30) DEFAULT 'EMPLOYEE'::character varying,
+    mfa_enabled boolean DEFAULT false,
+    last_login timestamp with time zone,
+    active_session boolean DEFAULT false,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    roles character varying(255)[] DEFAULT ARRAY['EMPLOYEE'::character varying(255)] NOT NULL,
+    employee_id uuid
+);
+
+
+ALTER TABLE public.users OWNER TO gestionapp;
+
+--
+-- Name: n8n_chat_histories id; Type: DEFAULT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.n8n_chat_histories ALTER COLUMN id SET DEFAULT nextval('public.n8n_chat_histories_id_seq'::regclass);
+
+
+--
+-- Name: services image_url; Type: DEFAULT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.services ALTER COLUMN image_url SET DEFAULT nextval('public.services_image_url_seq'::regclass);
+
+
+--
+-- Name: advances advances_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.advances
+    ADD CONSTRAINT advances_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: announcements announcements_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.announcements
+    ADD CONSTRAINT announcements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: attendances attendances_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.attendances
+    ADD CONSTRAINT attendances_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: backups backups_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.backups
+    ADD CONSTRAINT backups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: candidates candidates_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.candidates
+    ADD CONSTRAINT candidates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: categories categories_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.categories
+    ADD CONSTRAINT categories_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: company_declaration_settings company_declaration_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.company_declaration_settings
+    ADD CONSTRAINT company_declaration_settings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: contact_messages contact_messages_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.contact_messages
+    ADD CONSTRAINT contact_messages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: contracts contracts_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT contracts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: declarations declarations_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.declarations
+    ADD CONSTRAINT declarations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: deliveries deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.deliveries
+    ADD CONSTRAINT deliveries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: delivery_items delivery_items_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.delivery_items
+    ADD CONSTRAINT delivery_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: departments departments_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.departments
+    ADD CONSTRAINT departments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: documents documents_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT documents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_documents employee_documents_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.employee_documents
+    ADD CONSTRAINT employee_documents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employees employees_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: hr_rules hr_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.hr_rules
+    ADD CONSTRAINT hr_rules_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory_campaign_items inventory_campaign_items_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.inventory_campaign_items
+    ADD CONSTRAINT inventory_campaign_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory_campaigns inventory_campaigns_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.inventory_campaigns
+    ADD CONSTRAINT inventory_campaigns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: invoice_items invoice_items_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoice_items
+    ADD CONSTRAINT invoice_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: invoices invoices_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: job_offers job_offers_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.job_offers
+    ADD CONSTRAINT job_offers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: leaves leaves_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.leaves
+    ADD CONSTRAINT leaves_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: n8n_chat_histories n8n_chat_histories_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.n8n_chat_histories
+    ADD CONSTRAINT n8n_chat_histories_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notification_reads notification_reads_notification_id_user_id_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notification_reads
+    ADD CONSTRAINT notification_reads_notification_id_user_id_key UNIQUE (notification_id, user_id);
+
+
+--
+-- Name: notification_reads notification_reads_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notification_reads
+    ADD CONSTRAINT notification_reads_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notifications notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: overtime_requests overtime_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.overtime_requests
+    ADD CONSTRAINT overtime_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payment_records payment_records_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payment_records
+    ADD CONSTRAINT payment_records_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payroll_items payroll_items_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payroll_items
+    ADD CONSTRAINT payroll_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payroll_settings payroll_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payroll_settings
+    ADD CONSTRAINT payroll_settings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payroll_settings payroll_settings_tenant_id_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payroll_settings
+    ADD CONSTRAINT payroll_settings_tenant_id_key UNIQUE (tenant_id);
+
+
+--
+-- Name: performance_reviews performance_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.performance_reviews
+    ADD CONSTRAINT performance_reviews_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plans plans_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.plans
+    ADD CONSTRAINT plans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: primes primes_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.primes
+    ADD CONSTRAINT primes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_movements product_movements_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.product_movements
+    ADD CONSTRAINT product_movements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: registration_intents registration_intents_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.registration_intents
+    ADD CONSTRAINT registration_intents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: registration_intents registration_intents_stripe_session_id_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.registration_intents
+    ADD CONSTRAINT registration_intents_stripe_session_id_key UNIQUE (stripe_session_id);
+
+
+--
+-- Name: sale_items sale_items_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sale_items
+    ADD CONSTRAINT sale_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sales sales_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sales
+    ADD CONSTRAINT sales_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sales sales_reference_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sales
+    ADD CONSTRAINT sales_reference_key UNIQUE (reference);
+
+
+--
+-- Name: services services_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sessions sessions_session_token_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT sessions_session_token_key UNIQUE (session_token);
+
+
+--
+-- Name: stock_items stock_items_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.stock_items
+    ADD CONSTRAINT stock_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: stock_items stock_items_tenant_id_sku_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.stock_items
+    ADD CONSTRAINT stock_items_tenant_id_sku_key UNIQUE (tenant_id, sku);
+
+
+--
+-- Name: subcategories subcategories_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.subcategories
+    ADD CONSTRAINT subcategories_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: subscriptions subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_pkey PRIMARY KEY (tenant_id);
+
+
+--
+-- Name: super_admins super_admins_email_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.super_admins
+    ADD CONSTRAINT super_admins_email_key UNIQUE (email);
+
+
+--
+-- Name: super_admins super_admins_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.super_admins
+    ADD CONSTRAINT super_admins_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: suppliers suppliers_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT suppliers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: support_tickets support_tickets_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT support_tickets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tenants tenants_domain_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key1; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key1 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key10; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key10 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key100; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key100 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key101; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key101 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key102; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key102 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key103; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key103 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key104; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key104 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key105; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key105 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key106; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key106 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key107; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key107 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key108; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key108 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key109; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key109 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key11; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key11 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key110; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key110 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key111; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key111 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key112; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key112 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key113; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key113 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key114; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key114 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key115; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key115 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key116; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key116 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key117; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key117 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key118; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key118 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key119; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key119 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key12; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key12 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key120; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key120 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key121; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key121 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key122; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key122 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key123; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key123 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key124; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key124 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key125; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key125 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key126; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key126 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key13; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key13 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key14; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key14 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key15; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key15 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key16; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key16 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key17; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key17 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key18; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key18 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key19; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key19 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key2; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key2 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key20; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key20 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key21; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key21 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key22; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key22 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key23; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key23 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key24; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key24 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key25; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key25 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key26; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key26 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key27; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key27 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key28; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key28 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key29; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key29 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key3; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key3 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key30; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key30 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key31; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key31 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key32; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key32 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key33; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key33 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key34; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key34 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key35; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key35 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key36; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key36 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key37; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key37 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key38; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key38 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key39; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key39 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key4; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key4 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key40; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key40 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key41; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key41 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key42; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key42 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key43; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key43 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key44; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key44 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key45; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key45 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key46; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key46 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key47; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key47 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key48; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key48 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key49; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key49 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key5; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key5 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key50; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key50 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key51; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key51 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key52; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key52 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key53; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key53 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key54; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key54 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key55; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key55 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key56; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key56 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key57; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key57 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key58; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key58 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key59; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key59 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key6; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key6 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key60; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key60 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key61; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key61 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key62; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key62 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key63; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key63 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key64; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key64 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key65; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key65 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key66; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key66 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key67; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key67 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key68; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key68 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key69; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key69 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key7; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key7 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key70; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key70 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key71; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key71 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key72; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key72 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key73; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key73 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key74; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key74 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key75; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key75 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key76; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key76 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key77; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key77 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key78; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key78 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key79; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key79 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key8; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key8 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key80; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key80 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key81; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key81 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key82; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key82 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key83; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key83 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key84; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key84 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key85; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key85 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key86; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key86 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key87; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key87 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key88; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key88 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key89; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key89 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key9; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key9 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key90; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key90 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key91; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key91 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key92; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key92 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key93; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key93 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key94; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key94 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key95; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key95 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key96; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key96 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key97; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key97 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key98; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key98 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_domain_key99; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_domain_key99 UNIQUE (domain);
+
+
+--
+-- Name: tenants tenants_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: training_participants training_participants_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.training_participants
+    ADD CONSTRAINT training_participants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: trainings trainings_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.trainings
+    ADD CONSTRAINT trainings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_tenant_id_email_key; Type: CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_tenant_id_email_key UNIQUE (tenant_id, email);
+
+
+--
+-- Name: categories_tenant_id_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX categories_tenant_id_name ON public.categories USING btree (tenant_id, name);
+
+
+--
+-- Name: categories_tenant_name_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX categories_tenant_name_idx ON public.categories USING btree (tenant_id, lower((name)::text));
+
+
+--
+-- Name: company_declaration_settings_siret_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX company_declaration_settings_siret_idx ON public.company_declaration_settings USING btree (siret) WHERE (siret IS NOT NULL);
+
+
+--
+-- Name: company_declaration_settings_tax_number_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX company_declaration_settings_tax_number_idx ON public.company_declaration_settings USING btree (tax_number) WHERE (tax_number IS NOT NULL);
+
+
+--
+-- Name: company_declaration_settings_tenant_unique; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX company_declaration_settings_tenant_unique ON public.company_declaration_settings USING btree (tenant_id);
+
+
+--
+-- Name: contact_messages_created_at; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX contact_messages_created_at ON public.contact_messages USING btree (created_at);
+
+
+--
+-- Name: contact_messages_email; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX contact_messages_email ON public.contact_messages USING btree (email);
+
+
+--
+-- Name: contact_messages_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX contact_messages_status ON public.contact_messages USING btree (status);
+
+
+--
+-- Name: customers_tenant_id_company_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX customers_tenant_id_company_name ON public.customers USING btree (tenant_id, company_name) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: declarations_due_date_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX declarations_due_date_idx ON public.declarations USING btree (due_date);
+
+
+--
+-- Name: declarations_organisme_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX declarations_organisme_idx ON public.declarations USING btree (organisme);
+
+
+--
+-- Name: declarations_status_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX declarations_status_idx ON public.declarations USING btree (status);
+
+
+--
+-- Name: declarations_tenant_period_type_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX declarations_tenant_period_type_idx ON public.declarations USING btree (tenant_id, period, declaration_type);
+
+
+--
+-- Name: declarations_unique_per_period; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX declarations_unique_per_period ON public.declarations USING btree (tenant_id, period, declaration_type);
+
+
+--
+-- Name: idx_advances_created_at; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_advances_created_at ON public.advances USING btree (created_at);
+
+
+--
+-- Name: idx_advances_employee_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_advances_employee_id ON public.advances USING btree (employee_id);
+
+
+--
+-- Name: idx_advances_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_advances_status ON public.advances USING btree (status);
+
+
+--
+-- Name: idx_advances_tenant_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_advances_tenant_id ON public.advances USING btree (tenant_id);
+
+
+--
+-- Name: idx_attendances_employee_date; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_attendances_employee_date ON public.attendances USING btree (employee_id, date);
+
+
+--
+-- Name: idx_attendances_tenant_date; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_attendances_tenant_date ON public.attendances USING btree (tenant_id, date);
+
+
+--
+-- Name: idx_audit_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_audit_tenant ON public.audit_logs USING btree (tenant_id);
+
+
+--
+-- Name: idx_candidates_job_offer; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_candidates_job_offer ON public.candidates USING btree (job_offer_id);
+
+
+--
+-- Name: idx_categories_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_categories_status ON public.categories USING btree (status) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: idx_contact_messages_created_at; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_contact_messages_created_at ON public.contact_messages USING btree (created_at);
+
+
+--
+-- Name: idx_contact_messages_email; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_contact_messages_email ON public.contact_messages USING btree (email);
+
+
+--
+-- Name: idx_contact_messages_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_contact_messages_status ON public.contact_messages USING btree (status);
+
+
+--
+-- Name: idx_contracts_employee_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_contracts_employee_id ON public.contracts USING btree (employee_id);
+
+
+--
+-- Name: idx_contracts_tenant_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_contracts_tenant_id ON public.contracts USING btree (tenant_id);
+
+
+--
+-- Name: idx_customers_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_customers_status ON public.customers USING btree (status) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: idx_customers_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_customers_tenant ON public.customers USING btree (tenant_id);
+
+
+--
+-- Name: idx_delivery_items_delivery_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_delivery_items_delivery_id ON public.delivery_items USING btree (delivery_id);
+
+
+--
+-- Name: idx_delivery_items_stock_item_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_delivery_items_stock_item_id ON public.delivery_items USING btree (stock_item_id);
+
+
+--
+-- Name: idx_delivery_tenant_ref; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_delivery_tenant_ref ON public.deliveries USING btree (tenant_id, reference);
+
+
+--
+-- Name: idx_departments_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_departments_name ON public.departments USING btree (tenant_id, name);
+
+
+--
+-- Name: idx_departments_tenant_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_departments_tenant_id ON public.departments USING btree (tenant_id);
+
+
+--
+-- Name: idx_employee_documents_category; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_employee_documents_category ON public.employee_documents USING btree (category);
+
+
+--
+-- Name: idx_employee_documents_created_at; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_employee_documents_created_at ON public.employee_documents USING btree (created_at);
+
+
+--
+-- Name: idx_employee_documents_employee_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_employee_documents_employee_id ON public.employee_documents USING btree (employee_id);
+
+
+--
+-- Name: idx_employees_department_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_employees_department_id ON public.employees USING btree (department_id);
+
+
+--
+-- Name: idx_employees_email; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_employees_email ON public.employees USING btree (email);
+
+
+--
+-- Name: idx_employees_tenant_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_employees_tenant_id ON public.employees USING btree (tenant_id);
+
+
+--
+-- Name: idx_inv_campaign_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_inv_campaign_tenant ON public.inventory_campaigns USING btree (tenant_id);
+
+
+--
+-- Name: idx_inv_item_campaign; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_inv_item_campaign ON public.inventory_campaign_items USING btree (campaign_id);
+
+
+--
+-- Name: idx_invoices_sale_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_invoices_sale_id ON public.invoices USING btree (sale_id);
+
+
+--
+-- Name: idx_invoices_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_invoices_tenant ON public.invoices USING btree (tenant_id);
+
+
+--
+-- Name: idx_leaves_employee_period; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_leaves_employee_period ON public.leaves USING btree (employee_id, start_date, end_date);
+
+
+--
+-- Name: idx_movements_date; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_movements_date ON public.product_movements USING btree (movement_date);
+
+
+--
+-- Name: idx_movements_item; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_movements_item ON public.product_movements USING btree (stock_item_id);
+
+
+--
+-- Name: idx_notif_reads_user; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_notif_reads_user ON public.notification_reads USING btree (user_id);
+
+
+--
+-- Name: idx_notifications_created; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_notifications_created ON public.notifications USING btree (tenant_id, created_at DESC);
+
+
+--
+-- Name: idx_notifications_target; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_notifications_target ON public.notifications USING btree (target_user_id);
+
+
+--
+-- Name: idx_notifications_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_notifications_tenant ON public.notifications USING btree (tenant_id);
+
+
+--
+-- Name: idx_overtime_requests_employee; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_overtime_requests_employee ON public.overtime_requests USING btree (employee_id, requested_date);
+
+
+--
+-- Name: idx_overtime_requests_tenant_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_overtime_requests_tenant_status ON public.overtime_requests USING btree (tenant_id, status);
+
+
+--
+-- Name: idx_payments_subscription; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_payments_subscription ON public.payments USING btree (tenant_id) WHERE (sale_id IS NULL);
+
+
+--
+-- Name: idx_payments_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_payments_tenant ON public.payments USING btree (tenant_id);
+
+
+--
+-- Name: idx_payroll_items_active; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_payroll_items_active ON public.payroll_items USING btree (tenant_id, is_active);
+
+
+--
+-- Name: idx_payroll_items_category; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_payroll_items_category ON public.payroll_items USING btree (tenant_id, category);
+
+
+--
+-- Name: idx_payroll_items_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_payroll_items_tenant ON public.payroll_items USING btree (tenant_id);
+
+
+--
+-- Name: idx_payroll_items_tenant_code; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_payroll_items_tenant_code ON public.payroll_items USING btree (tenant_id, code);
+
+
+--
+-- Name: idx_payroll_items_tenant_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_payroll_items_tenant_name ON public.payroll_items USING btree (tenant_id, name);
+
+
+--
+-- Name: idx_payroll_items_type; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_payroll_items_type ON public.payroll_items USING btree (tenant_id, type);
+
+
+--
+-- Name: idx_performance_reviews_employee; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_performance_reviews_employee ON public.performance_reviews USING btree (employee_id);
+
+
+--
+-- Name: idx_primes_created_at; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_primes_created_at ON public.primes USING btree (created_at);
+
+
+--
+-- Name: idx_primes_employee_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_primes_employee_id ON public.primes USING btree (employee_id);
+
+
+--
+-- Name: idx_primes_payroll_month; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_primes_payroll_month ON public.primes USING btree (payroll_month);
+
+
+--
+-- Name: idx_primes_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_primes_status ON public.primes USING btree (status);
+
+
+--
+-- Name: idx_primes_tenant_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_primes_tenant_id ON public.primes USING btree (tenant_id);
+
+
+--
+-- Name: idx_primes_type; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_primes_type ON public.primes USING btree (type);
+
+
+--
+-- Name: idx_reg_intents_session; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_reg_intents_session ON public.registration_intents USING btree (stripe_session_id);
+
+
+--
+-- Name: idx_reg_intents_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_reg_intents_status ON public.registration_intents USING btree (status);
+
+
+--
+-- Name: idx_sale_items_sale; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sale_items_sale ON public.sale_items USING btree (sale_id);
+
+
+--
+-- Name: idx_sales_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sales_status ON public.sales USING btree (status);
+
+
+--
+-- Name: idx_sales_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sales_tenant ON public.sales USING btree (tenant_id);
+
+
+--
+-- Name: idx_services_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_services_status ON public.services USING btree (status) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: idx_services_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_services_tenant ON public.services USING btree (tenant_id);
+
+
+--
+-- Name: idx_sessions_active; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sessions_active ON public.sessions USING btree (is_active, expires_at);
+
+
+--
+-- Name: idx_sessions_last_activity; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sessions_last_activity ON public.sessions USING btree (last_activity);
+
+
+--
+-- Name: idx_sessions_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sessions_tenant ON public.sessions USING btree (tenant_id);
+
+
+--
+-- Name: idx_sessions_token; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sessions_token ON public.sessions USING btree (session_token);
+
+
+--
+-- Name: idx_sessions_user; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sessions_user ON public.sessions USING btree (user_id);
+
+
+--
+-- Name: idx_stock_items_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_stock_items_status ON public.stock_items USING btree (status) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: idx_stock_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_stock_tenant ON public.stock_items USING btree (tenant_id);
+
+
+--
+-- Name: idx_sub_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_sub_status ON public.subscriptions USING btree (status);
+
+
+--
+-- Name: idx_subcategories_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_subcategories_status ON public.subcategories USING btree (status) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: idx_supplier_tenant_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_supplier_tenant_name ON public.suppliers USING btree (tenant_id, company_name) WHERE ((status)::text = 'actif'::text);
+
+
+--
+-- Name: idx_support_tickets_created_at; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_support_tickets_created_at ON public.support_tickets USING btree (created_at);
+
+
+--
+-- Name: idx_support_tickets_priority; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_support_tickets_priority ON public.support_tickets USING btree (priority);
+
+
+--
+-- Name: idx_support_tickets_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_support_tickets_status ON public.support_tickets USING btree (status);
+
+
+--
+-- Name: idx_support_tickets_tenant_id; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_support_tickets_tenant_id ON public.support_tickets USING btree (tenant_id);
+
+
+--
+-- Name: idx_tenant_payment_status; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_tenant_payment_status ON public.tenants USING btree (payment_status);
+
+
+--
+-- Name: idx_tenants_email_unique; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_tenants_email_unique ON public.tenants USING btree (lower((email)::text)) WHERE ((email IS NOT NULL) AND ((email)::text <> ''::text));
+
+
+--
+-- Name: idx_tenants_phone_unique; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_tenants_phone_unique ON public.tenants USING btree (phone) WHERE ((phone IS NOT NULL) AND ((phone)::text <> ''::text));
+
+
+--
+-- Name: idx_tenants_siret_unique; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_tenants_siret_unique ON public.tenants USING btree (siret) WHERE ((siret IS NOT NULL) AND ((siret)::text <> ''::text));
+
+
+--
+-- Name: idx_training_participants_employee; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_training_participants_employee ON public.training_participants USING btree (employee_id);
+
+
+--
+-- Name: idx_training_participants_training; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_training_participants_training ON public.training_participants USING btree (training_id);
+
+
+--
+-- Name: idx_users_email_unique; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX idx_users_email_unique ON public.users USING btree (lower((email)::text));
+
+
+--
+-- Name: idx_users_tenant; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE INDEX idx_users_tenant ON public.users USING btree (tenant_id);
+
+
+--
+-- Name: stock_items_tenant_id_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX stock_items_tenant_id_name ON public.stock_items USING btree (tenant_id, name) WHERE (subcategory_id IS NULL);
+
+
+--
+-- Name: stock_items_tenant_id_sku; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX stock_items_tenant_id_sku ON public.stock_items USING btree (tenant_id, sku);
+
+
+--
+-- Name: stock_items_tenant_id_subcategory_id_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX stock_items_tenant_id_subcategory_id_name ON public.stock_items USING btree (tenant_id, subcategory_id, name) WHERE (subcategory_id IS NOT NULL);
+
+
+--
+-- Name: stock_items_tenant_null_subcat_name_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX stock_items_tenant_null_subcat_name_idx ON public.stock_items USING btree (tenant_id, lower((name)::text)) WHERE (subcategory_id IS NULL);
+
+
+--
+-- Name: stock_items_tenant_subcat_name_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX stock_items_tenant_subcat_name_idx ON public.stock_items USING btree (tenant_id, subcategory_id, lower((name)::text)) WHERE (subcategory_id IS NOT NULL);
+
+
+--
+-- Name: subcategories_tenant_category_name_idx; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX subcategories_tenant_category_name_idx ON public.subcategories USING btree (tenant_id, category_id, lower((name)::text));
+
+
+--
+-- Name: subcategories_tenant_id_category_id_name; Type: INDEX; Schema: public; Owner: gestionapp
+--
+
+CREATE UNIQUE INDEX subcategories_tenant_id_category_id_name ON public.subcategories USING btree (tenant_id, category_id, name);
+
+
+--
+-- Name: sessions tr_sessions_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER tr_sessions_updated_at BEFORE UPDATE ON public.sessions FOR EACH ROW EXECUTE FUNCTION public.update_sessions_updated_at();
+
+
+--
+-- Name: categories trg_prevent_cat_change; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER trg_prevent_cat_change BEFORE DELETE OR UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.prevent_category_change_if_subcats_exist();
+
+
+--
+-- Name: subcategories trg_prevent_subcat_change; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER trg_prevent_subcat_change BEFORE DELETE OR UPDATE ON public.subcategories FOR EACH ROW EXECUTE FUNCTION public.prevent_subcategory_change_if_items_exist();
+
+
+--
+-- Name: advances trigger_advances_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER trigger_advances_updated_at BEFORE UPDATE ON public.advances FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: employee_documents trigger_employee_documents_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER trigger_employee_documents_updated_at BEFORE UPDATE ON public.employee_documents FOR EACH ROW EXECUTE FUNCTION public.update_employee_documents_updated_at();
+
+
+--
+-- Name: primes trigger_primes_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER trigger_primes_updated_at BEFORE UPDATE ON public.primes FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: payroll_items trigger_update_payroll_items_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER trigger_update_payroll_items_updated_at BEFORE UPDATE ON public.payroll_items FOR EACH ROW EXECUTE FUNCTION public.update_payroll_items_updated_at();
+
+
+--
+-- Name: candidates update_candidates_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_candidates_updated_at BEFORE UPDATE ON public.candidates FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: company_declaration_settings update_company_declaration_settings_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_company_declaration_settings_updated_at BEFORE UPDATE ON public.company_declaration_settings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: contact_messages update_contact_messages_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_contact_messages_updated_at BEFORE UPDATE ON public.contact_messages FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: declarations update_declarations_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_declarations_updated_at BEFORE UPDATE ON public.declarations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: departments update_departments_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_departments_updated_at BEFORE UPDATE ON public.departments FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: job_offers update_job_offers_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_job_offers_updated_at BEFORE UPDATE ON public.job_offers FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: leaves update_leaves_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_leaves_updated_at BEFORE UPDATE ON public.leaves FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: payroll_settings update_payroll_settings_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_payroll_settings_updated_at BEFORE UPDATE ON public.payroll_settings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: performance_reviews update_performance_reviews_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_performance_reviews_updated_at BEFORE UPDATE ON public.performance_reviews FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: training_participants update_training_participants_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_training_participants_updated_at BEFORE UPDATE ON public.training_participants FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: trainings update_trainings_updated_at; Type: TRIGGER; Schema: public; Owner: gestionapp
+--
+
+CREATE TRIGGER update_trainings_updated_at BEFORE UPDATE ON public.trainings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: announcements announcements_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.announcements
+    ADD CONSTRAINT announcements_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: audit_logs audit_logs_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: backups backups_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.backups
+    ADD CONSTRAINT backups_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: categories categories_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.categories
+    ADD CONSTRAINT categories_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: company_declaration_settings company_declaration_settings_last_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.company_declaration_settings
+    ADD CONSTRAINT company_declaration_settings_last_updated_by_fkey FOREIGN KEY (last_updated_by) REFERENCES public.users(id);
+
+
+--
+-- Name: company_declaration_settings company_declaration_settings_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.company_declaration_settings
+    ADD CONSTRAINT company_declaration_settings_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: contracts contracts_previous_contract_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.contracts
+    ADD CONSTRAINT contracts_previous_contract_id_fkey FOREIGN KEY (previous_contract_id) REFERENCES public.contracts(id) ON DELETE SET NULL;
+
+
+--
+-- Name: customers customers_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: declarations declarations_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.declarations
+    ADD CONSTRAINT declarations_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: declarations declarations_last_modified_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.declarations
+    ADD CONSTRAINT declarations_last_modified_by_fkey FOREIGN KEY (last_modified_by) REFERENCES public.users(id);
+
+
+--
+-- Name: declarations declarations_submitted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.declarations
+    ADD CONSTRAINT declarations_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.users(id);
+
+
+--
+-- Name: declarations declarations_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.declarations
+    ADD CONSTRAINT declarations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: deliveries deliveries_supplier_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.deliveries
+    ADD CONSTRAINT deliveries_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id);
+
+
+--
+-- Name: deliveries deliveries_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.deliveries
+    ADD CONSTRAINT deliveries_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: delivery_items delivery_items_delivery_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.delivery_items
+    ADD CONSTRAINT delivery_items_delivery_id_fkey FOREIGN KEY (delivery_id) REFERENCES public.deliveries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: delivery_items delivery_items_stock_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.delivery_items
+    ADD CONSTRAINT delivery_items_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id);
+
+
+--
+-- Name: employee_documents employee_documents_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.employee_documents
+    ADD CONSTRAINT employee_documents_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employees employees_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_department_id_fkey FOREIGN KEY (department_id) REFERENCES public.departments(id) ON DELETE SET NULL;
+
+
+--
+-- Name: employees employees_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.employees(id) ON DELETE SET NULL;
+
+
+--
+-- Name: advances fk_advances_approver; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.advances
+    ADD CONSTRAINT fk_advances_approver FOREIGN KEY (approved_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: advances fk_advances_employee; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.advances
+    ADD CONSTRAINT fk_advances_employee FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: advances fk_advances_tenant; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.advances
+    ADD CONSTRAINT fk_advances_tenant FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: candidates fk_candidates_job_offer; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.candidates
+    ADD CONSTRAINT fk_candidates_job_offer FOREIGN KEY (job_offer_id) REFERENCES public.job_offers(id);
+
+
+--
+-- Name: candidates fk_candidates_tenant; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.candidates
+    ADD CONSTRAINT fk_candidates_tenant FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
+
+
+--
+-- Name: payroll_settings fk_payroll_settings_tenant; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payroll_settings
+    ADD CONSTRAINT fk_payroll_settings_tenant FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
+
+
+--
+-- Name: primes fk_primes_approver; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.primes
+    ADD CONSTRAINT fk_primes_approver FOREIGN KEY (approved_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: primes fk_primes_employee; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.primes
+    ADD CONSTRAINT fk_primes_employee FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: primes fk_primes_tenant; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.primes
+    ADD CONSTRAINT fk_primes_tenant FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sessions fk_sessions_user; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sessions
+    ADD CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: support_tickets fk_tenant; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.support_tickets
+    ADD CONSTRAINT fk_tenant FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: inventory_campaign_items inventory_campaign_items_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.inventory_campaign_items
+    ADD CONSTRAINT inventory_campaign_items_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.inventory_campaigns(id) ON DELETE CASCADE;
+
+
+--
+-- Name: inventory_campaign_items inventory_campaign_items_stock_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.inventory_campaign_items
+    ADD CONSTRAINT inventory_campaign_items_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE;
+
+
+--
+-- Name: inventory_campaigns inventory_campaigns_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.inventory_campaigns
+    ADD CONSTRAINT inventory_campaigns_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: invoice_items invoice_items_invoice_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoice_items
+    ADD CONSTRAINT invoice_items_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES public.invoices(id) ON DELETE CASCADE;
+
+
+--
+-- Name: invoice_items invoice_items_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoice_items
+    ADD CONSTRAINT invoice_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.stock_items(id);
+
+
+--
+-- Name: invoices invoices_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id);
+
+
+--
+-- Name: invoices invoices_sale_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_sale_id_fkey FOREIGN KEY (sale_id) REFERENCES public.sales(id) ON DELETE SET NULL;
+
+
+--
+-- Name: invoices invoices_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: notification_reads notification_reads_notification_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notification_reads
+    ADD CONSTRAINT notification_reads_notification_id_fkey FOREIGN KEY (notification_id) REFERENCES public.notifications(id) ON DELETE CASCADE;
+
+
+--
+-- Name: notification_reads notification_reads_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notification_reads
+    ADD CONSTRAINT notification_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: notifications notifications_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: notifications notifications_target_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_target_user_id_fkey FOREIGN KEY (target_user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: notifications notifications_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: payment_records payment_records_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payment_records
+    ADD CONSTRAINT payment_records_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
+
+
+--
+-- Name: payments payments_sale_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_sale_id_fkey FOREIGN KEY (sale_id) REFERENCES public.sales(id) ON DELETE CASCADE;
+
+
+--
+-- Name: payments payments_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_movements product_movements_stock_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.product_movements
+    ADD CONSTRAINT product_movements_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: product_movements product_movements_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.product_movements
+    ADD CONSTRAINT product_movements_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sale_items sale_items_sale_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sale_items
+    ADD CONSTRAINT sale_items_sale_id_fkey FOREIGN KEY (sale_id) REFERENCES public.sales(id) ON DELETE CASCADE;
+
+
+--
+-- Name: sale_items sale_items_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sale_items
+    ADD CONSTRAINT sale_items_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.services(id) ON DELETE SET NULL;
+
+
+--
+-- Name: sale_items sale_items_stock_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sale_items
+    ADD CONSTRAINT sale_items_stock_item_id_fkey FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: sales sales_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sales
+    ADD CONSTRAINT sales_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE SET NULL;
+
+
+--
+-- Name: sales sales_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.sales
+    ADD CONSTRAINT sales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: services services_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: stock_items stock_items_subcategory_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.stock_items
+    ADD CONSTRAINT stock_items_subcategory_id_fkey FOREIGN KEY (subcategory_id) REFERENCES public.subcategories(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: stock_items stock_items_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.stock_items
+    ADD CONSTRAINT stock_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: subcategories subcategories_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.subcategories
+    ADD CONSTRAINT subcategories_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: subcategories subcategories_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.subcategories
+    ADD CONSTRAINT subcategories_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: subscriptions subscriptions_plan_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.plans(id);
+
+
+--
+-- Name: subscriptions subscriptions_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: suppliers suppliers_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT suppliers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: users users_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: users users_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: gestionapp
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: gestionapp
+--
+
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict xGn4eUeRIjYkGmdVIe1BHezy8wkapAfigpzxzMEcE9YZpQtFs0KValmCOFDoGsv
+
