@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Bulletin de Paie – undefined undefined</title>
+<style>
+  *, *::before, *::after { 
+    box-sizing: border-box; 
+    margin: 0; 
+    padding: 0; 
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: white;
+    padding: 48px;
+    color: #1e293b;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #payslip-render {
+    background: white;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 48px;
+    color: #1e293b;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+    border: 1px solid #f1f5f9;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 40px;
+    margin-bottom: 48px;
+  }
+
+  .company-logo {
+    height: 80px;
+    width: auto;
+    object-fit: contain;
+    margin-bottom: 16px;
+    max-width: 220px;
+  }
+
+  .company-name {
+    font-size: 30px;
+    font-weight: 900;
+    color: #4f46e5;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: -0.05em;
+  }
+
+  .company-details {
+    margin-top: 16px;
+  }
+
+  .detail-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+
+  .icon-pin, .icon-phone, .icon-mail {
+    width: 10px;
+    height: 10px;
+    color: #4f46e5;
+  }
+
+  .title-section {
+    text-align: right;
+  }
+
+  .doc-title {
+    font-size: 32px;
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: -0.05em;
+    margin-bottom: 8px;
+  }
+
+  .period-badge {
+    display: inline-block;
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: #4f46e5;
+    background: #eef2ff;
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.1);
+    text-transform: capitalize;
+  }
+
+  .generation-date {
+    font-size: 10px;
+    font-weight: 900;
+    color: #64748b;
+    margin-top: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  /* ── EMPLOYEE SECTION ── */
+  .employee-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 48px;
+  }
+
+  .employee-card {
+    padding: 32px;
+    background: #f8fafc;
+    border-radius: 24px;
+    border: 1px solid #e2e8f0;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.04);
+  }
+
+  .card-title {
+    font-size: 10px;
+    font-weight: 900;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 12px;
+  }
+
+  .employee-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    object-fit: cover;
+    margin-bottom: 16px;
+    border: 2px solid white;
+    box-shadow: 0 4px 6px rgba(0,0,0,.1);
+  }
+
+  .employee-name {
+    font-size: 20px;
+    font-weight: 900;
+    color: #0f172a;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .info-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 900;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+
+  .info-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+  }
+
+  .status-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 16px;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #059669;
+    background: #ecfdf5;
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    border: 1px solid #a7f3d0;
+  }
+
+  .legal-note {
+    font-size: 9px;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    line-height: 1.6;
+    text-align: right;
+  }
+
+  .legal-highlight {
+    color: #0f172a;
+    font-weight: 900;
+    font-style: italic;
+  }
+
+  /* ── TABLE ── */
+  .salary-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-bottom: 48px;
+  }
+
+  .salary-table thead tr {
+    background: #0f172a;
+    color: white;
+  }
+
+  .salary-table th {
+    padding: 20px;
+    font-size: 9px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  .salary-table th:first-child {
+    border-radius: 16px 0 0 0;
+  }
+
+  .salary-table th:last-child {
+    border-radius: 0 16px 0 0;
+    text-align: right;
+  }
+
+  .salary-table tbody tr {
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .salary-table tbody tr:hover {
+    background: rgba(248, 250, 252, 0.5);
+  }
+
+  .salary-table td {
+    padding: 20px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .rubrique-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .dot-green { background: #10b981; }
+  .dot-red { background: #f43f5e; }
+  .dot-gray { background: #94a3b8; }
+
+  .nature-badge {
+    display: inline-block;
+    font-size: 8px;
+    font-family: monospace;
+    font-weight: 900;
+    padding: 4px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+  }
+
+  .badge-gain {
+    background: #ecfdf5;
+    color: #065f46;
+  }
+
+  .badge-retenue {
+    background: #fff1f2;
+    color: #9f1239;
+  }
+
+  .badge-info {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+
+  .amount-cell {
+    text-align: right;
+    font-weight: 900;
+  }
+
+  .amount-green { color: #059669; }
+  .amount-red { color: #e11d48; }
+  .amount-gray { color: #94a3b8; }
+
+  .gross-row {
+    background: #f8fafc;
+  }
+
+  .gross-row td {
+    font-weight: 900;
+  }
+
+  .info-row-table {
+    opacity: 0.6;
+  }
+
+  /* ── TOTALS ── */
+  .totals-section {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 48px;
+  }
+
+  .totals-box {
+    width: 320px;
+  }
+
+  .summary-lines {
+    padding: 0 24px;
+    margin-bottom: 16px;
+  }
+
+  .summary-line {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+  }
+
+  .summary-gray { color: #64748b; }
+  .summary-red { color: #e11d48; }
+  .summary-green { color: #059669; }
+
+  .net-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px;
+    background: #0f172a;
+    color: white;
+    border-radius: 32px;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,.2);
+  }
+
+  .net-label {
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  .net-amount {
+    font-size: 24px;
+    font-weight: 900;
+  }
+
+  .net-currency {
+    font-size: 12px;
+  }
+
+  /* ── FOOTER ── */
+  .footer-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 96px;
+    padding-top: 48px;
+  }
+
+  .system-info {
+    font-size: 8px;
+    color: #e2e8f0;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-style: italic;
+    line-height: 1.8;
+  }
+
+  .signature-section {
+    text-align: center;
+    width: 256px;
+  }
+
+  .signature-title {
+    font-size: 10px;
+    font-weight: 900;
+    color: #0f172a;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    text-decoration: underline;
+    text-decoration-color: #4f46e5;
+    text-underline-offset: 8px;
+    text-decoration-thickness: 2px;
+    margin-bottom: 16px;
+  }
+
+  .signature-box {
+    height: 128px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cachet-image {
+    height: 128px;
+    width: auto;
+    object-fit: contain;
+    mix-blend-mode: multiply;
+    transition: transform 0.3s ease;
+  }
+
+  .cachet-image:hover {
+    transform: scale(1.1);
+  }
+
+  .paid-stamp {
+    border: 4px solid rgba(16, 185, 129, 0.3);
+    color: #10b981;
+    border-radius: 50%;
+    padding: 8px 24px;
+    transform: rotate(12deg);
+    font-weight: 900;
+    text-transform: uppercase;
+    font-size: 20px;
+  }
+
+  @media print {
+    body { padding: 20px; }
+    #payslip-render { box-shadow: none; border: none; }
+    .cachet-image:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div id="payslip-render">
+
+  <!-- ── HEADER ─────────────────────────────────────────────────────── -->
+  <div class="header">
+    <div>
+      <div class="company-name">Mon Entreprise SARL</div>
+      <div class="company-details">
+        <div class="detail-line">
+          <svg class="icon-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          <span>456 Avenue des Affaires, Paris 75008</span>
+        </div>
+        <div class="detail-line">
+          <svg class="icon-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>01 23 45 67 89</span>
+        </div>
+        <div class="detail-line">
+          <svg class="icon-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          <span>contact@monentreprise.fr</span>
+        </div>
+      </div>
+    </div>
+    <div class="title-section">
+      <h1 class="doc-title">BULLETIN DE PAIE</h1>
+      <div class="period-badge">janvier 2025</div>
+      <div class="generation-date">Généré le : 05/03/2026</div>
+      <div class="generation-date" style="margin-top:4px;">SIRET : 12345678901234</div>
+    </div>
+  </div>
+
+  <!-- ── EMPLOYÉ + STATUT ──────────────────────────────────────────── -->
+  <div class="employee-section">
+    <div class="employee-card">
+      <div class="card-title">Salarié</div>
+      
+      <div class="employee-name">undefined undefined</div>
+      
+      <div class="info-row">
+        <div class="info-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Matricule
+        </div>
+        <div class="info-value">EMP001</div>
+      </div>
+      
+      <div class="info-row">
+        <div class="info-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          Poste
+        </div>
+        <div class="info-value">Développeur</div>
+      </div>
+      
+      <div class="info-row">
+        <div class="info-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 21h18"></path>
+            <path d="M5 21V7l8-4v18"></path>
+            <path d="M19 21V11l-6-4"></path>
+          </svg>
+          Département
+        </div>
+        <div class="info-value">N/A</div>
+      </div>
+      
+      <div class="info-row">
+        <div class="info-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          Date d'embauche
+        </div>
+        <div class="info-value">N/A</div>
+      </div>
+      
+      <div class="info-row">
+        <div class="info-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+            <line x1="1" y1="10" x2="23" y2="10"></line>
+          </svg>
+          Type de contrat
+        </div>
+        <div class="info-value">N/A</div>
+      </div>
+      
+      <div class="info-row">
+        <div class="info-label">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2C17.5 6.67 17.5 17.33 12 22"></path>
+            <path d="M12 2C6.5 6.67 6.5 17.33 12 22"></path>
+          </svg>
+          Pays
+        </div>
+        <div class="info-value">Sénégal</div>
+      </div>
+    </div>
+
+    <div class="status-section">
+      <div class="status-badge">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22,4 12,14.01 9,11.01"></polyline>
+        </svg>
+        <span>SOLDE ENCAISSÉ</span>
+      </div>
+      <div class="legal-note">
+        Mention légale :<br/>
+        <span class="legal-highlight">Paiement selon conditions générales en vigueur au Sénégal.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TABLEAU DES RUBRIQUES ─────────────────────────────────────── -->
+  <table class="salary-table">
+    <thead>
+      <tr>
+        <th>Rubrique</th>
+        <th>Nature</th>
+        <th>Montant (F CFA)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Salaire de base -->
+      <tr>
+        <td>
+          <div class="rubrique-cell">
+            <span class="dot dot-green"></span>
+            <span>SALAIRE DE BASE</span>
+          </div>
+        </td>
+        <td>
+          <span class="nature-badge badge-gain">Gain</span>
+        </td>
+        <td class="amount-cell">0</td>
+      </tr>
+
+      <!-- Primes -->
+      <tr>
+        <td>
+          <div class="rubrique-cell">
+            <span class="dot dot-green"></span>
+            <span>PRIMES DU MOIS</span>
+          </div>
+        </td>
+        <td>
+          <span class="nature-badge badge-gain">Gain</span>
+        </td>
+        <td class="amount-cell amount-green">+0</td>
+      </tr>
+
+      <!-- Salaire brut -->
+      <tr class="gross-row">
+        <td>SALAIRE BRUT</td>
+        <td></td>
+        <td class="amount-cell">0</td>
+      </tr>
+
+      <!-- Charges sociales salarié -->
+      <tr>
+        <td>
+          <div class="rubrique-cell">
+            <span class="dot dot-red"></span>
+            <span>CHARGES SOCIALES SALARIÉ</span>
+          </div>
+        </td>
+        <td>
+          <span class="nature-badge badge-retenue">Retenue</span>
+        </td>
+        <td class="amount-cell amount-red">-0</td>
+      </tr>
+
+      <!-- Avances déduites -->
+      <tr>
+        <td>
+          <div class="rubrique-cell">
+            <span class="dot dot-red"></span>
+            <span>AVANCES DÉDUITES</span>
+          </div>
+        </td>
+        <td>
+          <span class="nature-badge badge-retenue">Retenue</span>
+        </td>
+        <td class="amount-cell amount-red">-0</td>
+      </tr>
+
+      <!-- Charges patronales (info) -->
+      <tr class="info-row-table">
+        <td>
+          <div class="rubrique-cell">
+            <span class="dot dot-gray"></span>
+            <span>CHARGES PATRONALES (INFO)</span>
+          </div>
+        </td>
+        <td>
+          <span class="nature-badge badge-info">Info</span>
+        </td>
+        <td class="amount-cell amount-gray">0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── TOTAUX ─────────────────────────────────────────────────────── -->
+  <div class="totals-section">
+    <div class="totals-box">
+      <div class="summary-lines">
+        <div class="summary-line summary-gray">
+          <span>Salaire brut</span>
+          <span>0 F CFA</span>
+        </div>
+        <div class="summary-line summary-red">
+          <span>Total retenues</span>
+          <span>-0 F CFA</span>
+        </div>
+        
+      </div>
+      <div class="net-total">
+        <span class="net-label">NET À PAYER</span>
+        <span class="net-amount">0 <span class="net-currency">F CFA</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FOOTER / SIGNATURES ───────────────────────────────────────── -->
+  <div class="footer-section">
+    <div class="system-info">
+      <div>Mon Entreprise SARL • Système de Paie GeStockPro</div>
+      <div>Généré automatiquement par le moteur de paie GeStockPro.</div>
+      <div style="margin-top:16px;">EMPLOYÉ ID : </div>
+    </div>
+    <div class="signature-section">
+      <div class="signature-title">VISA &amp; CACHET</div>
+      <div class="signature-box">
+        <div class="paid-stamp">PAYÉ</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

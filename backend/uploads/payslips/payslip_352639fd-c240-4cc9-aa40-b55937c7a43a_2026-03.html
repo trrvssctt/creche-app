@@ -1,0 +1,452 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiche de Paie - Seydou Dianka</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 48px; 
+            background: white; 
+            color: #1e293b;
+            width: 210mm;
+            min-height: 297mm;
+            box-sizing: border-box;
+        }
+        .document-container {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+            border-radius: 0;
+        }
+        
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #0f172a;
+            padding-bottom: 40px;
+            margin-bottom: 48px;
+        }
+        .company-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .logo-placeholder {
+            width: 48px;
+            height: 48px;
+            background: #4f46e5;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 900;
+            font-size: 14px;
+        }
+        .company-name { 
+            font-size: 24px; 
+            font-weight: 900; 
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+        }
+        .company-name .highlight { color: #4f46e5; }
+        .company-details { 
+            font-size: 10px; 
+            color: #64748b; 
+            margin-top: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            line-height: 1.6;
+        }
+        .company-details .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        .icon { 
+            width: 10px; 
+            height: 10px; 
+            color: #4f46e5;
+        }
+        
+        .document-title {
+            text-align: right;
+        }
+        .title { 
+            font-size: 32px; 
+            font-weight: 900; 
+            color: #0f172a;
+            letter-spacing: -1px;
+            margin-bottom: 8px;
+        }
+        .reference {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            color: #4f46e5;
+            background: #eef2ff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: inline-block;
+            font-size: 14px;
+        }
+        .date-info {
+            font-size: 10px;
+            font-weight: 900;
+            color: #94a3b8;
+            margin-top: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Employee Section */
+        .employee-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin: 48px 0;
+        }
+        .employee-info { 
+            background: #f8fafc; 
+            padding: 32px; 
+            border-radius: 24px; 
+            border: 1px solid #e2e8f0;
+        }
+        .section-label {
+            font-size: 10px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+        .employee-name {
+            font-size: 20px;
+            font-weight: 900;
+            color: #0f172a;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .employee-details {
+            font-size: 12px;
+            color: #475569;
+            font-weight: 600;
+            line-height: 1.8;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #059669;
+            background: #ecfdf5;
+            padding: 8px 16px;
+            border-radius: 16px;
+            border: 1px solid #a7f3d0;
+            font-size: 14px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: auto;
+        }
+        
+        /* Table */
+        .payslip-table { 
+            width: 100%; 
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 48px 0;
+        }
+        .payslip-table thead tr {
+            background: #0f172a;
+            color: white;
+        }
+        .payslip-table th { 
+            padding: 20px;
+            font-size: 9px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: left;
+        }
+        .payslip-table th:first-child { border-top-left-radius: 16px; }
+        .payslip-table th:last-child { border-top-right-radius: 16px; }
+        .payslip-table td { 
+            padding: 20px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .payslip-table tbody tr:hover { background: #f8fafc; }
+        .amount { text-align: right; font-weight: 700; }
+        
+        /* Totals */
+        .totals-section {
+            display: flex;
+            justify-content: flex-end;
+            margin: 48px 0;
+        }
+        .totals-container {
+            width: 320px;
+        }
+        .total-row { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 16px 0;
+            margin: 8px 0;
+        }
+        .total-gross { 
+            background: #f1f5f9; 
+            padding: 24px;
+            border-radius: 24px;
+            font-weight: 700;
+        }
+        .total-deductions { 
+            background: #fef3e2; 
+            padding: 24px;
+            border-radius: 24px;
+            font-weight: 700;
+        }
+        .total-net { 
+            background: #0f172a; 
+            color: white;
+            padding: 24px;
+            border-radius: 24px;
+            font-weight: 900;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .currency { font-size: 12px; font-weight: 600; }
+        
+        /* Footer */
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 48px;
+            margin-top: 96px;
+        }
+        .footer-info {
+            font-size: 8px;
+            color: #cbd5e1;
+            font-weight: 700;
+            text-transform: uppercase;
+            line-height: 1.6;
+        }
+        .signature-section {
+            text-align: center;
+            width: 256px;
+        }
+        .signature-label {
+            font-size: 10px;
+            font-weight: 900;
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-decoration: underline;
+            text-decoration-color: #4f46e5;
+            text-underline-offset: 8px;
+            text-decoration-thickness: 2px;
+            margin-bottom: 16px;
+        }
+        .signature-area {
+            height: 128px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .paid-stamp {
+            border: 4px solid rgba(34, 197, 94, 0.3);
+            color: #22c55e;
+            border-radius: 50%;
+            padding: 12px 24px;
+            transform: rotate(12deg);
+            font-weight: 900;
+            text-transform: uppercase;
+            font-size: 20px;
+        }
+        
+        @media print { 
+            body { margin: 0; padding: 20px; } 
+            .document-container { box-shadow: none; border: none; }
+        }
+    </style>
+</head>
+<body>
+    <div id="payslip-document" class="document-container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <div class="company-info">
+                    <div class="logo-placeholder">GSP</div>
+                    <div class="company-name">
+                        GESTOCK<span class="highlight">PRO</span> Enterprise
+                    </div>
+                </div>
+                <div class="company-details">
+                    <div class="detail-item">
+                        <span class="icon">📍</span> 10 Avenue Hassan II, Dakar, Sénégal
+                    </div>
+                    <div class="detail-item">
+                        <span class="icon">📞</span> +221 33 123 45 67
+                    </div>
+                    <div class="detail-item">
+                        <span class="icon">✉️</span> contact@gestockpro.com
+                    </div>
+                    <div class="detail-item">
+                        <span class="icon">🏢</span> SIRET: 12345678901234
+                    </div>
+                </div>
+            </div>
+            <div class="document-title">
+                <h1 class="title">BULLETIN DE PAIE</h1>
+                <div class="reference">Ref: #PAY-352639fd</div>
+                <div class="date-info">Période: mars 2026</div>
+            </div>
+        </div>
+
+        <!-- Employee Info -->
+        <div class="employee-section">
+            <div class="employee-info">
+                <div class="section-label">Employé / Salarié</div>
+                <div class="employee-name">Seydou Dianka</div>
+                <div class="employee-details">
+                    <div><strong>Poste:</strong> Developpeur</div>
+                    <div><strong>Matricule:</strong> 352639fd</div>
+                    <div><strong>Date d'embauche:</strong> 08/03/2024</div>
+                    <div><strong>Statut:</strong> ACTIVE</div>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; justify-content: center; text-align: right;">
+                <div class="status-badge">
+                    <span>💰</span>
+                    <span>Bulletin Généré</span>
+                </div>
+                <div style="font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-top: 16px; font-style: italic;">
+                    Document officiel de paie<br/>
+                    <span style="color: #0f172a; font-weight: 900;">Confidentiel - Usage interne uniquement</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payroll Details Table -->
+        <div>
+            <table class="payslip-table">
+                <thead>
+                    <tr>
+                        <th>Libellé</th>
+                        <th>Base</th>
+                        <th>Taux</th>
+                        <th class="amount">Gains</th>
+                        <th class="amount">Retenues</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Salaire de Base</strong></td>
+                        <td class="amount">300 000</td>
+                        <td>-</td>
+                        <td class="amount"><strong>300 000 F CFA</strong></td>
+                        <td class="amount">-</td>
+                    </tr>
+                    <tr>
+                        <td>Indemnités & Primes</td>
+                        <td class="amount">300 000</td>
+                        <td>10%</td>
+                        <td class="amount">30 000 F CFA</td>
+                        <td class="amount">-</td>
+                    </tr>
+                    <tr>
+                        <td>Cotisations Sociales</td>
+                        <td class="amount">330 000</td>
+                        <td>20%</td>
+                        <td class="amount">-</td>
+                        <td class="amount">66 000 F CFA</td>
+                    </tr>
+                    <tr>
+                        <td>Impôt sur le Revenu</td>
+                        <td class="amount">300 000</td>
+                        <td>15%</td>
+                        <td class="amount">-</td>
+                        <td class="amount">45 000 F CFA</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="totals-section">
+            <div class="totals-container">
+                <div class="total-row total-gross">
+                    <span><strong>TOTAL BRUT:</strong></span>
+                    <span><strong>330 000 <span class="currency">F CFA</span></strong></span>
+                </div>
+                <div class="total-row total-deductions">
+                    <span><strong>TOTAL RETENUES:</strong></span>
+                    <span><strong>111 000 <span class="currency">F CFA</span></strong></span>
+                </div>
+                <div class="total-row total-net">
+                    <span><strong>NET À PAYER:</strong></span>
+                    <span><strong>219 000 <span class="currency">F CFA</span></strong></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-info">
+                <div>GeStockPro Enterprise • Kernel Cloud AlwaysData v3.2</div>
+                <div>Généré automatiquement par le moteur de paie GeStockPro.</div>
+                <div style="margin-top: 16px;">ID TRANSACTION : 352639FD-C240-4CC9-AA40-B55937C7A43A</div>
+            </div>
+            <div class="signature-section">
+                <div class="signature-label">Visa & Cachet</div>
+                <div class="signature-area">
+                    <div class="paid-stamp">VALIDÉ</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fonctions pour le téléchargement en différents formats
+        function downloadAsPDF() {
+            window.print();
+        }
+
+        function downloadAsImage(format = 'png') {
+            const element = document.getElementById('payslip-document');
+            
+            // Utiliser html2canvas pour convertir en image
+            if (typeof html2canvas !== 'undefined') {
+                html2canvas(element, {
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = 'Fiche_Paie_Seydou_Dianka_2026-03.' + format;
+                    link.href = canvas.toDataURL('image/' + format);
+                    link.click();
+                });
+            } else {
+                alert('Fonctionnalité de téléchargement image non disponible');
+            }
+        }
+
+        // Boutons de téléchargement (optionnels, peuvent être activés via console)
+        window.downloadPDF = downloadAsPDF;
+        window.downloadPNG = () => downloadAsImage('png');
+        window.downloadJPG = () => downloadAsImage('jpeg');
+    </script>
+</body>
+</html>

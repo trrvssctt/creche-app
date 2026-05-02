@@ -1,0 +1,135 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiche de Paie - Mariama N'DIAYE</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20mm; 
+            background: white; 
+            color: #1e293b;
+            font-size: 12px;
+        }
+        @page { size: A4; margin: 20mm; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px; }
+        .company-name { font-size: 24px; font-weight: 900; color: #0f172a; }
+        .title { font-size: 28px; font-weight: bold; text-align: right; }
+        .employee-info { background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .payslip-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .payslip-table th, .payslip-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .payslip-table th { background-color: #0f172a; color: white; }
+        .amount { text-align: right; font-weight: bold; }
+        .totals { margin-top: 30px; }
+        .total-net { background: #0f172a; color: white; padding: 15px; font-size: 18px; font-weight: bold; text-align: center; }
+    </style>
+</head>
+<body>
+    <div id="payslip-document">
+        <div class="header">
+            <div>
+                <div class="company-name">GeStockPro Enterprise</div>
+                <div>10 Avenue Hassan II, Dakar, Sénégal</div>
+                <div>Tél: +221 33 123 45 67</div>
+                <div>Email: contact@gestockpro.com</div>
+            </div>
+            <div>
+                <div class="title">BULLETIN DE PAIE</div>
+                <div>Période: mars 2026</div>
+            </div>
+        </div>
+
+        <div class="employee-info">
+            <h3>Informations Employé</h3>
+            <div><strong>Nom:</strong> Mariama N'DIAYE</div>
+            <div><strong>Poste:</strong> Product Owner</div>
+        </div>
+
+        <table class="payslip-table">
+            <thead>
+                <tr>
+                    <th>Libellé</th>
+                    <th>Base</th>
+                    <th>Taux</th>
+                    <th class="amount">Gains</th>
+                    <th class="amount">Retenues</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Salaire de Base</td>
+                    <td class="amount">1 500 000</td>
+                    <td>-</td>
+                    <td class="amount">1 500 000 F CFA</td>
+                    <td class="amount">-</td>
+                </tr>
+                <tr>
+                    <td>Indemnités</td>
+                    <td class="amount">1 500 000</td>
+                    <td>10%</td>
+                    <td class="amount">150 000 F CFA</td>
+                    <td class="amount">-</td>
+                </tr>
+                <tr>
+                    <td>Cotisations Sociales</td>
+                    <td class="amount">1 650 000</td>
+                    <td>20%</td>
+                    <td class="amount">-</td>
+                    <td class="amount">330 000 F CFA</td>
+                </tr>
+                <tr>
+                    <td>Impôt sur le Revenu</td>
+                    <td class="amount">1 620 000</td>
+                    <td>15%</td>
+                    <td class="amount">-</td>
+                    <td class="amount">243 000 F CFA</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <div><strong>TOTAL BRUT:</strong> 1 650 000 F CFA</div>
+            <div><strong>TOTAL RETENUES:</strong> 573 000 F CFA</div>
+            <div class="total-net">NET À PAYER: 1 077 000 F CFA</div>
+        </div>
+    </div>
+
+    <script>
+        // Fonctions pour le téléchargement
+        function downloadAsPDF() {
+            window.print();
+        }
+
+        function downloadAsImage(format = 'png') {
+            if (typeof html2canvas !== 'undefined') {
+                html2canvas(document.getElementById('payslip-document'), {
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#ffffff'
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = 'Fiche_Paie_Mariama_N'DIAYE_2026-03.' + format;
+                    link.href = canvas.toDataURL('image/' + (format === 'jpg' ? 'jpeg' : format), 0.9);
+                    link.click();
+                });
+            } else {
+                alert('Fonctionnalité de téléchargement image non disponible');
+            }
+        }
+
+        // Auto-actions selon le format
+        const urlParams = new URLSearchParams(window.location.search);
+        const format = urlParams.get('format');
+        
+        if (format === 'pdf') {
+            setTimeout(() => window.print(), 1000);
+        } else if (format === 'png' || format === 'jpg') {
+            setTimeout(() => downloadAsImage(format), 2000);
+        }
+    </script>
+</body>
+</html>
