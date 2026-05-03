@@ -9,6 +9,7 @@ loadEnv({ path: join(__serverDir, '.env') });
 
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import cron from 'node-cron';
 import { connectDB } from './config/database.js';
@@ -62,19 +63,21 @@ app.use(express.json());
 app.use('/api', apiRoutes);
 
 // Serve uploaded files (fallback local storage)
-app.use('/uploads', express.static(path.join(process.cwd(), 'backend', 'uploads')));
+app.use('/uploads', express.static(path.join(__serverDir, 'uploads')));
 
 // If a frontend `dist` folder exists (single-repo deployment), serve it as static files
 // Try common locations and pick the first existing one so deployments are robust.
 const candidateDists = [
   path.join(process.cwd(), 'dist'),
   path.join(process.cwd(), '..', 'dist'),
-  path.join(process.cwd(), '..', 'frontend', 'dist')
+  path.join(process.cwd(), '..', 'frontend', 'dist'),
+  path.join(__serverDir, '..', 'dist'),
+  path.join(__serverDir, '..', '..', 'dist')
 ];
 let frontendDist = null;
 for (const cand of candidateDists) {
   try {
-    const stat = require('fs').statSync(cand);
+    const stat = fs.statSync(cand);
     if (stat && stat.isDirectory()) {
       frontendDist = cand;
       break;
