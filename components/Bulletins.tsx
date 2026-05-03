@@ -385,7 +385,7 @@ export default function Bulletins({ user }: Props) {
   useEffect(() => {
     const fetchEleves = async () => {
       try {
-        const data = await apiClient.get('/customers');
+        const data = await apiClient.get('/eleves');
         setEleves(Array.isArray(data) ? data.filter((e: any) => e.statut === 'ACTIF' || !e.statut) : []);
       } catch {
         setEleves([]);
