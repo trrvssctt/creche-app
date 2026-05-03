@@ -91,7 +91,9 @@ if (frontendDist) {
   // Use express.static to let Express set correct MIME types
   app.use(express.static(frontendDist));
   // SPA fallback: for any non-API GET request, return index.html
-  app.get('*', (req, res, next) => {
+  // app.use() contourne path-to-regexp — compatible toutes versions de Express
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
     if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
     const indexPath = path.join(frontendDist, 'index.html');
     // Prevent CDN/browser from caching the HTML entrypoint so clients always
