@@ -17,6 +17,7 @@ import { Attendance, PayrollSettings } from './models/index.js';
 import { Op } from 'sequelize';
 import apiRoutes from './routes/api.js';
 import { errorHandler } from './middlewares/errorHandler.js';
+import { securityHeaders } from './middlewares/securityHeaders.js';
 import { BackupService } from './services/BackupService.js';
 
 const app = express();
@@ -27,6 +28,8 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 // Configuration Middlewares de base
+// Ajouter les en-têtes de sécurité (CSP, X-Frame-Options, etc.)
+app.use(securityHeaders);
 // Mise à jour CORS pour supporter les requêtes cross-origin du frontend
 const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 const allowedOrigins = FRONTEND_URL.split(',').map(s => s.trim().replace(/\/$/, ''));
