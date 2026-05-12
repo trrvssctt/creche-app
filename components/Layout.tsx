@@ -6,7 +6,7 @@ import {
   ShieldCheck, ShieldHalf, Loader2,
   Layers, GitMerge, Wallet, History, TrendingDown, Sparkles,
   AlertTriangle, Clock, Calendar, Menu, LifeBuoy, Bell, ClipboardList,
-  BookOpen, GraduationCap, MessageSquare, Stamp, CalendarDays, Megaphone, School
+  BookOpen, GraduationCap, MessageSquare, Stamp, CalendarDays, Megaphone, School, Receipt
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { authBridge } from '../services/authBridge';
@@ -62,6 +62,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'certificats',       label: 'Certificats',          icon: Stamp },
     { id: 'emploidutemps',     label: 'Emploi du Temps',      icon: CalendarDays },
     { id: 'evenements',        label: 'Événements',           icon: Megaphone },
+    { id: 'facturation',        label: 'Factures Scolarité',   icon: Receipt },
     { id: 'sales',             label: 'Facturation',          icon: FileText },
     { id: 'payments',          label: 'Trésorerie',           icon: Wallet },
     { id: 'recovery',          label: 'Recouvrement',         icon: TrendingDown },

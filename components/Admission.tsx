@@ -98,6 +98,7 @@ const emptyDossier = () => ({
   dateNaissance: '',
   lieuNaissance: '',
   niveau: 'PS' as NiveauScolaire,
+  classeId: '' as string,
   regimeFinancier: 'NORMAL' as RegimeFinancier,
   remisePct: 0,
   cantine: false,
@@ -135,6 +136,7 @@ function DetailRow({ label, value, className = '' }: { label: string; value?: st
 
 const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [dossiers, setDossiers] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +149,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [form, setForm] = useState<DossierForm>(emptyDossier());
   const [showConfirmStatut, setShowConfirmStatut] = useState<{ dossier: any; newStatut: StatutAdmission } | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+  const [modeInscription, setModeInscription] = useState(false);
 
   const showToast = useToast();
   const currentUser = authBridge.getSession()?.user;
@@ -156,8 +159,12 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get('/customers');
-      setDossiers(Array.isArray(data) ? data : (data?.rows ?? data?.customers ?? []));
+      const [dossiersData, classesData] = await Promise.all([
+        apiClient.get('/customers'),
+        apiClient.get('/classes').catch(() => []),
+      ]);
+      setDossiers(Array.isArray(dossiersData) ? dossiersData : (dossiersData?.rows ?? dossiersData?.customers ?? []));
+      setClasses(Array.isArray(classesData) ? classesData : []);
     } catch { setError('Impossible de charger les dossiers.'); }
     finally { setLoading(false); }
   }, []);
@@ -195,9 +202,11 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
 
   // ── Construire le payload API depuis le formulaire ─────────────────────────
 
-  const buildPayload = (f: DossierForm, existingEmail?: string) => ({
-    companyName: `${f.prenomEnfant} ${f.nomEnfant}`.trim(),
-    name: `${f.prenomEnfant} ${f.nomEnfant}`.trim(),
+  const buildPayload = (f: DossierForm, existingEmail?: string) => {
+    const companyName = `${f.prenomEnfant.trim()} ${f.nomEnfant.trim()}`.trim() || 'Dossier sans nom';
+    return {
+    companyName,
+    name: companyName,
     mainContact: `${f.parent1Prenom} ${f.parent1Nom}`.trim(),
     email: f.parent1Email || existingEmail || `${genRef().toLowerCase()}@letoidesanges.sn`,
     phone: f.parent1Tel,
@@ -222,13 +231,14 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     dateDepot: f.dateDepot,
     anneeScolaire: ANNEE_COURANTE,
     notes: f.notes,
-  });
+  };
+  };
 
   // ── Créer un dossier ───────────────────────────────────────────────────────
 
   const handleCreate = async () => {
     if (!canModify) return;
-    if (!form.prenomEnfant || !form.nomEnfant) {
+    if (!form.prenomEnfant.trim() || !form.nomEnfant.trim()) {
       setError('Prénom et nom de l\'enfant sont obligatoires.');
       return;
     }
@@ -242,6 +252,66 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       fetchData();
     } catch (err: any) { setError(err.message || 'Erreur lors de la création.'); }
     finally { setActionLoading(false); }
+  };
+
+  // ── Inscription directe (crée un Eleve, pas seulement un dossier) ─────────
+
+  const handleCreateEleve = async () => {
+    if (!canModify) return;
+    if (!form.prenomEnfant.trim() || !form.nomEnfant.trim()) {
+      setError('Prénom et nom de l\'enfant sont obligatoires.');
+      return;
+    }
+    if (!form.parent1Tel) {
+      setError('Le téléphone du parent est obligatoire.');
+      return;
+    }
+    setActionLoading(true);
+    setError(null);
+    try {
+      const statutEleve: StatutAdmission = ['INSCRIT', 'ACTIF'].includes(form.statut) ? form.statut : 'INSCRIT';
+      await apiClient.post('/eleves', {
+        nom: form.nomEnfant,
+        prenom: form.prenomEnfant,
+        dateNaissance: form.dateNaissance,
+        lieuNaissance: form.lieuNaissance,
+        niveau: form.niveau,
+        classeId: form.classeId || undefined,
+        regimeFinancier: form.regimeFinancier,
+        remisePct: form.remisePct,
+        cantine: form.cantine,
+        transportBus: form.transportBus,
+        besoinSpecifique: form.besoinSpecifique,
+        statut: statutEleve,
+        dateAdmission: form.dateDepot,
+        parent1: {
+          nom: form.parent1Nom,
+          prenom: form.parent1Prenom,
+          telephone: form.parent1Tel,
+          whatsapp: form.parent1Whatsapp || form.parent1Tel,
+          email: form.parent1Email || undefined,
+          lien: form.parent1Lien,
+        },
+        contactUrgence: form.urgenceNom ? {
+          nom: form.urgenceNom,
+          prenom: '',
+          telephone: form.urgenceTel,
+          lien: form.urgenceLien || undefined,
+        } : undefined,
+        whatsappPrincipal: form.parent1Whatsapp || form.parent1Tel,
+        anneeScolaire: ANNEE_COURANTE,
+        notes: form.notes,
+      });
+      showToast('Élève inscrit avec succès.', 'success');
+      setModalMode(null);
+      setWizardStep(1);
+      setModeInscription(false);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de l\'inscription.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // ── Modifier un dossier ────────────────────────────────────────────────────
@@ -294,6 +364,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setForm(emptyDossier());
     setError(null);
     setWizardStep(1);
+    setModeInscription(false);
     setModalMode('CREATE');
   };
 
@@ -544,14 +615,33 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
 
             {/* En-tête */}
             <div className="px-8 pt-8 pb-0 bg-slate-900 text-white shrink-0">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-3">
                   <ClipboardList size={20}/>
-                  {modalMode === 'CREATE' ? 'Nouveau Dossier d\'Admission' : 'Modifier le Dossier'}
+                  {modalMode === 'CREATE' ? (modeInscription ? 'Inscription directe' : 'Nouveau Dossier d\'Admission') : 'Modifier le Dossier'}
                 </h3>
-                <button onClick={() => { setModalMode(null); setWizardStep(1); }}
+                <button onClick={() => { setModalMode(null); setWizardStep(1); setModeInscription(false); }}
                   className="p-2 hover:bg-white/10 rounded-2xl transition-all"><X size={20} /></button>
               </div>
+              {/* Toggle mode — uniquement en création */}
+              {modalMode === 'CREATE' && (
+                <div className="flex items-center gap-1 mb-4 p-1 bg-white/10 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => { setModeInscription(false); setForm(f => ({ ...f, statut: 'EN_ATTENTE' as StatutAdmission })); }}
+                    className={`flex-1 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${!modeInscription ? 'bg-white text-slate-900 shadow' : 'text-slate-300 hover:text-white'}`}
+                  >
+                    Dossier candidature
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setModeInscription(true); setForm(f => ({ ...f, statut: 'INSCRIT' as StatutAdmission })); }}
+                    className={`flex-1 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${modeInscription ? 'bg-indigo-500 text-white shadow' : 'text-slate-300 hover:text-white'}`}
+                  >
+                    ⚡ Inscription directe
+                  </button>
+                </div>
+              )}
 
               {/* Indicateur d'étapes */}
               <div className="flex items-center gap-0 pb-0">
@@ -620,11 +710,19 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" />
                     </div>
                     <div>
-                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Statut initial</label>
-                      <select value={form.statut} onChange={e => setForm({...form, statut: e.target.value as StatutAdmission})}
-                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none">
-                        {STATUTS_ADMISSION.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                      </select>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Statut</label>
+                      {modeInscription ? (
+                        <select value={form.statut} onChange={e => setForm({...form, statut: e.target.value as StatutAdmission})}
+                          className="w-full bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none text-indigo-700">
+                          <option value="INSCRIT">Inscrit</option>
+                          <option value="ACTIF">Actif</option>
+                        </select>
+                      ) : (
+                        <select value={form.statut} onChange={e => setForm({...form, statut: e.target.value as StatutAdmission})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none">
+                          {STATUTS_ADMISSION.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -639,11 +737,29 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Niveau demandé <span className="text-rose-500">*</span></label>
-                      <select value={form.niveau} onChange={e => setForm({...form, niveau: e.target.value as NiveauScolaire})}
+                      <select value={form.niveau} onChange={e => setForm({...form, niveau: e.target.value as NiveauScolaire, classeId: ''})}
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none">
                         {NIVEAUX.map(n => <option key={n.value} value={n.value}>{n.label} — {n.cycle}</option>)}
                       </select>
                     </div>
+                    {modeInscription && (
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Classe assignée</label>
+                        <select
+                          value={form.classeId || ''}
+                          onChange={e => setForm({...form, classeId: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none"
+                        >
+                          <option value="">Non affectée pour l'instant</option>
+                          {classes.filter(c => c.niveau === form.niveau).map(c => (
+                            <option key={c.id} value={c.id}>{c.nom}</option>
+                          ))}
+                          {classes.filter(c => c.niveau === form.niveau).length === 0 && (
+                            <option disabled>Aucune classe pour ce niveau</option>
+                          )}
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Régime financier</label>
                       <select value={form.regimeFinancier} onChange={e => {
@@ -822,6 +938,12 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                         <span className="font-bold text-slate-700">{form.urgenceNom} — {form.urgenceTel}</span>
                       </div>
                     )}
+                    {modeInscription && form.classeId && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-bold">Classe</span>
+                        <span className="font-bold text-indigo-700">{classes.find(c => c.id === form.classeId)?.nom || '—'}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-slate-400 font-bold">Statut</span>
                       <StatutBadge statut={form.statut} />
@@ -864,12 +986,12 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 </button>
               ) : (
                 <button type="button"
-                  onClick={modalMode === 'EDIT' ? handleUpdate : handleCreate}
+                  onClick={modalMode === 'EDIT' ? handleUpdate : (modeInscription ? handleCreateEleve : handleCreate)}
                   disabled={actionLoading || !form.prenomEnfant || !form.nomEnfant}
-                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-slate-900 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
+                  className={`flex-1 py-4 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed ${modeInscription ? 'bg-indigo-600 hover:bg-slate-900' : 'bg-slate-900 hover:bg-indigo-600'}`}>
                   {actionLoading
                     ? <Loader2 className="animate-spin" size={16}/>
-                    : <><Save size={15}/> {modalMode === 'EDIT' ? 'ENREGISTRER LES MODIFICATIONS' : 'CRÉER LE DOSSIER'}</>}
+                    : <><Save size={15}/> {modalMode === 'EDIT' ? 'ENREGISTRER LES MODIFICATIONS' : modeInscription ? 'INSCRIRE DIRECTEMENT' : 'CRÉER LE DOSSIER'}</>}
                 </button>
               )}
             </div>

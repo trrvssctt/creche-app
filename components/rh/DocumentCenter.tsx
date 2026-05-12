@@ -27,6 +27,38 @@ import { apiClient } from '../../services/api';
 import { authBridge } from '../../services/authBridge';
 import { uploadFile, getStorageUsage, StorageInfo } from '../../services/uploadService';
 
+// ─── Types de documents spécifiques à la crèche ───────────────────────────────
+
+export const TYPES_DOCUMENTS_CRECHE = [
+  // Identité & état civil
+  { value: 'ID_CARD',             label: 'CNI / Passeport',                   groupe: 'Identité',           obligatoire: true },
+  { value: 'EXTRAIT_NAISSANCE',   label: 'Extrait de naissance',              groupe: 'Identité',           obligatoire: false },
+  { value: 'CARTE_NINA',          label: 'Carte NINA / Numéro fiscal',        groupe: 'Identité',           obligatoire: true },
+  { value: 'PHOTO',               label: 'Photo d\'identité',                  groupe: 'Identité',           obligatoire: false },
+  // Contrat & rémunération
+  { value: 'CONTRACT',            label: 'Contrat de travail',                groupe: 'Contrat & Paie',     obligatoire: true },
+  { value: 'BANK_DETAILS',        label: 'RIB / Informations bancaires',      groupe: 'Contrat & Paie',     obligatoire: false },
+  { value: 'FICHE_PAIE',          label: 'Bulletin de salaire',               groupe: 'Contrat & Paie',     obligatoire: false },
+  // Diplômes & qualifications
+  { value: 'DIPLOMA',             label: 'Diplôme / Attestation de formation', groupe: 'Formation',         obligatoire: false },
+  { value: 'ATTESTATION_QUALIF',  label: 'Attestation petite enfance',        groupe: 'Formation',          obligatoire: false },
+  { value: 'PERMIS_CONDUIRE',     label: 'Permis de conduire (chauffeur)',    groupe: 'Formation',          obligatoire: false },
+  // Santé & sécurité (obligatoires pour travailler avec des enfants)
+  { value: 'MEDICAL',             label: 'Certificat médical à l\'embauche',  groupe: 'Santé & Sécurité',   obligatoire: true },
+  { value: 'CASIER_JUDICIAIRE',   label: 'Casier judiciaire (B3)',            groupe: 'Santé & Sécurité',   obligatoire: true },
+  { value: 'VACCIN',              label: 'Carnet de vaccination',             groupe: 'Santé & Sécurité',   obligatoire: false },
+  // Autres
+  { value: 'OTHER',               label: 'Autre document',                    groupe: 'Autre',              obligatoire: false },
+] as const;
+
+type TypeDocumentCreche = typeof TYPES_DOCUMENTS_CRECHE[number]['value'];
+
+const GROUPES_DOCUMENTS = ['Identité', 'Contrat & Paie', 'Formation', 'Santé & Sécurité', 'Autre'];
+
+export function getTypeDocument(value?: string) {
+  return TYPES_DOCUMENTS_CRECHE.find(t => t.value === value) ?? null;
+}
+
 interface DocumentCenterProps {
   onNavigate: (tab: string, meta?: any) => void;
 }
@@ -515,13 +547,18 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ onNavigate }) => {
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex items-center gap-2 bg-slate-50 px-6 py-4 rounded-2xl">
             <Filter size={18} className="text-slate-400" />
-            <select 
+            <select
               className="bg-transparent border-none focus:ring-0 font-black text-[10px] uppercase tracking-widest text-slate-600"
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
             >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat === 'All' ? 'Toutes les Catégories' : cat}</option>
+              <option value="All">Tous les types</option>
+              {GROUPES_DOCUMENTS.map(groupe => (
+                <optgroup key={groupe} label={`── ${groupe} ──`}>
+                  {TYPES_DOCUMENTS_CRECHE.filter(t => t.groupe === groupe).map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -600,9 +637,16 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ onNavigate }) => {
                 <h3 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight" title={doc.name}>
                   {doc.name}
                 </h3>
-                <p className="text-indigo-600 font-black uppercase text-[10px] tracking-widest">
-                  {doc.category || doc.type}
-                </p>
+                {(() => {
+                  const td = getTypeDocument(doc.type || doc.category);
+                  return td ? (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${td.obligatoire ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
+                      {td.obligatoire && <ShieldCheck size={8} />} {td.label}
+                    </span>
+                  ) : (
+                    <p className="text-indigo-600 font-black uppercase text-[10px] tracking-widest">{doc.category || doc.type}</p>
+                  );
+                })()}
               </div>
 
               <div className="space-y-4 mb-8">
@@ -780,13 +824,16 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ onNavigate }) => {
               value={uploadData.type}
               onChange={(e) => setUploadData(prev => ({ ...prev, type: e.target.value }))}
             >
-              <option value="">Sélectionner un type de document</option>
-              <option value="ID_CARD">Pièce d'identité</option>
-              <option value="CONTRACT">Contrat</option>
-              <option value="DIPLOMA">Diplôme</option>
-              <option value="BANK_DETAILS">Informations bancaires</option>
-              <option value="MEDICAL">Médical</option>
-              <option value="OTHER">Autre</option>
+              <option value="">— Sélectionner un type —</option>
+              {GROUPES_DOCUMENTS.map(groupe => (
+                <optgroup key={groupe} label={`── ${groupe} ──`}>
+                  {TYPES_DOCUMENTS_CRECHE.filter(t => t.groupe === groupe).map(t => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}{t.obligatoire ? ' ★' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
           

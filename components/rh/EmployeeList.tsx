@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Search, 
-  Filter, 
-  Download, 
-  Plus, 
-  MoreVertical, 
-  ChevronRight, 
-  Mail, 
-  Phone, 
-  Briefcase, 
+import {
+  Users,
+  Search,
+  Filter,
+  Download,
+  Plus,
+  MoreVertical,
+  ChevronRight,
+  Mail,
+  Phone,
+  Briefcase,
   Layers,
   FileText,
   UserPlus,
@@ -22,13 +22,84 @@ import {
   Trash2,
   RefreshCw,
   Camera,
-  Clock
+  Clock,
+  GraduationCap,
+  Shield,
+  UtensilsCrossed,
+  Bus,
+  Wrench,
+  Building2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiClient } from '../../services/api';
 import { uploadFile } from '../../services/uploadService';
 import { useToast } from '../ToastProvider';
 import HRModal from './HRModal';
+
+// ─── Postes prédéfinis — Le Toit des Anges ────────────────────────────────────
+
+export const POSTES_CRECHE = [
+  // Direction
+  { value: 'DIRECTRICE',           label: 'Directrice / Directeur',          groupe: 'Direction',      color: 'bg-slate-900 text-white border-slate-800' },
+  { value: 'DIRECTRICE_ADJOINTE',  label: 'Directrice Adjointe',             groupe: 'Direction',      color: 'bg-slate-700 text-white border-slate-600' },
+  // Pédagogie
+  { value: 'ENSEIGNANTE_CRECHE',   label: 'Enseignante Crèche (0–3 ans)',    groupe: 'Pédagogie',      color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'ENSEIGNANTE_PS',       label: 'Enseignante Petite Section',      groupe: 'Pédagogie',      color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'ENSEIGNANTE_MS',       label: 'Enseignante Moyenne Section',     groupe: 'Pédagogie',      color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'ENSEIGNANTE_GS',       label: 'Enseignante Grande Section',      groupe: 'Pédagogie',      color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'ENSEIGNANTE_CP',       label: 'Enseignante CP',                  groupe: 'Pédagogie',      color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'ENSEIGNANTE_CE1',      label: 'Enseignante CE1',                 groupe: 'Pédagogie',      color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'ENSEIGNANTE_CE2',      label: 'Enseignante CE2',                 groupe: 'Pédagogie',      color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'ENSEIGNANTE_CM1',      label: 'Enseignante CM1',                 groupe: 'Pédagogie',      color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'ENSEIGNANTE_CM2',      label: 'Enseignante CM2',                 groupe: 'Pédagogie',      color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'AIDE_EDUCATRICE',      label: 'Aide-Éducatrice / ATSEM',        groupe: 'Pédagogie',      color: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { value: 'NOURRICE',             label: 'Nourrice / Puéricultrice',        groupe: 'Pédagogie',      color: 'bg-pink-50 text-pink-700 border-pink-200' },
+  // Restauration
+  { value: 'CUISINIERE',           label: 'Cuisinière / Chef cuisinier',     groupe: 'Restauration',   color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'AIDE_CUISINE',         label: 'Aide de cuisine',                 groupe: 'Restauration',   color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  // Sécurité
+  { value: 'VIGILE',               label: 'Vigile / Agent de sécurité',      groupe: 'Sécurité',       color: 'bg-rose-50 text-rose-700 border-rose-200' },
+  // Entretien
+  { value: 'AGENT_ENTRETIEN',      label: 'Agent d\'entretien',              groupe: 'Entretien',      color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'BLANCHISSEUR',         label: 'Blanchisseur / Lingère',          groupe: 'Entretien',      color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  // Transport
+  { value: 'CHAUFFEUR',            label: 'Chauffeur de bus scolaire',       groupe: 'Transport',      color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { value: 'ACCOMPAGNATEUR',       label: 'Accompagnateur / Aide chauffeur', groupe: 'Transport',      color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  // Administration
+  { value: 'COMPTABLE',            label: 'Comptable / Gestionnaire',        groupe: 'Administration', color: 'bg-teal-50 text-teal-700 border-teal-200' },
+  { value: 'ASSISTANTE_ADMIN',     label: 'Assistante Administrative',       groupe: 'Administration', color: 'bg-teal-50 text-teal-700 border-teal-200' },
+  // Santé
+  { value: 'INFIRMIERE',           label: 'Infirmière / Agent de santé',     groupe: 'Santé',          color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+] as const;
+
+type PosteCreche = typeof POSTES_CRECHE[number]['value'];
+
+const GROUPES_POSTES = ['Direction', 'Pédagogie', 'Restauration', 'Sécurité', 'Entretien', 'Transport', 'Administration', 'Santé'];
+
+const GROUPE_ICONS: Record<string, React.ElementType> = {
+  Direction:      Building2,
+  Pédagogie:      GraduationCap,
+  Restauration:   UtensilsCrossed,
+  Sécurité:       Shield,
+  Entretien:      Wrench,
+  Transport:      Bus,
+  Administration: Briefcase,
+  Santé:          FileText,
+};
+
+export function getPosteCreche(value?: string) {
+  return POSTES_CRECHE.find(p => p.value === value) ?? null;
+}
+
+export function PosteBadge({ position }: { position?: string }) {
+  const poste = getPosteCreche(position);
+  if (!poste) return <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{position || 'Non défini'}</span>;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${poste.color}`}>
+      {poste.label}
+    </span>
+  );
+}
 
 interface Employee {
   id: string;
@@ -60,6 +131,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDept, setFilterDept] = useState('All');
   const [filterPresence, setFilterPresence] = useState('All');
+  const [filterPoste, setFilterPoste] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -200,7 +272,12 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
       }
     }
     
-    return matchesSearch && matchesDept && matchesPresence;
+    const matchesPoste = filterPoste === 'All'
+      || (filterPoste.startsWith('GROUPE_')
+          ? POSTES_CRECHE.filter(p => p.groupe === filterPoste.replace('GROUPE_', '')).some(p => p.value === emp.position)
+          : emp.position === filterPoste);
+
+    return matchesSearch && matchesDept && matchesPresence && matchesPoste;
   });
 
   const resetForm = () => {
@@ -494,14 +571,25 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Poste</label>
-            <input 
-              type="text" 
-              placeholder="Ex: Senior Developer" 
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Poste <span className="text-rose-500">*</span></label>
+            <select
               value={formData.position}
               onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-              className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm" 
-            />
+              className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm appearance-none cursor-pointer"
+            >
+              <option value="">— Sélectionner un poste —</option>
+              {GROUPES_POSTES.map(groupe => {
+                const postes = POSTES_CRECHE.filter(p => p.groupe === groupe);
+                return (
+                  <optgroup key={groupe} label={`── ${groupe} ──`}>
+                    {postes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+            {formData.position && (
+              <div className="mt-1"><PosteBadge position={formData.position} /></div>
+            )}
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date d'Embauche</label>
@@ -642,10 +730,33 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
             </select>
           </div>
           
+          {/* Filtre par poste */}
+          <div className="flex items-center gap-2 bg-slate-50 px-3 md:px-6 py-3 md:py-4 rounded-2xl">
+            <GraduationCap size={18} className="text-slate-400 shrink-0" />
+            <select
+              className="bg-transparent border-none focus:ring-0 font-black text-[10px] uppercase tracking-widest text-slate-600"
+              value={filterPoste}
+              onChange={(e) => setFilterPoste(e.target.value)}
+            >
+              <option value="All">Tous les postes</option>
+              {GROUPES_POSTES.map(groupe => {
+                const GIcon = GROUPE_ICONS[groupe];
+                return (
+                  <optgroup key={groupe} label={`── ${groupe} ──`}>
+                    <option value={`GROUPE_${groupe}`}>{groupe} (tous)</option>
+                    {POSTES_CRECHE.filter(p => p.groupe === groupe).map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </div>
+
           {/* Filtre par présence */}
           <div className="flex items-center gap-2 bg-slate-50 px-3 md:px-6 py-3 md:py-4 rounded-2xl min-w-[140px] md:min-w-[180px]">
             <Users size={18} className="text-slate-400" />
-            <select 
+            <select
               className="bg-transparent border-none focus:ring-0 font-black text-[10px] uppercase tracking-widest text-slate-600 w-full"
               value={filterPresence}
               onChange={(e) => setFilterPresence(e.target.value)}
@@ -655,13 +766,14 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
               <option value="Absent">🔴 Absents</option>
             </select>
           </div>
-          
+
           {/* Bouton de reset des filtres */}
-          {(filterDept !== 'All' || filterPresence !== 'All' || searchTerm.trim() !== '') && (
+          {(filterDept !== 'All' || filterPresence !== 'All' || filterPoste !== 'All' || searchTerm.trim() !== '') && (
             <button
               onClick={() => {
                 setFilterDept('All');
                 setFilterPresence('All');
+                setFilterPoste('All');
                 setSearchTerm('');
               }}
               className="px-4 py-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all text-xs font-bold"
@@ -764,9 +876,9 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            <div className="space-y-1 mb-4">
+            <div className="space-y-2 mb-4">
               <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{emp.firstName} {emp.lastName}</h3>
-              <p className="text-indigo-600 font-black uppercase text-[10px] tracking-widest">{emp.position}</p>
+              <PosteBadge position={emp.position} />
             </div>
 
             {/* Contract badge */}
@@ -973,14 +1085,25 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onNavigate }) => {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Poste</label>
-            <input 
-              type="text" 
-              placeholder="Ex: Senior Developer" 
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Poste <span className="text-rose-500">*</span></label>
+            <select
               value={formData.position}
               onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-              className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm" 
-            />
+              className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm appearance-none cursor-pointer"
+            >
+              <option value="">— Sélectionner un poste —</option>
+              {GROUPES_POSTES.map(groupe => {
+                const postes = POSTES_CRECHE.filter(p => p.groupe === groupe);
+                return (
+                  <optgroup key={groupe} label={`── ${groupe} ──`}>
+                    {postes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+            {formData.position && (
+              <div className="mt-1"><PosteBadge position={formData.position} /></div>
+            )}
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date d'Embauche</label>

@@ -40,6 +40,7 @@ interface MatiereForm {
 }
 
 interface BulletinLocal {
+  id?: string;
   eleveId: string;
   eleveNom: string;
   elevePrenom: string;
@@ -386,7 +387,11 @@ export default function Bulletins({ user }: Props) {
     const fetchEleves = async () => {
       try {
         const data = await apiClient.get('/eleves');
-        setEleves(Array.isArray(data) ? data.filter((e: any) => e.statut === 'ACTIF' || !e.statut) : []);
+        // Accepter les élèves ACTIFS, INSCRITS ou ADMIS
+        const filtered = Array.isArray(data) ? data.filter((e: any) => 
+          ['ACTIF', 'INSCRIT', 'ADMIS'].includes(e.statut) || !e.statut
+        ) : [];
+        setEleves(filtered);
       } catch {
         setEleves([]);
       } finally {
@@ -395,6 +400,34 @@ export default function Bulletins({ user }: Props) {
     };
     fetchEleves();
   }, []);
+
+  // Charger les bulletins pour le trimestre et l'année en cours
+  useEffect(() => {
+    const fetchBulletins = async () => {
+      try {
+        const data = await apiClient.get('/bulletins', {
+          params: {
+            anneeScolaire: ANNEE_COURANTE,
+            trimestre: selectedTrimestre
+          }
+        });
+        if (Array.isArray(data)) {
+          const map: Record<string, BulletinLocal> = {};
+          data.forEach((b: any) => {
+            map[bulletinKey(b.eleveId, b.trimestre)] = {
+              ...b,
+              eleveNom: b.eleve?.nom || '',
+              elevePrenom: b.eleve?.prenom || ''
+            };
+          });
+          setBulletins(map);
+        }
+      } catch (err) {
+        console.error('Erreur chargement bulletins:', err);
+      }
+    };
+    fetchBulletins();
+  }, [selectedTrimestre]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -500,32 +533,46 @@ export default function Bulletins({ user }: Props) {
   async function handleSave(publish = false) {
     if (!bulletinForm) return;
     setSaving(true);
-    await new Promise(r => setTimeout(r, 600));
-    const updated = { ...bulletinForm };
-    if (updated.matieres) {
-      updated.moyenneGenerale = calcMoyenneGenerale(updated.matieres);
-      if (!updated.appreciationGenerale)
-        updated.appreciationGenerale = appreciationFromMoyenne(updated.moyenneGenerale);
+    try {
+      const updated = { ...bulletinForm };
+      if (updated.matieres) {
+        updated.moyenneGenerale = calcMoyenneGenerale(updated.matieres);
+        if (!updated.appreciationGenerale)
+          updated.appreciationGenerale = appreciationFromMoyenne(updated.moyenneGenerale);
+      }
+      if (publish) {
+        updated.publie = true;
+        updated.datePublication = new Date().toISOString().split('T')[0];
+      }
+
+      // Persister dans le backend
+      const saved = await apiClient.post('/bulletins', updated);
+
+      setBulletins(prev => ({ ...prev, [bulletinKey(saved.eleveId, saved.trimestre)]: saved }));
+      setModalMode(null);
+      addToast(publish
+        ? `Bulletin de ${updated.elevePrenom} ${updated.eleveNom} publié ✓`
+        : 'Bulletin enregistré', 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Erreur lors de la sauvegarde', 'error');
+    } finally {
+      setSaving(false);
     }
-    if (publish) {
-      updated.publie = true;
-      updated.datePublication = new Date().toLocaleDateString('fr-FR');
-    }
-    setBulletins(prev => ({ ...prev, [bulletinKey(updated.eleveId, updated.trimestre)]: updated }));
-    setSaving(false);
-    setModalMode(null);
-    addToast(publish
-      ? `Bulletin de ${updated.elevePrenom} ${updated.eleveNom} publié ✓`
-      : 'Bulletin enregistré', 'success');
   }
 
-  function handleUnpublish(eleve: any) {
-    const key = bulletinKey(eleve.id, selectedTrimestre);
-    setBulletins(prev => {
-      if (!prev[key]) return prev;
-      return { ...prev, [key]: { ...prev[key], publie: false, datePublication: undefined } };
-    });
-    addToast('Bulletin dépublié', 'info');
+  async function handleUnpublish(eleve: any) {
+    const existing = getBulletin(eleve.id);
+    if (!existing) return;
+
+    try {
+      const updated = { ...existing, publie: false, datePublication: undefined };
+      const saved = await apiClient.post('/bulletins', updated);
+      
+      setBulletins(prev => ({ ...prev, [bulletinKey(saved.eleveId, saved.trimestre)]: saved }));
+      addToast('Bulletin dépublié', 'info');
+    } catch (err: any) {
+      addToast(err.message || 'Erreur lors de la dépublication', 'error');
+    }
   }
 
   function handlePrint() { window.print(); }

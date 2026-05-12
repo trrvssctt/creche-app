@@ -1,724 +1,666 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Landmark, Search, RefreshCw, Mail, MessageCircle,
-  AlertCircle, DollarSign, Send, X, Loader2,
-  CheckCircle2, Info, TrendingDown, Phone,
-  ChevronDown, ChevronUp, AlertTriangle, Zap,
-  Users, ArrowUpDown
+  Landmark, Search, RefreshCw, Mail, MessageCircle, AlertCircle,
+  CheckCircle2, TrendingDown, Phone, ChevronDown, ChevronUp,
+  AlertTriangle, Users, Clock, X, Loader2, Send, FileText,
+  Calendar, DollarSign, Eye, CreditCard, Filter, Download,
+  ArrowRight, BadgeCheck, XCircle,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
-import YearMonthPicker from './YearMonthPicker';
 
-// ─── Utilitaires ────────────────────────────────────────────────────────────
-const fmtAmount = (n: number) => Number(n || 0).toLocaleString('fr-FR');
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const riskLevel = (amount: number, max: number) => {
-  const pct = max > 0 ? amount / max : 0;
-  if (pct >= 0.7) return { label: 'Critique', color: 'text-rose-600', bg: 'bg-rose-100', bar: 'bg-rose-500', border: 'border-rose-200' };
-  if (pct >= 0.35) return { label: 'Élevé', color: 'text-amber-600', bg: 'bg-amber-100', bar: 'bg-amber-500', border: 'border-amber-200' };
-  return { label: 'Modéré', color: 'text-sky-600', bg: 'bg-sky-100', bar: 'bg-sky-500', border: 'border-sky-200' };
+interface Echeance {
+  id: string;
+  eleveId: string;
+  serviceId: string;
+  montant: number;
+  dateEcheance: string;
+  periodeLabel: string;
+  statut: 'EN_ATTENTE' | 'PAYE' | 'EN_RETARD' | 'ANNULE';
+  paidAt?: string;
+  saleId?: string;
+  reminderSentAt?: string;
+  eleve?: {
+    id: string; nom: string; prenom: string; niveau: string;
+    parent1?: { nom?: string; prenom?: string; telephone?: string; whatsapp?: string; email?: string };
+    whatsappPrincipal?: string; matricule?: string;
+  };
+  service?: { id: string; name: string; typeOffre: string };
+}
+
+interface EleveGroupe {
+  eleveId: string;
+  nom: string;
+  prenom: string;
+  niveau: string;
+  matricule: string;
+  whatsapp: string;
+  email: string;
+  echeances: Echeance[];
+  totalDu: number;
+  totalRetard: number;
+}
+
+interface FactureData {
+  eleve: any;
+  mois: string;
+  echeances: Echeance[];
+  totalDu: number;
+  totalPaye: number;
+  solde: number;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const NIVEAUX: Record<string, string> = {
+  CRECHE:'Crèche', PS:'Petite Section', MS:'Moyenne Section',
+  GS:'Grande Section', CP:'CP', CE1:'CE1', CE2:'CE2', CM1:'CM1', CM2:'CM2',
 };
 
-// ─── Composant principal ─────────────────────────────────────────────────────
+const fmtAmount = (n: number) => Number(n || 0).toLocaleString('fr-FR');
+const fmtDate   = (d: string) => new Date(d).toLocaleDateString('fr-FR');
+const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function statutBadge(statut: Echeance['statut']) {
+  const map = {
+    EN_ATTENTE: 'bg-amber-50 text-amber-700 border-amber-200',
+    EN_RETARD:  'bg-rose-50  text-rose-700  border-rose-200',
+    PAYE:       'bg-emerald-50 text-emerald-700 border-emerald-200',
+    ANNULE:     'bg-slate-100  text-slate-500  border-slate-200',
+  };
+  const lbl = { EN_ATTENTE:'En attente', EN_RETARD:'En retard', PAYE:'Payé', ANNULE:'Annulé' };
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${map[statut]}`}>
+      {lbl[statut]}
+    </span>
+  );
+}
+
+// ─── Composant principal ──────────────────────────────────────────────────────
+
 const Recovery = ({ currency }: { currency: string }) => {
-  const [rawSales, setRawSales] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<'amount' | 'name'>('amount');
-  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
-  const [showEmailModal, setShowEmailModal] = useState<any | null>(null);
-  const [emailContent, setEmailContent] = useState({ subject: '', body: '' });
-  const [showRemindersModal, setShowRemindersModal] = useState(false);
-  const [selectedDebtors, setSelectedDebtors] = useState<string[]>([]);
-  const [perPage, setPerPage] = useState<number | 'ALL'>(25);
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const showToast = useToast();
 
-  // ── Fetch ────────────────────────────────────────────────────────────────
-  const fetchDebtors = async () => {
+  // État
+  const [echeances, setEcheances] = useState<Echeance[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [search, setSearch]       = useState('');
+  const [filterStatut, setFilterStatut] = useState<'TOUS' | 'EN_ATTENTE' | 'EN_RETARD' | 'PAYE'>('TOUS');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear]   = useState(new Date().getFullYear());
+  const [expandedEleves, setExpandedEleves] = useState<Set<string>>(new Set());
+  const [selectedEcheances, setSelectedEcheances] = useState<Set<string>>(new Set());
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Modals
+  const [showReminderModal, setShowReminderModal] = useState<{ eleve: EleveGroupe; canal: 'EMAIL' | 'WHATSAPP' } | null>(null);
+  const [showFactureModal, setShowFactureModal]   = useState<FactureData | null>(null);
+  const [showPayModal, setShowPayModal]           = useState<Echeance | null>(null);
+  const [methodePaiement, setMethodePaiement]     = useState('CASH');
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const fetchEcheances = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiClient.get('/sales');
-      setRawSales(data);
+      const data = await apiClient.get('/abonnements/echeances', {
+        params: { month: selectedMonth, year: selectedYear },
+      });
+      setEcheances(Array.isArray(data) ? data : []);
     } catch {
-      showToast('Erreur lors du chargement des créances.', 'error');
+      showToast('Erreur de chargement des échéances.', 'error');
+      setEcheances([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedMonth, selectedYear]);
 
-  // ── Années disponibles ───────────────────────────────────────────────────
-  const availableYears = useMemo(() => {
-    const years: number[] = rawSales
-      .map((s: any) => new Date(s.createdAt || s.created_at).getFullYear())
-      .filter((y: number) => !isNaN(y));
-    return Array.from(new Set(years)).sort((a: number, b: number) => b - a);
-  }, [rawSales]);
+  useEffect(() => { fetchEcheances(); }, [fetchEcheances]);
 
-  // ── Débiteurs filtrés par année/mois ─────────────────────────────────────
-  const debtors = useMemo(() => {
-    let sales = rawSales;
-    if (selectedYear !== null) {
-      const ms = selectedMonth !== null ? selectedMonth : 0;
-      const me = selectedMonth !== null ? selectedMonth : 11;
-      const from = new Date(selectedYear, ms, 1);
-      const to = new Date(selectedYear, me + 1, 0, 23, 59, 59);
-      sales = rawSales.filter(s => {
-        const d = new Date(s.createdAt || s.created_at);
-        return d >= from && d <= to;
-      });
-    }
-    const debtMap: Record<string, any> = {};
-    sales.forEach((sale: any) => {
-      if (sale.status === 'EN_COURS' || sale.status === 'TERMINE') {
-        const ttc = parseFloat(sale.totalTtc || sale.total_ttc || 0);
-        const paid = parseFloat(sale.amountPaid || sale.amount_paid || 0);
-        const due = Math.max(0, ttc - paid);
-        const customer = sale.customer;
-        const customerId = sale.customerId || sale.customer_id;
-        if (due > 0 && customer && customerId) {
-          if (!debtMap[customerId]) {
-            debtMap[customerId] = {
-              id: customerId,
-              companyName: customer.companyName || customer.name || '—',
-              email: customer.email || '',
-              phone: customer.phone || '',
-              outstandingBalance: 0,
-              salesCount: 0
-            };
-          }
-          debtMap[customerId].outstandingBalance += due;
-          debtMap[customerId].salesCount += 1;
-        }
+  // ── Grouper par élève ──────────────────────────────────────────────────────
+  const elevesGroupes = useMemo((): EleveGroupe[] => {
+    const map = new Map<string, EleveGroupe>();
+    for (const ech of echeances) {
+      if (!ech.eleve) continue;
+      const statutOk = filterStatut === 'TOUS' || ech.statut === filterStatut;
+      if (!statutOk) continue;
+
+      const q = search.toLowerCase();
+      const nomMatch = q
+        ? `${ech.eleve.prenom} ${ech.eleve.nom}`.toLowerCase().includes(q)
+        : true;
+      if (!nomMatch) continue;
+
+      if (!map.has(ech.eleveId)) {
+        const e = ech.eleve;
+        map.set(ech.eleveId, {
+          eleveId: ech.eleveId,
+          nom: e.nom, prenom: e.prenom, niveau: e.niveau,
+          matricule: e.matricule || '',
+          whatsapp: e.whatsappPrincipal || e.parent1?.whatsapp || e.parent1?.telephone || '',
+          email: e.parent1?.email || '',
+          echeances: [],
+          totalDu: 0, totalRetard: 0,
+        });
       }
-    });
-    return Object.values(debtMap);
-  }, [rawSales, selectedYear, selectedMonth]);
+      const g = map.get(ech.eleveId)!;
+      g.echeances.push(ech);
+      if (ech.statut !== 'PAYE' && ech.statut !== 'ANNULE') {
+        g.totalDu += parseFloat(ech.montant as any);
+        if (ech.statut === 'EN_RETARD') g.totalRetard += parseFloat(ech.montant as any);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.totalRetard - a.totalRetard || b.totalDu - a.totalDu);
+  }, [echeances, filterStatut, search]);
 
-  useEffect(() => { fetchDebtors(); }, []);
+  // ── KPIs ───────────────────────────────────────────────────────────────────
+  const kpis = useMemo(() => {
+    const total    = echeances.reduce((s, e) => s + (e.statut !== 'ANNULE' ? parseFloat(e.montant as any) : 0), 0);
+    const paye     = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant as any), 0);
+    const retard   = echeances.filter(e => e.statut === 'EN_RETARD').reduce((s, e) => s + parseFloat(e.montant as any), 0);
+    const attente  = echeances.filter(e => e.statut === 'EN_ATTENTE').reduce((s, e) => s + parseFloat(e.montant as any), 0);
+    const txRecouvrement = total > 0 ? Math.round((paye / total) * 100) : 0;
+    return { total, paye, retard, attente, txRecouvrement, nbEleves: elevesGroupes.length };
+  }, [echeances, elevesGroupes]);
 
-  const CHEQUE_PENDING_STATUSES = ['PENDING', 'REGISTERED', 'DEPOSITED', 'PROCESSING'];
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const handlePayEcheance = async () => {
+    if (!showPayModal) return;
+    setActionLoading(showPayModal.id);
+    try {
+      await apiClient.put(`/abonnements/echeances/${showPayModal.id}/payer`, { methodePaiement });
+      showToast('Paiement enregistré — vente créée automatiquement.', 'success');
+      setShowPayModal(null);
+      fetchEcheances();
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors du paiement.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
-  // ── Chèques en attente par client ────────────────────────────────────────
-  const pendingChequesByCustomer = useMemo(() => {
-    const map: Record<string, { name: string; amount: number; count: number }> = {};
-    rawSales.forEach((sale: any) => {
-      if (sale.status === 'ANNULE') return;
-      const customer = sale.customer;
-      const customerId = sale.customerId || sale.customer_id;
-      if (!customer || !customerId) return;
-      (sale.payments || []).forEach((p: any) => {
-        if (p.method === 'CHEQUE' && CHEQUE_PENDING_STATUSES.includes(p.status)) {
-          if (!map[customerId]) {
-            map[customerId] = {
-              name: customer.companyName || customer.name || '—',
-              amount: 0,
-              count: 0
-            };
-          }
-          map[customerId].amount += parseFloat(p.amount || 0);
-          map[customerId].count += 1;
-        }
+  const handleSendReminder = async (eleveGroupe: EleveGroupe, canal: 'EMAIL' | 'WHATSAPP', echeanceIds?: string[]) => {
+    const ids = echeanceIds ?? eleveGroupe.echeances
+      .filter(e => e.statut === 'EN_ATTENTE' || e.statut === 'EN_RETARD')
+      .map(e => e.id);
+    if (!ids.length) return;
+    setActionLoading(`relance-${eleveGroupe.eleveId}`);
+    try {
+      const res = await apiClient.post('/abonnements/echeances/relancer', { echeanceIds: ids, canal });
+      showToast(`${res.sent} relance(s) envoyée(s) via ${canal === 'EMAIL' ? 'email' : 'WhatsApp'}.`, 'success');
+      setShowReminderModal(null);
+      fetchEcheances();
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors de l\'envoi.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleBulkReminder = async (canal: 'EMAIL' | 'WHATSAPP') => {
+    const ids = Array.from(selectedEcheances);
+    if (!ids.length) return;
+    setActionLoading('bulk');
+    try {
+      const res = await apiClient.post('/abonnements/echeances/relancer', { echeanceIds: ids, canal });
+      showToast(`${res.sent} relance(s) envoyée(s).`, 'success');
+      setSelectedEcheances(new Set());
+    } catch (err: any) {
+      showToast(err.message || 'Erreur.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const loadFacture = async (eleveId: string) => {
+    setActionLoading(`facture-${eleveId}`);
+    try {
+      const data = await apiClient.get(`/abonnements/echeances/facture/${eleveId}`, {
+        params: { month: selectedMonth, year: selectedYear },
       });
-    });
-    return Object.entries(map).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.amount - a.amount);
-  }, [rawSales]);
-
-  const totalPendingCheques = useMemo(() =>
-    pendingChequesByCustomer.reduce((s, c) => s + c.amount, 0),
-    [pendingChequesByCustomer]
-  );
-
-  // ── Stats ────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => {
-    const total = debtors.reduce((s, d) => s + (d.outstandingBalance || 0), 0);
-    const withEmail = debtors.filter(d => d.email).length;
-    const max = debtors.reduce((m, d) => Math.max(m, d.outstandingBalance), 0);
-    return { total, count: debtors.length, average: debtors.length > 0 ? total / debtors.length : 0, withEmail, max };
-  }, [debtors]);
-
-  // ── Filtrage + tri ───────────────────────────────────────────────────────
-  const processed = useMemo(() => {
-    let list = debtors.filter(d =>
-      (d.companyName || '').toLowerCase().includes(search.toLowerCase()) ||
-      (d.email || '').toLowerCase().includes(search.toLowerCase()) ||
-      (d.phone || '').includes(search)
-    );
-    list.sort((a, b) => {
-      if (sortKey === 'amount') return sortDir === 'desc' ? b.outstandingBalance - a.outstandingBalance : a.outstandingBalance - b.outstandingBalance;
-      return sortDir === 'desc'
-        ? (b.companyName || '').localeCompare(a.companyName || '')
-        : (a.companyName || '').localeCompare(b.companyName || '');
-    });
-    return list;
-  }, [debtors, search, sortKey, sortDir]);
-
-  const displayed = useMemo(() =>
-    perPage === 'ALL' ? processed : processed.slice(0, perPage as number),
-    [processed, perPage]
-  );
-
-  const toggleSort = (key: 'amount' | 'name') => {
-    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
-    else { setSortKey(key); setSortDir('desc'); }
+      setShowFactureModal(data);
+    } catch (err: any) {
+      showToast(err.message || 'Erreur chargement facture.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  // ── Sélection ────────────────────────────────────────────────────────────
-  const withEmail = debtors.filter(d => d.email);
-  const allEmailSelected = withEmail.length > 0 && withEmail.every(d => selectedDebtors.includes(d.id));
-  const toggleSelectAll = () => setSelectedDebtors(allEmailSelected ? [] : withEmail.map(d => d.id));
-  const toggleSelect = (id: string) =>
-    setSelectedDebtors(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
-
-  // ── Actions ──────────────────────────────────────────────────────────────
-  const handleWhatsApp = (d: any) => {
-    if (!d.phone) { showToast('Numéro de téléphone manquant.', 'error'); return; }
-    const msg = `Bonjour ${d.companyName}, nous vous contactons concernant votre solde de ${fmtAmount(d.outstandingBalance)} ${currency}. Merci de régulariser votre situation dans les meilleurs délais.`;
-    window.open(`https://wa.me/${d.phone.replace(/\s+/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-  };
-
-  const openEmail = (d: any) => {
-    setEmailContent({
-      subject: `Relance de paiement — ${d.companyName}`,
-      body: `Bonjour ${d.companyName},\n\nSauf erreur de notre part, votre compte présente un solde débiteur de ${fmtAmount(d.outstandingBalance)} ${currency}.\n\nNous vous remercions de bien vouloir régulariser cette situation dans les plus brefs délais.\n\nCordialement,\nL'équipe administrative.`
+  const toggleEleve = (id: string) => {
+    setExpandedEleves(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
     });
-    setShowEmailModal(d);
   };
 
-  const sendViaGmail = () => {
-    if (!showEmailModal) return;
-    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(showEmailModal.email)}&su=${encodeURIComponent(emailContent.subject)}&body=${encodeURIComponent(emailContent.body)}`;
-    window.open(url, '_blank');
-    setShowEmailModal(null);
-  };
-
-  const sendBulkViaGmail = () => {
-    const targets = debtors.filter(d => selectedDebtors.includes(d.id) && d.email);
-    if (!targets.length) { showToast('Aucun destinataire sélectionné.', 'error'); return; }
-    targets.forEach(t => {
-      const body = `Bonjour ${t.companyName},\n\nSauf erreur de notre part, votre compte présente un solde débiteur de ${fmtAmount(t.outstandingBalance)} ${currency}.\n\nNous vous remercions de bien vouloir régulariser cette situation dans les plus brefs délais.\n\nCordialement,\nL'équipe administrative.`;
-      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(t.email)}&su=${encodeURIComponent(`Relance de paiement — ${t.companyName}`)}&body=${encodeURIComponent(body)}`, '_blank');
+  const toggleSelectEcheance = (id: string) => {
+    setSelectedEcheances(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
     });
-    setShowRemindersModal(false);
-    setSelectedDebtors([]);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 pb-20 animate-in fade-in duration-500">
+    <div className="space-y-6 pb-20">
 
-      {/* ── BARRE DE SÉLECTION FLOTTANTE ── */}
-      {selectedDebtors.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-slate-900 text-white rounded-2xl shadow-2xl border border-white/10 backdrop-blur-xl">
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">{selectedDebtors.length} sélectionné(s)</span>
-          <div className="w-px h-4 bg-white/20"/>
-          <button onClick={sendBulkViaGmail} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-[10px] font-black uppercase transition-all">
-            <Send size={12}/> Envoyer rappels
+      {/* ── En-tête ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-4">
+            <Landmark className="text-indigo-600" size={32} /> Recouvrement Scolaire
+          </h2>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mt-1">
+            Suivi des redevances & relances parents
+          </p>
+        </div>
+
+        {/* Sélecteur mois/année */}
+        <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-2xl shadow-sm p-1">
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(+e.target.value)}
+            className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
+          >
+            {MOIS_NOMS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select
+            value={selectedYear}
+            onChange={e => setSelectedYear(+e.target.value)}
+            className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
+          >
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={fetchEcheances} className="p-2 hover:text-indigo-600 text-slate-400 transition-all">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button onClick={() => setSelectedDebtors([])} className="p-1.5 hover:bg-white/10 rounded-xl transition-all">
-            <X size={14}/>
-          </button>
-        </div>
-      )}
-
-      {/* ── KPI CARDS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-        {/* Total créances */}
-        <div className="sm:col-span-1 bg-gradient-to-br from-rose-600 to-rose-700 p-5 md:p-7 rounded-3xl text-white shadow-xl relative overflow-hidden group">
-          <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform"><Landmark size={80}/></div>
-          <p className="text-[9px] font-black text-rose-200 uppercase tracking-widest mb-1">Encours Global</p>
-          <h3 className="text-2xl md:text-3xl font-black leading-tight">{fmtAmount(stats.total)}</h3>
-          <p className="text-[10px] font-bold text-rose-200 mt-1">{currency}</p>
-          <div className="mt-4 flex items-center gap-2">
-            <AlertTriangle size={12} className="text-rose-200"/>
-            <span className="text-[9px] font-black text-rose-200 uppercase">{stats.count} client(s) débiteur(s)</span>
-          </div>
-        </div>
-
-        {/* Moyenne / client */}
-        <div className="bg-white p-5 md:p-7 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group">
-          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><TrendingDown size={80}/></div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dette Moyenne / Client</p>
-          <h3 className="text-2xl md:text-3xl font-black text-slate-900 leading-tight">{fmtAmount(Math.round(stats.average))}</h3>
-          <p className="text-[10px] font-bold text-slate-400 mt-1">{currency}</p>
-          <div className="mt-4 flex items-center gap-2">
-            <Users size={12} className="text-slate-400"/>
-            <span className="text-[9px] font-black text-slate-400 uppercase">{stats.withEmail} avec email</span>
-          </div>
-        </div>
-
-        {/* Actions rapides */}
-        <div className="bg-white p-5 md:p-7 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between gap-4">
-          <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Actions Rapides</p>
-            <p className="text-xs font-bold text-slate-500">Relancer tous vos débiteurs</p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={() => setShowRemindersModal(true)}
-              className="w-full py-2.5 px-4 bg-indigo-600 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md"
-            >
-              <Send size={12}/> Envoyer Rappels Email
-            </button>
-            <button
-              onClick={fetchDebtors}
-              className="w-full py-2.5 px-4 bg-slate-50 text-slate-600 rounded-2xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-100 transition-all flex items-center justify-center gap-2 border border-slate-200"
-            >
-              <RefreshCw size={12} className={loading ? 'animate-spin' : ''}/> Actualiser
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* ── CHÈQUES EN ATTENTE PAR CLIENT ── */}
-      {pendingChequesByCustomer.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 md:p-7 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-amber-500 rounded-2xl flex items-center justify-center shadow">
-                <AlertTriangle size={16} className="text-white"/>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Chèques en Attente d'Encaissement</p>
-                <p className="text-[9px] text-amber-600 font-bold">{pendingChequesByCustomer.length} client(s) — non encore encaissé(s)</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-xl font-black text-amber-700">{fmtAmount(totalPendingCheques)}</p>
-              <p className="text-[9px] text-amber-500 font-bold uppercase">{currency} en transit</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {pendingChequesByCustomer.map(c => (
-              <div key={c.id} className="bg-white border border-amber-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                <div>
-                  <p className="text-[10px] font-black text-slate-700 uppercase">{c.name}</p>
-                  <p className="text-[9px] text-amber-600 font-bold mt-0.5">{c.count} chèque(s) en circuit</p>
-                </div>
-                <p className="text-sm font-black text-amber-700">{fmtAmount(c.amount)} <span className="text-[9px] font-bold">{currency}</span></p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── FILTRE ANNÉE/MOIS ── */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-        <YearMonthPicker
-          dataYears={availableYears}
-          selectedYear={selectedYear}
-          selectedMonth={selectedMonth}
-          onYearChange={setSelectedYear}
-          onMonthChange={setSelectedMonth}
-        />
-      </div>
-
-      {/* ── TABLEAU PRINCIPAL ── */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-
-        {/* Toolbar */}
-        <div className="p-4 md:p-5 border-b border-slate-100 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15}/>
-            <input
-              type="text"
-              placeholder="Rechercher par nom, email ou téléphone…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-300 transition-all"
-            />
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => toggleSort('amount')}
-              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${sortKey === 'amount' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-indigo-200'}`}
-            >
-              <DollarSign size={11}/> Montant
-              {sortKey === 'amount' && (sortDir === 'desc' ? <ChevronDown size={10}/> : <ChevronUp size={10}/>)}
-            </button>
-            <button
-              onClick={() => toggleSort('name')}
-              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${sortKey === 'name' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-indigo-200'}`}
-            >
-              <ArrowUpDown size={11}/> Nom
-              {sortKey === 'name' && (sortDir === 'desc' ? <ChevronDown size={10}/> : <ChevronUp size={10}/>)}
-            </button>
-            <select
-              value={perPage}
-              onChange={e => setPerPage(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-[10px] font-black outline-none text-slate-600"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={'ALL'}>Tous</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Contenu */}
-        {loading ? (
-          <div className="py-28 flex flex-col items-center gap-3">
-            <Loader2 className="animate-spin text-rose-500" size={36}/>
-            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Analyse des créances en cours…</p>
-          </div>
-        ) : processed.length === 0 ? (
-          <div className="py-28 flex flex-col items-center gap-4 text-center px-6">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-50 flex items-center justify-center">
-              <CheckCircle2 size={28} className="text-emerald-500"/>
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {[
+          { label: 'Total attendu', value: `${fmtAmount(kpis.total)} ${currency}`, icon: DollarSign, color: 'text-slate-600', bg: 'bg-slate-50' },
+          { label: 'Reçu', value: `${fmtAmount(kpis.paye)} ${currency}`, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'En retard', value: `${fmtAmount(kpis.retard)} ${currency}`, icon: AlertTriangle, color: 'text-rose-600', bg: 'bg-rose-50' },
+          { label: 'En attente', value: `${fmtAmount(kpis.attente)} ${currency}`, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'Taux recouvrement', value: `${kpis.txRecouvrement}%`, icon: TrendingDown, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+        ].map(k => (
+          <div key={k.label} className="bg-white rounded-[2rem] p-5 border border-slate-100 shadow-sm flex items-center gap-3">
+            <div className={`w-10 h-10 ${k.bg} rounded-xl flex items-center justify-center shrink-0`}>
+              <k.icon className={k.color} size={18} />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-800 uppercase">Aucune créance détectée</p>
-              <p className="text-[10px] text-slate-400 font-medium mt-1">
-                {search ? 'Aucun résultat pour cette recherche.' : 'Tous les comptes clients sont à jour.'}
-              </p>
+              <p className="text-lg font-black text-slate-900 leading-none">{k.value}</p>
+              <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{k.label}</p>
             </div>
           </div>
-        ) : (
-          <>
-            {/* TABLE — desktop */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50/60 text-slate-400 text-[9px] font-black uppercase tracking-widest border-b border-slate-100">
-                    <th className="px-5 py-4 w-10">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 accent-indigo-600 rounded"
-                        checked={allEmailSelected}
-                        onChange={toggleSelectAll}
-                        title="Sélectionner tous avec email"
-                      />
-                    </th>
-                    <th className="px-4 py-4">Débiteur</th>
-                    <th className="px-4 py-4">Contact</th>
-                    <th className="px-4 py-4">Risque</th>
-                    <th className="px-4 py-4 text-right">Encours</th>
-                    <th className="px-4 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {displayed.map((d: any) => {
-                    const risk = riskLevel(d.outstandingBalance, stats.max);
-                    const pct = stats.max > 0 ? (d.outstandingBalance / stats.max) * 100 : 0;
-                    return (
-                      <tr key={d.id} className="hover:bg-slate-50/50 transition-all group">
-                        <td className="px-5 py-4">
-                          {d.email && (
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 accent-indigo-600 rounded"
-                              checked={selectedDebtors.includes(d.id)}
-                              onChange={() => toggleSelect(d.id)}
-                            />
-                          )}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-600 text-sm flex-shrink-0 uppercase">
-                              {(d.companyName || '?').charAt(0)}
-                            </div>
-                            <div>
-                              <p className="text-sm font-black text-slate-800 uppercase leading-tight">{d.companyName}</p>
-                              <p className="text-[9px] text-slate-400 font-semibold">{d.salesCount} vente(s) concernée(s)</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="space-y-0.5">
-                            {d.email && <p className="text-[10px] font-semibold text-slate-600 flex items-center gap-1"><Mail size={10} className="text-slate-400"/>{d.email}</p>}
-                            {d.phone && <p className="text-[10px] font-semibold text-slate-500 flex items-center gap-1"><Phone size={10} className="text-slate-400"/>{d.phone}</p>}
-                            {!d.email && !d.phone && <p className="text-[9px] text-slate-300 italic">Aucun contact</p>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="space-y-1.5">
-                            <span className={`inline-flex items-center gap-1 text-[8px] font-black px-2 py-0.5 rounded-lg ${risk.bg} ${risk.color}`}>
-                              <Zap size={8}/> {risk.label}
-                            </span>
-                            <div className="w-24 bg-slate-100 rounded-full h-1.5">
-                              <div className={`h-1.5 rounded-full ${risk.bar}`} style={{ width: `${pct}%` }}/>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-right">
-                          <div>
-                            <p className="text-base font-black text-rose-600">{fmtAmount(d.outstandingBalance)}</p>
-                            <p className="text-[9px] font-bold text-slate-400">{currency}</p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleWhatsApp(d)}
-                              title="WhatsApp"
-                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-emerald-600 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all shadow-sm"
-                            >
-                              <MessageCircle size={15}/>
-                            </button>
-                            {d.email && (
-                              <button
-                                onClick={() => openEmail(d)}
-                                title="Email"
-                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-indigo-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm"
-                              >
-                                <Mail size={15}/>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+        ))}
+      </div>
 
-            {/* CARDS — mobile */}
-            <div className="md:hidden divide-y divide-slate-100">
-              {displayed.map((d: any) => {
-                const risk = riskLevel(d.outstandingBalance, stats.max);
-                const pct = stats.max > 0 ? (d.outstandingBalance / stats.max) * 100 : 0;
-                return (
-                  <div key={d.id} className="p-4 flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        {d.email && (
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 accent-indigo-600 rounded mt-0.5"
-                            checked={selectedDebtors.includes(d.id)}
-                            onChange={() => toggleSelect(d.id)}
-                          />
-                        )}
-                        <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-600 text-sm uppercase flex-shrink-0">
-                          {(d.companyName || '?').charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-black text-slate-800 uppercase leading-tight">{d.companyName}</p>
-                          <span className={`inline-flex items-center gap-1 text-[8px] font-black px-2 py-0.5 rounded-lg mt-0.5 ${risk.bg} ${risk.color}`}>
-                            <Zap size={8}/> {risk.label}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-base font-black text-rose-600">{fmtAmount(d.outstandingBalance)}</p>
-                        <p className="text-[9px] text-slate-400">{currency}</p>
-                      </div>
-                    </div>
+      {/* ── Barre de filtres + actions bulk ── */}
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <input type="text" placeholder="Rechercher un élève..." value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full bg-slate-50 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 border border-slate-100" />
+        </div>
 
-                    <div className="w-full bg-slate-100 rounded-full h-1.5">
-                      <div className={`h-1.5 rounded-full ${risk.bar}`} style={{ width: `${pct}%` }}/>
-                    </div>
+        {(['TOUS', 'EN_ATTENTE', 'EN_RETARD', 'PAYE'] as const).map(s => (
+          <button key={s} onClick={() => setFilterStatut(s)}
+            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${filterStatut === s ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>
+            {s === 'TOUS' ? 'Tous' : s === 'EN_ATTENTE' ? 'En attente' : s === 'EN_RETARD' ? 'En retard' : 'Payés'}
+          </button>
+        ))}
 
-                    <div className="flex items-center justify-between">
-                      <div className="text-[10px] text-slate-400 font-medium space-y-0.5">
-                        {d.email && <p className="flex items-center gap-1"><Mail size={9}/> {d.email}</p>}
-                        {d.phone && <p className="flex items-center gap-1"><Phone size={9}/> {d.phone}</p>}
-                        {!d.email && !d.phone && <p className="italic">Aucun contact</p>}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleWhatsApp(d)}
-                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all"
-                        >
-                          <MessageCircle size={15}/>
-                        </button>
-                        {d.email && (
-                          <button
-                            onClick={() => openEmail(d)}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all"
-                          >
-                            <Mail size={15}/>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Footer */}
-            <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
-              <span>{displayed.length} / {processed.length} résultat(s)</span>
-              {perPage !== 'ALL' && processed.length > (perPage as number) && (
-                <button onClick={() => setPerPage('ALL')} className="text-indigo-500 hover:text-indigo-700 transition-all">
-                  Voir tout →
-                </button>
-              )}
-            </div>
-          </>
+        {selectedEcheances.size > 0 && (
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-[9px] font-black text-slate-500">{selectedEcheances.size} sélectionné(s)</span>
+            <button onClick={() => handleBulkReminder('WHATSAPP')} disabled={actionLoading === 'bulk'}
+              className="px-3 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase flex items-center gap-1">
+              <MessageCircle size={12} /> WhatsApp
+            </button>
+            <button onClick={() => handleBulkReminder('EMAIL')} disabled={actionLoading === 'bulk'}
+              className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase flex items-center gap-1">
+              <Mail size={12} /> Email
+            </button>
+          </div>
         )}
       </div>
 
-      {/* ── NOTE D'INFO ── */}
-      <div className="p-4 md:p-6 bg-indigo-50 border border-indigo-100 rounded-3xl flex items-start gap-4">
-        <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 flex-shrink-0 mt-0.5">
-          <Info size={16}/>
+      {/* ── Liste des élèves groupés ── */}
+      {loading ? (
+        <div className="py-20 flex flex-col items-center gap-4 text-slate-400">
+          <RefreshCw size={28} className="animate-spin" />
+          <p className="text-[10px] font-black uppercase tracking-widest">Chargement des redevances…</p>
         </div>
-        <div>
-          <h4 className="text-[10px] font-black uppercase text-indigo-900 mb-1">Calcul des créances</h4>
-          <p className="text-[10px] text-indigo-700 font-medium leading-relaxed">
-            Les encours sont calculés dynamiquement en comparant le montant TTC des ventes avec les acomptes encaissés. Les ventes annulées sont exclues. Le niveau de risque est relatif au créancier ayant la dette la plus élevée.
-          </p>
+      ) : elevesGroupes.length === 0 ? (
+        <div className="py-20 text-center bg-white rounded-[3rem] border border-dashed border-slate-200">
+          <CheckCircle2 size={32} className="mx-auto text-slate-300 mb-3" />
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aucune redevance pour cette période</p>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          {elevesGroupes.map(g => {
+            const expanded = expandedEleves.has(g.eleveId);
+            const hasRetard = g.totalRetard > 0;
+            return (
+              <div key={g.eleveId}
+                className={`bg-white rounded-[2rem] border shadow-sm overflow-hidden transition-all ${hasRetard ? 'border-rose-100' : 'border-slate-100'}`}>
 
-      {/* ── MODAL EMAIL INDIVIDUEL ── */}
-      {showEmailModal && (
-        <div className="fixed inset-0 z-[800] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full sm:max-w-xl sm:mx-auto rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300 max-h-[95dvh] flex flex-col">
+                {/* ── Header élève ── */}
+                <div className="flex items-center gap-4 p-5 cursor-pointer hover:bg-slate-50/50 transition-all"
+                  onClick={() => toggleEleve(g.eleveId)}>
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 ${hasRetard ? 'bg-rose-100 text-rose-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                    {g.prenom.charAt(0)}{g.nom.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-slate-900 text-sm">{g.prenom} {g.nom}</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                      {NIVEAUX[g.niveau] || g.niveau} · {g.matricule} · {g.echeances.length} redevance(s)
+                    </p>
+                  </div>
 
-            <div className="px-5 py-4 bg-indigo-600 text-white flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <Mail size={18}/>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-tight">Relance par Email</p>
-                  <p className="text-[9px] text-indigo-200">{showEmailModal.companyName}</p>
+                  {/* Montants */}
+                  <div className="hidden sm:flex items-center gap-6 mr-4">
+                    {g.totalRetard > 0 && (
+                      <div className="text-right">
+                        <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Retard</p>
+                        <p className="text-sm font-black text-rose-600">{fmtAmount(g.totalRetard)} {currency}</p>
+                      </div>
+                    )}
+                    <div className="text-right">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Total dû</p>
+                      <p className="text-sm font-black text-slate-900">{fmtAmount(g.totalDu)} {currency}</p>
+                    </div>
+                  </div>
+
+                  {/* Actions rapides */}
+                  <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                    <button title="Relance WhatsApp"
+                      onClick={() => setShowReminderModal({ eleve: g, canal: 'WHATSAPP' })}
+                      disabled={!g.whatsapp || actionLoading === `relance-${g.eleveId}`}
+                      className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all disabled:opacity-40">
+                      <MessageCircle size={14} />
+                    </button>
+                    <button title="Relance Email"
+                      onClick={() => setShowReminderModal({ eleve: g, canal: 'EMAIL' })}
+                      disabled={!g.email || actionLoading === `relance-${g.eleveId}`}
+                      className="w-8 h-8 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all disabled:opacity-40">
+                      <Mail size={14} />
+                    </button>
+                    <button title="Voir facture mensuelle"
+                      onClick={() => loadFacture(g.eleveId)}
+                      disabled={actionLoading === `facture-${g.eleveId}`}
+                      className="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-all">
+                      {actionLoading === `facture-${g.eleveId}` ? <Loader2 size={13} className="animate-spin" /> : <FileText size={14} />}
+                    </button>
+                    <button onClick={() => toggleEleve(g.eleveId)}
+                      className="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100 transition-all">
+                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
                 </div>
+
+                {/* ── Détail des échéances ── */}
+                {expanded && (
+                  <div className="border-t border-slate-50 divide-y divide-slate-50">
+                    {g.echeances.map(ech => (
+                      <div key={ech.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/30 transition-all">
+                        <input type="checkbox"
+                          checked={selectedEcheances.has(ech.id)}
+                          onChange={() => toggleSelectEcheance(ech.id)}
+                          className="w-4 h-4 rounded accent-indigo-600"
+                          onClick={e => e.stopPropagation()}
+                        />
+                        <div className="flex-1">
+                          <p className="text-xs font-black text-slate-700">{ech.service?.name || '—'} — {ech.periodeLabel}</p>
+                          <p className="text-[9px] text-slate-400 font-bold">Échéance : {fmtDate(ech.dateEcheance)}
+                            {ech.reminderSentAt && <span className="ml-2 text-indigo-400">· relancé {fmtDate(ech.reminderSentAt)}</span>}
+                          </p>
+                        </div>
+                        <p className="text-sm font-black text-slate-900 w-28 text-right">{fmtAmount(parseFloat(ech.montant as any))} {currency}</p>
+                        {statutBadge(ech.statut)}
+                        {(ech.statut === 'EN_ATTENTE' || ech.statut === 'EN_RETARD') && (
+                          <button onClick={() => setShowPayModal(ech)}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-1">
+                            <CreditCard size={10} /> Encaisser
+                          </button>
+                        )}
+                        {ech.statut === 'PAYE' && ech.saleId && (
+                          <span className="text-[8px] font-black text-emerald-500 flex items-center gap-1">
+                            <BadgeCheck size={10} /> Vente #{ech.saleId.slice(-6)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <button onClick={() => setShowEmailModal(null)} className="p-2 hover:bg-white/10 rounded-xl transition-all">
-                <X size={18}/>
-              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ══ MODAL PAIEMENT ═══════════════════════════════════════════════════ */}
+      {showPayModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-md shadow-2xl p-10 animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-1">Enregistrer le paiement</h3>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">
+              {showPayModal.eleve?.prenom} {showPayModal.eleve?.nom} — {showPayModal.service?.name}
+            </p>
+
+            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 mb-6 flex items-center justify-between">
+              <span className="text-[10px] font-black text-indigo-600 uppercase">{showPayModal.periodeLabel}</span>
+              <span className="text-2xl font-black text-indigo-900">{fmtAmount(parseFloat(showPayModal.montant as any))} {currency}</span>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-sm uppercase">
-                  {showEmailModal.companyName.charAt(0)}
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-800">{showEmailModal.companyName}</p>
-                  <p className="text-[9px] text-slate-400">{showEmailModal.email}</p>
-                </div>
-                <div className="ml-auto text-right">
-                  <p className="text-sm font-black text-rose-600">{fmtAmount(showEmailModal.outstandingBalance)}</p>
-                  <p className="text-[9px] text-slate-400">{currency}</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Objet</label>
-                <input
-                  value={emailContent.subject}
-                  onChange={e => setEmailContent(p => ({ ...p, subject: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-300 transition-all"
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Message</label>
-                <textarea
-                  rows={7}
-                  value={emailContent.body}
-                  onChange={e => setEmailContent(p => ({ ...p, body: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-300 transition-all resize-none"
-                />
+            <div className="space-y-3 mb-6">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mode de paiement</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { v: 'CASH', l: 'Espèces' },
+                  { v: 'WAVE', l: 'Wave' },
+                  { v: 'ORANGE_MONEY', l: 'Orange Money' },
+                  { v: 'CHEQUE', l: 'Chèque' },
+                  { v: 'TRANSFER', l: 'Virement' },
+                  { v: 'MTN_MOMO', l: 'MTN MoMo' },
+                ].map(m => (
+                  <button key={m.v} onClick={() => setMethodePaiement(m.v)}
+                    className={`py-2 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${methodePaiement === m.v ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-indigo-200'}`}>
+                    {m.l}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
-              <button onClick={() => setShowEmailModal(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all">
+            <div className="bg-slate-50 rounded-2xl p-3 mb-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              Une vente sera automatiquement créée dans le module Ventes.
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowPayModal(null)}
+                className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
                 Annuler
               </button>
-              <button onClick={sendViaGmail} className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md">
-                <Send size={13}/> Ouvrir Gmail
+              <button onClick={handlePayEcheance} disabled={!!actionLoading}
+                className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 shadow-xl transition-all flex items-center justify-center gap-2">
+                {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Confirmer
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── MODAL RAPPELS GROUPÉS ── */}
-      {showRemindersModal && (
-        <div className="fixed inset-0 z-[700] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full sm:max-w-2xl sm:mx-auto rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300 max-h-[95dvh] flex flex-col">
-
-            <div className="px-5 py-4 bg-indigo-600 text-white flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <Send size={18}/>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-tight">Rappels Groupés</p>
-                  <p className="text-[9px] text-indigo-200">{withEmail.length} client(s) avec email disponible</p>
-                </div>
-              </div>
-              <button onClick={() => { setShowRemindersModal(false); setSelectedDebtors([]); }} className="p-2 hover:bg-white/10 rounded-xl transition-all">
-                <X size={18}/>
+      {/* ══ MODAL RELANCE ════════════════════════════════════════════════════ */}
+      {showReminderModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-lg shadow-2xl p-10 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-3">
+                {showReminderModal.canal === 'WHATSAPP'
+                  ? <><MessageCircle className="text-emerald-500" size={22} /> Relance WhatsApp</>
+                  : <><Mail className="text-indigo-500" size={22} /> Relance Email</>}
+              </h3>
+              <button onClick={() => setShowReminderModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="p-4 border-b border-slate-100 flex items-center gap-3 flex-shrink-0 bg-slate-50/50">
-              <input
-                id="sel-all"
-                type="checkbox"
-                className="w-4 h-4 accent-indigo-600 rounded"
-                checked={allEmailSelected}
-                onChange={toggleSelectAll}
-              />
-              <label htmlFor="sel-all" className="text-[10px] font-black text-slate-600 uppercase cursor-pointer">
-                {allEmailSelected ? 'Tout désélectionner' : `Tout sélectionner (${withEmail.length})`}
-              </label>
-              {selectedDebtors.length > 0 && (
-                <span className="ml-auto text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">
-                  {selectedDebtors.length} sélectionné(s)
-                </span>
-              )}
+            <div className="bg-slate-50 rounded-2xl p-4 mb-5 space-y-2">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Destinataire</p>
+              <p className="font-black text-slate-900">{showReminderModal.eleve.prenom} {showReminderModal.eleve.nom}</p>
+              <p className="text-xs text-slate-500">
+                {showReminderModal.canal === 'WHATSAPP'
+                  ? showReminderModal.eleve.whatsapp || '— numéro manquant'
+                  : showReminderModal.eleve.email || '— email manquant'}
+              </p>
             </div>
 
-            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-              {withEmail.length === 0 ? (
-                <div className="py-16 text-center">
-                  <AlertCircle size={24} className="text-slate-300 mx-auto mb-2"/>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">Aucun débiteur avec email</p>
-                </div>
-              ) : withEmail.map((d: any) => (
-                <div key={d.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-all">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 accent-indigo-600 rounded flex-shrink-0"
-                    checked={selectedDebtors.includes(d.id)}
-                    onChange={() => toggleSelect(d.id)}
-                  />
-                  <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center font-black text-slate-600 text-xs uppercase flex-shrink-0">
-                    {(d.companyName || '?').charAt(0)}
+            {/* Aperçu des échéances à relancer */}
+            <div className="space-y-2 max-h-48 overflow-y-auto mb-5">
+              {showReminderModal.eleve.echeances
+                .filter(e => e.statut === 'EN_ATTENTE' || e.statut === 'EN_RETARD')
+                .map(e => (
+                  <div key={e.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="text-xs font-black text-slate-700">{e.service?.name} — {e.periodeLabel}</p>
+                      <p className="text-[9px] text-slate-400 font-bold">{fmtDate(e.dateEcheance)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">{fmtAmount(parseFloat(e.montant as any))} {currency}</span>
+                      {statutBadge(e.statut)}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-black text-slate-800 truncate">{d.companyName}</p>
-                    <p className="text-[9px] text-slate-400 truncate">{d.email}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-[11px] font-black text-rose-600">{fmtAmount(d.outstandingBalance)}</p>
-                    <p className="text-[8px] text-slate-400">{currency}</p>
-                  </div>
-                  <button
-                    onClick={() => { openEmail(d); setShowRemindersModal(false); }}
-                    className="p-2 rounded-xl bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-500 transition-all flex-shrink-0"
-                    title="Prévisualiser"
-                  >
-                    <Mail size={13}/>
-                  </button>
-                </div>
-              ))}
+                ))}
             </div>
 
-            <div className="p-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
-              <button onClick={() => { setShowRemindersModal(false); setSelectedDebtors([]); }} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all">
+            <div className="flex gap-3">
+              <button onClick={() => setShowReminderModal(null)}
+                className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
                 Annuler
               </button>
               <button
-                onClick={sendBulkViaGmail}
-                disabled={selectedDebtors.length === 0}
-                className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md"
-              >
-                <Send size={13}/> Envoyer ({selectedDebtors.length})
+                onClick={() => handleSendReminder(showReminderModal.eleve, showReminderModal.canal)}
+                disabled={!!actionLoading}
+                className={`flex-1 py-4 text-white rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all flex items-center justify-center gap-2 ${showReminderModal.canal === 'WHATSAPP' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Envoyer la relance
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ══ MODAL FACTURE MENSUELLE ═══════════════════════════════════════════ */}
+      {showFactureModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+
+            {/* En-tête facture */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white p-8 flex justify-between items-start">
+              <div>
+                <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-1">Le Toit des Anges — Relevé Mensuel</p>
+                <h3 className="text-2xl font-black uppercase tracking-tighter">
+                  {showFactureModal.eleve.prenom} {showFactureModal.eleve.nom}
+                </h3>
+                <p className="text-indigo-200 text-xs font-bold mt-1">
+                  {NIVEAUX[showFactureModal.eleve.niveau] || showFactureModal.eleve.niveau} · {showFactureModal.mois}
+                </p>
+              </div>
+              <button onClick={() => setShowFactureModal(null)}
+                className="p-2 bg-white/10 hover:bg-white/20 rounded-2xl transition-all"><X size={18} /></button>
+            </div>
+
+            <div className="p-8 space-y-5 max-h-[60vh] overflow-y-auto">
+
+              {/* Détail des redevances */}
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Redevances du mois</p>
+                <div className="space-y-2">
+                  {showFactureModal.echeances.map(e => (
+                    <div key={e.id} className="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
+                      <div>
+                        <p className="text-xs font-black text-slate-800">{(e as any).service?.name || '—'}</p>
+                        <p className="text-[9px] text-slate-400 font-bold">{e.periodeLabel} · échéance {fmtDate(e.dateEcheance)}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-black text-slate-900">{fmtAmount(parseFloat(e.montant as any))} {currency}</span>
+                        {statutBadge(e.statut)}
+                      </div>
+                    </div>
+                  ))}
+                  {showFactureModal.echeances.length === 0 && (
+                    <p className="text-center text-slate-400 text-xs font-bold py-4">Aucune redevance ce mois</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Récapitulatif */}
+              <div className="bg-slate-900 rounded-2xl p-5 text-white space-y-2">
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-slate-400">Total attendu</span>
+                  <span>{fmtAmount(showFactureModal.totalDu)} {currency}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-emerald-400">Total reçu</span>
+                  <span className="text-emerald-400">{fmtAmount(showFactureModal.totalPaye)} {currency}</span>
+                </div>
+                <div className="border-t border-white/10 pt-2 flex justify-between">
+                  <span className="font-black uppercase tracking-widest text-[10px]">Solde restant</span>
+                  <span className={`text-xl font-black ${showFactureModal.solde > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {fmtAmount(showFactureModal.solde)} {currency}
+                  </span>
+                </div>
+              </div>
+
+              {/* Contact parent */}
+              {(showFactureModal.eleve.parent1?.telephone || showFactureModal.eleve.whatsappPrincipal) && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center gap-3">
+                  <Phone size={16} className="text-indigo-500 shrink-0" />
+                  <div>
+                    <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Contact parent</p>
+                    <p className="text-sm font-black text-indigo-900">
+                      {showFactureModal.eleve.parent1?.prenom} {showFactureModal.eleve.parent1?.nom} —{' '}
+                      {showFactureModal.eleve.whatsappPrincipal || showFactureModal.eleve.parent1?.telephone}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-8 pb-8 flex gap-3">
+              <button
+                onClick={() => {
+                  const eleve = elevesGroupes.find(g => g.eleveId === showFactureModal.eleve.id);
+                  if (eleve) handleSendReminder(eleve, 'WHATSAPP');
+                }}
+                className="flex-1 py-3 bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all">
+                <MessageCircle size={14} /> Envoyer WhatsApp
+              </button>
+              <button
+                onClick={() => {
+                  const eleve = elevesGroupes.find(g => g.eleveId === showFactureModal.eleve.id);
+                  if (eleve) handleSendReminder(eleve, 'EMAIL');
+                }}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all">
+                <Mail size={14} /> Envoyer Email
+              </button>
+              <button onClick={() => setShowFactureModal(null)}
+                className="px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

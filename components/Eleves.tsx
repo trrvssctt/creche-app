@@ -6,10 +6,12 @@ import {
   UserCheck, UserX, Clock, GraduationCap, Heart,
   ArrowRight, ChevronLeft, FileText, FolderOpen,
   ClipboardCheck, UserPlus, ClipboardList, Banknote,
+  Repeat, Calendar, AlertTriangle,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { openInvoicePrintWindow, type StudentInvoiceData } from '../services/invoicePdf';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -80,12 +82,13 @@ const emptyForm = (): Partial<Eleve> => ({
   dateNaissance: '',
   lieuNaissance: '',
   niveau: 'PS',
+  classeId: undefined,
   regimeFinancier: 'NORMAL',
   remisePct: 0,
   cantine: false,
   transportBus: false,
   besoinSpecifique: '',
-  statut: 'EN_ATTENTE',
+  statut: 'INSCRIT',
   dateAdmission: new Date().toISOString().slice(0, 10),
   whatsappPrincipal: '',
   anneeScolaire: ANNEE_COURANTE,
@@ -286,6 +289,122 @@ interface ElevesProps {
   refreshKey?: number;
 }
 
+// ─── Bouton facture d'inscription ─────────────────────────────────────────
+const NIVEAUX_LABELS_MAP: Record<string, string> = {
+  CRECHE: 'Crèche', PS: 'Petite Section', MS: 'Moyenne Section', GS: 'Grande Section',
+  CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
+};
+
+const METHODES_PAIEMENT = [
+  { value: 'CASH',         label: 'Espèces' },
+  { value: 'ORANGE_MONEY', label: 'Orange Money' },
+  { value: 'WAVE',         label: 'Wave' },
+  { value: 'MTN_MOMO',     label: 'MTN MoMo' },
+  { value: 'TRANSFER',     label: 'Virement' },
+  { value: 'CHEQUE',       label: 'Chèque' },
+];
+
+const RECURRING_TYPES = ['MENSUALITE', 'BUS', 'CANTINE'];
+
+const InscriptionFactureButton: React.FC<{
+  inscritEleve: Partial<Eleve> | null;
+  servicesApplicables: any[];
+  currency: string;
+}> = ({ inscritEleve, servicesApplicables, currency }) => {
+  const showToast = useToast();
+  const [loading, setLoading] = React.useState(false);
+  const [methodePaiement, setMethodePaiement] = React.useState('CASH');
+
+  // Séparer frais d'inscription des services récurrents
+  const feeServices = servicesApplicables.filter(s => {
+    const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+    return !RECURRING_TYPES.includes(type);
+  });
+  const recurringServices = servicesApplicables.filter(s => {
+    const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+    return RECURRING_TYPES.includes(type);
+  });
+
+  const totalFees = feeServices.reduce((sum, s) => sum + Number(s.price), 0);
+
+  const handleGenerate = async () => {
+    if (!inscritEleve?.id || feeServices.length === 0) return;
+    setLoading(true);
+    try {
+      const res: any = await apiClient.post(
+        `/eleves/${inscritEleve.id}/facture-inscription`,
+        { services: servicesApplicables, methodePaiement }
+      );
+
+      const invoiceData: StudentInvoiceData = {
+        type: 'RECU',
+        eleve: {
+          nom: inscritEleve.nom || '',
+          prenom: inscritEleve.prenom || '',
+          matricule: inscritEleve.matricule,
+          niveau: NIVEAUX_LABELS_MAP[inscritEleve.niveau as string] || inscritEleve.niveau,
+        },
+        parent1: inscritEleve.parent1,
+        period: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        currency,
+        reference: res?.sale?.reference,
+        methodePaiement,
+        echeances: feeServices.map(s => ({
+          service: { name: s.name },
+          periodeLabel: 'Ponctuel',
+          montant: Number(s.price),
+          statut: 'PAYE',
+          dateEcheance: new Date().toISOString().slice(0, 10),
+          description: s.name,
+        })),
+        totalDu: totalFees,
+        totalPaye: totalFees,
+        solde: 0,
+      };
+
+      openInvoicePrintWindow(invoiceData);
+      showToast('Reçu généré — enregistrez-le en PDF depuis le dialogue d\'impression.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Erreur lors de la génération du reçu.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!inscritEleve?.id || feeServices.length === 0) return null;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {recurringServices.length > 0 && (
+        <p className="text-[9px] text-slate-400 text-center">
+          Les mensualités/bus/cantine seront gérés via le Recouvrement
+        </p>
+      )}
+      <div className="flex gap-2">
+        <select
+          value={methodePaiement}
+          onChange={e => setMethodePaiement(e.target.value)}
+          className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-[10px] font-bold outline-none focus:ring-2 focus:ring-emerald-500 appearance-none"
+        >
+          {METHODES_PAIEMENT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+        <button
+          onClick={handleGenerate}
+          disabled={loading}
+          className="flex-1 flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+        >
+          {loading
+            ? <><span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" /> Traitement…</>
+            : <><FileText size={12} /> Encaisser & Reçu</>}
+        </button>
+      </div>
+      <p className="text-[9px] text-emerald-700 font-bold text-center">
+        Frais d'inscription : {totalFees.toLocaleString('fr-FR')} {currency}
+      </p>
+    </div>
+  );
+};
+
 const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [eleves, setEleves] = useState<Eleve[]>([]);
   const [loading, setLoading] = useState(true);
@@ -307,11 +426,21 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   // ── Création multi-étapes ──────────────────────────────────────────────────
   const [createStep, setCreateStep] = useState<'SELECTION' | 'FORM' | 'DOCS'>('SELECTION');
   const [admissions, setAdmissions] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
   const [admissionsLoading, setAdmissionsLoading] = useState(false);
   const [admissionSearch, setAdmissionSearch] = useState('');
   const [inscritEleve, setInscritEleve] = useState<Partial<Eleve> | null>(null);
   const [selectedDossierId, setSelectedDossierId] = useState<string | null>(null);
   const [servicesApplicables, setServicesApplicables] = useState<any[]>([]);
+
+  // ── Abonnements & Échéances ────────────────────────────────────────────────
+  const [abonnements, setAbonnements] = useState<any[]>([]);
+  const [abonnementsLoading, setAbonnementsLoading] = useState(false);
+  const [allServicesRecurrents, setAllServicesRecurrents] = useState<any[]>([]);
+  const [showAddAbonnement, setShowAddAbonnement] = useState(false);
+  const [newAboForm, setNewAboForm] = useState({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10) });
+  const [aboActionLoading, setAboActionLoading] = useState(false);
+  const [expandedAbos, setExpandedAbos] = useState<Set<string>>(new Set());
 
   const showToast = useToast();
   const canModify = authBridge.canPerform(user, 'EDIT', 'eleves');
@@ -323,8 +452,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get('/eleves');
-      setEleves(Array.isArray(data) ? data : (data?.rows ?? data?.eleves ?? []));
+      const [elevesData, classesData] = await Promise.all([
+        apiClient.get('/eleves'),
+        apiClient.get('/classes')
+      ]);
+      setEleves(Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []));
+      setClasses(Array.isArray(classesData) ? classesData : []);
     } catch {
       setEleves([]);
     } finally {
@@ -413,17 +546,98 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       const data = await apiClient.get('/services');
       const list: any[] = Array.isArray(data) ? data : [];
       const filtered = list.filter(s => {
+        // Exclure les services inactifs
+        if (s.isActive === false || s.is_active === false) return false;
+
         const niveaux: string[] = s.niveauxCibles || s.niveaux_cibles || [];
-        const matchNiveau = niveaux.length === 0 || niveaux.includes(niveau);
-        if (!matchNiveau) return false;
         const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-        if (type === 'BUS') return bus;
+
+        // Un service sans niveaux cibles ne s'applique qu'aux frais ponctuels (inscription, frais admin)
+        // Les mensualités/cantine/bus doivent explicitement cibler un niveau
+        if (niveaux.length === 0) {
+          // Inclure seulement si ce n'est pas une mensualité ou un service de transport/restauration
+          return type !== 'MENSUALITE' && type !== 'BUS' && type !== 'CANTINE';
+        }
+
+        if (!niveaux.includes(niveau)) return false;
+
+        if (type === 'BUS')     return bus;
         if (type === 'CANTINE') return cantine;
         return true;
       });
       setServicesApplicables(filtered);
     } catch {
       setServicesApplicables([]);
+    }
+  };
+
+  const fetchAbonnements = async (eleveId: string) => {
+    setAbonnementsLoading(true);
+    try {
+      const data = await apiClient.get(`/abonnements/eleve/${eleveId}`);
+      setAbonnements(Array.isArray(data) ? data : []);
+    } catch {
+      setAbonnements([]);
+    } finally {
+      setAbonnementsLoading(false);
+    }
+  };
+
+  const loadServicesRecurrents = async () => {
+    try {
+      const data = await apiClient.get('/services');
+      const list: any[] = Array.isArray(data) ? data : [];
+      setAllServicesRecurrents(list.filter(s => s.isActive && (s.estRecurrent || s.est_recurrent)));
+    } catch {
+      setAllServicesRecurrents([]);
+    }
+  };
+
+  const handleAddAbonnement = async () => {
+    if (!selectedEleve?.id || !newAboForm.serviceId) return;
+    setAboActionLoading(true);
+    try {
+      await apiClient.post('/abonnements', {
+        eleveId: selectedEleve.id,
+        serviceId: newAboForm.serviceId,
+        dateDebut: newAboForm.dateDebut,
+      });
+      setShowAddAbonnement(false);
+      setNewAboForm({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10) });
+      fetchAbonnements(selectedEleve.id);
+      showToast('Abonnement créé. Les échéances ont été générées.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || "Erreur lors de la création de l'abonnement.", 'error');
+    } finally {
+      setAboActionLoading(false);
+    }
+  };
+
+  const handleDesactiverAbonnement = async (aboId: string) => {
+    if (!selectedEleve?.id) return;
+    setAboActionLoading(true);
+    try {
+      await apiClient.put(`/abonnements/${aboId}/desactiver`, {});
+      fetchAbonnements(selectedEleve.id);
+      showToast('Abonnement désactivé.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Erreur.', 'error');
+    } finally {
+      setAboActionLoading(false);
+    }
+  };
+
+  const handlePayEcheance = async (echeanceId: string) => {
+    if (!selectedEleve?.id) return;
+    setAboActionLoading(true);
+    try {
+      await apiClient.put(`/abonnements/echeances/${echeanceId}/payer`, { methodePaiement: 'CASH' });
+      fetchAbonnements(selectedEleve.id);
+      showToast('Échéance marquée comme payée.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Erreur.', 'error');
+    } finally {
+      setAboActionLoading(false);
     }
   };
 
@@ -440,28 +654,45 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
 
+  const activeEleves = eleves.filter(e => e.statut === 'INSCRIT' || e.statut === 'ACTIF');
+
   const kpis = {
-    total:      eleves.filter(e => e.statut === 'ACTIF').length,
-    attente:    eleves.filter(e => e.statut === 'EN_ATTENTE').length,
-    cassocsial: eleves.filter(e => e.regimeFinancier !== 'NORMAL').length,
-    besoins:    eleves.filter(e => e.besoinSpecifique).length,
+    total:    activeEleves.length,
+    cantine:  activeEleves.filter(e => e.cantine).length,
+    cassocial: activeEleves.filter(e => e.regimeFinancier !== 'NORMAL').length,
+    besoins:  activeEleves.filter(e => e.besoinSpecifique).length,
   };
+
+  // Répartition par niveau (élèves actifs uniquement)
+  const niveauxStats = NIVEAUX.map(n => ({
+    ...n,
+    count: activeEleves.filter(e => e.niveau === n.value).length,
+  })).filter(n => n.count > 0);
 
   // ── Sauvegarde ─────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!formData.nom || !formData.prenom || !formData.niveau || !formData.dateNaissance) {
-      setError('Veuillez remplir tous les champs obligatoires.');
-      return;
-    }
+    const p1Phone = formData.parent1?.whatsapp?.trim() || formData.parent1?.telephone?.trim();
+    if (!formData.nom?.trim())           { setError('Le nom de l\'élève est obligatoire.'); return; }
+    if (!formData.prenom?.trim())        { setError('Le prénom de l\'élève est obligatoire.'); return; }
+    if (!formData.niveau)                { setError('Le niveau scolaire est obligatoire.'); return; }
+    if (!formData.dateNaissance)         { setError('La date de naissance est obligatoire.'); return; }
+    if (showModal === 'CREATE' && !p1Phone) { setError('Le numéro WhatsApp ou téléphone du parent est obligatoire.'); return; }
     setActionLoading(true);
     setError(null);
     try {
       const payload: Partial<Eleve> = {
         ...formData,
+        nom: formData.nom.trim(),
+        prenom: formData.prenom.trim(),
         matricule: formData.matricule || genMatricule(formData.niveau as NiveauScolaire),
         anneeScolaire: ANNEE_COURANTE,
-        whatsappPrincipal: formData.parent1?.whatsapp || formData.whatsappPrincipal || '',
+        whatsappPrincipal: formData.parent1?.whatsapp?.trim() || formData.whatsappPrincipal || '',
+        // Toujours INSCRIT à la création — non modifiable depuis ce formulaire
+        ...(showModal === 'CREATE' && {
+          statut: 'INSCRIT',
+          dateAdmission: formData.dateAdmission || new Date().toISOString().slice(0, 10),
+        }),
       };
       if (showModal === 'EDIT' && selectedEleve?.id) {
         await apiClient.put(`/eleves/${selectedEleve.id}`, payload);
@@ -470,19 +701,25 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         setSelectedEleve(null);
         fetchEleves();
       } else {
-        await apiClient.post('/eleves', payload);
+        const created: any = await apiClient.post('/eleves', payload);
+        if (created?.id) setInscritEleve({ ...payload, id: created.id });
         // Mettre à jour le dossier d'admission → INSCRIT si provient d'un dossier
         if (selectedDossierId) {
+          const dossierIdToMark = selectedDossierId;
           try {
-            await apiClient.put(`/customers/${selectedDossierId}`, {
+            await apiClient.put(`/customers/${dossierIdToMark}`, {
               statut: 'INSCRIT',
               status: 'inscrit',
               isActive: true,
             });
-          } catch { /* silencieux — ne bloque pas l'inscription */ }
+          } catch (e) {
+            console.warn('[Eleves] Mise à jour statut dossier échouée :', e);
+          }
+          // Retirer le dossier de la liste locale dans tous les cas
+          setAdmissions(prev => prev.filter(d => d.id !== dossierIdToMark));
         }
         showToast('Élève inscrit avec succès.', 'success');
-        setInscritEleve(payload);
+        if (!created?.id) setInscritEleve(payload);
         loadServicesApplicables(
           payload.niveau as NiveauScolaire,
           !!payload.cantine,
@@ -532,6 +769,11 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const openView = (e: Eleve) => {
     setSelectedEleve(e);
     setShowModal('VIEW');
+    setAbonnements([]);
+    setShowAddAbonnement(false);
+    setExpandedAbos(new Set());
+    fetchAbonnements(e.id);
+    loadServicesRecurrents();
   };
 
   const closeCreateModal = () => {
@@ -569,10 +811,10 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Élèves actifs',      value: kpis.total,      icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'En attente',         value: kpis.attente,    icon: Clock,     color: 'text-amber-600',  bg: 'bg-amber-50' },
-          { label: 'Cas sociaux',        value: kpis.cassocsial, icon: Heart,     color: 'text-rose-600',   bg: 'bg-rose-50' },
-          { label: 'Besoins spécifiques',value: kpis.besoins,    icon: Baby,      color: 'text-blue-600',   bg: 'bg-blue-50' },
+          { label: 'Élèves inscrits',    value: kpis.total,     icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50',  sub: `${eleves.filter(e => e.statut === 'RADIE' || e.statut === 'SUSPENDU').length} inactifs` },
+          { label: 'Cantine',            value: kpis.cantine,   icon: Baby,      color: 'text-sky-600',     bg: 'bg-sky-50',      sub: kpis.total > 0 ? `${Math.round(kpis.cantine / kpis.total * 100)}%` : '—' },
+          { label: 'Cas sociaux',        value: kpis.cassocial, icon: Heart,     color: 'text-rose-600',    bg: 'bg-rose-50',     sub: kpis.total > 0 ? `${Math.round(kpis.cassocial / kpis.total * 100)}%` : '—' },
+          { label: 'Besoins spécifiques',value: kpis.besoins,   icon: Clock,     color: 'text-violet-600',  bg: 'bg-violet-50',   sub: kpis.besoins === 0 ? 'Aucun' : 'suivi requis' },
         ].map(kpi => (
           <div key={kpi.label} className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
             <div className={`w-12 h-12 ${kpi.bg} rounded-xl flex items-center justify-center shrink-0`}>
@@ -581,10 +823,38 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
             <div>
               <p className="text-2xl font-black text-slate-900">{kpi.value}</p>
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{kpi.label}</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">{kpi.sub}</p>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Répartition par niveau */}
+      {niveauxStats.length > 0 && (
+        <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Répartition par niveau</p>
+          <div className="flex flex-wrap gap-3">
+            {niveauxStats.map(n => {
+              const pct = kpis.total > 0 ? Math.round(n.count / kpis.total * 100) : 0;
+              return (
+                <div key={n.value} className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-2">
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{n.label}</span>
+                  <span className="text-sm font-black text-slate-900">{n.count}</span>
+                  <span className="text-[9px] text-slate-400">({pct}%)</span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Barre de progression par niveau */}
+          <div className="mt-4 flex rounded-full overflow-hidden h-2 gap-0.5">
+            {niveauxStats.map((n, i) => {
+              const pct = kpis.total > 0 ? (n.count / kpis.total * 100) : 0;
+              const colors = ['bg-indigo-400','bg-sky-400','bg-emerald-400','bg-amber-400','bg-rose-400','bg-violet-400','bg-teal-400','bg-orange-400','bg-pink-400'];
+              return <div key={n.value} style={{ width: `${pct}%` }} className={`${colors[i % colors.length]} h-full`} title={`${n.label}: ${n.count}`} />;
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Barre de recherche & filtres */}
       <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
@@ -927,14 +1197,58 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
 
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Niveau *</label>
-                        <select value={formData.niveau || 'PS'} onChange={e => setFormData({ ...formData, niveau: e.target.value as NiveauScolaire })}
+                        <select value={formData.niveau || 'PS'} onChange={e => setFormData({ ...formData, niveau: e.target.value as NiveauScolaire, classeId: undefined })}
                           className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
                           {NIVEAUX.map(n => <option key={n.value} value={n.value}>{n.label} — {n.cycle}</option>)}
                         </select>
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Date d'admission</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
+                          Classe physique
+                          {classes.filter(c => c.niveau === formData.niveau).length === 0 && (
+                            <span className="ml-2 text-amber-500 normal-case">— aucune classe créée pour ce niveau</span>
+                          )}
+                        </label>
+                        <select
+                          value={formData.classeId || ''}
+                          onChange={e => setFormData({ ...formData, classeId: e.target.value || undefined })}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
+                        >
+                          <option value="">— Non affecté —</option>
+                          {classes.filter(c => c.niveau === formData.niveau).map(c => {
+                            const nb = c.nbEleves ?? 0;
+                            const max = c.capaciteMax ?? 30;
+                            const restants = max - nb;
+                            const isFull = restants <= 0;
+                            const isCurrentClass = showModal === 'EDIT' && selectedEleve?.classeId === c.id;
+                            const spotsLabel = isFull ? 'Complet' : `${restants} place${restants > 1 ? 's' : ''} libre${restants > 1 ? 's' : ''}`;
+                            return (
+                              <option key={c.id} value={c.id} disabled={isFull && !isCurrentClass}>
+                                {c.nom} ({spotsLabel})
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {formData.classeId && (() => {
+                          const c = classes.find(cl => cl.id === formData.classeId);
+                          if (!c) return null;
+                          const nb = c.nbEleves ?? 0; const max = c.capaciteMax ?? 30;
+                          const pct = Math.round((nb / max) * 100);
+                          const color = pct >= 100 ? 'bg-rose-500' : pct >= 80 ? 'bg-amber-400' : 'bg-emerald-400';
+                          return (
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                              </div>
+                              <span className="text-[9px] font-black text-slate-400">{nb}/{max}</span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Date d'inscription</label>
                         <input type="date" value={formData.dateAdmission || ''} onChange={e => setFormData({ ...formData, dateAdmission: e.target.value })}
                           className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                       </div>
@@ -964,13 +1278,24 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         </div>
                       )}
 
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Statut</label>
-                        <select value={formData.statut || 'EN_ATTENTE'} onChange={e => setFormData({ ...formData, statut: e.target.value as StatutAdmission })}
-                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
-                          {STATUTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                        </select>
-                      </div>
+                      {showModal === 'EDIT' ? (
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Statut</label>
+                          <select value={formData.statut || 'INSCRIT'} onChange={e => setFormData({ ...formData, statut: e.target.value as StatutAdmission })}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+                            {STATUTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Statut</label>
+                          <div className="w-full bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-2">
+                            <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                            <span className="text-sm font-black text-emerald-700">Inscrit</span>
+                            <span className="ml-auto text-[9px] text-emerald-500 font-bold">Défini automatiquement</span>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-3 sm:col-span-2">
                         <div className="flex items-center gap-4">
@@ -1047,19 +1372,38 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
             )}
 
             {/* ══ ÉTAPE 3 : DOCUMENTS ══ */}
-            {showModal === 'CREATE' && createStep === 'DOCS' && inscritEleve && (
+            {showModal === 'CREATE' && createStep === 'DOCS' && inscritEleve && (() => {
+              const classeNom = inscritEleve.classeId
+                ? classes.find(c => c.id === inscritEleve.classeId)?.nom
+                : null;
+              return (
               <div className="p-8 space-y-6">
 
                 {/* Confirmation */}
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex items-center gap-4">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 flex items-start gap-4">
                   <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
                     <CheckCircle2 size={24} />
                   </div>
-                  <div>
+                  <div className="space-y-1">
                     <p className="font-black text-emerald-800 text-sm">Inscription enregistrée avec succès !</p>
-                    <p className="text-emerald-600 text-xs font-bold">
-                      {inscritEleve.prenom} {inscritEleve.nom} — {NIVEAUX.find(n => n.value === inscritEleve.niveau)?.label}
+                    <p className="text-emerald-700 text-xs font-black">
+                      {inscritEleve.prenom} {inscritEleve.nom}
                     </p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                        {NIVEAUX.find(n => n.value === inscritEleve.niveau)?.label || inscritEleve.niveau}
+                      </span>
+                      {classeNom && (
+                        <span className="bg-indigo-100 text-indigo-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                          {classeNom}
+                        </span>
+                      )}
+                      {inscritEleve.matricule && (
+                        <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-2 py-0.5 rounded-full font-mono">
+                          {inscritEleve.matricule}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1077,50 +1421,54 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                 </div>
 
                 {/* Offres de scolarité applicables */}
-                {servicesApplicables.length > 0 && (
+                {servicesApplicables.length > 0 && (() => {
+                  const premierVersement = servicesApplicables.reduce((sum, s) => {
+                    // Premier versement = frais ponctuels + 1ère mensualité (pas × dureeMois)
+                    return sum + Number(s.price);
+                  }, 0);
+                  return (
                   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
                     <p className="text-[9px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-2">
-                      <Banknote size={13} /> Offres de scolarité applicables
+                      <Banknote size={13} /> Tarifs applicables
                     </p>
                     <div className="space-y-2">
                       {servicesApplicables.map(s => {
                         const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-                        const duree = s.dureeMois || s.duree_mois || 1;
-                        const montantTotal = type === 'MENSUALITE'
-                          ? Number(s.price) * duree
-                          : Number(s.price);
+                        const isMensuel = type === 'MENSUALITE' || type === 'CANTINE' || type === 'BUS';
                         return (
-                          <div key={s.id} className="flex justify-between items-center text-sm">
+                          <div key={s.id} className="flex justify-between items-center">
                             <div>
-                              <span className="font-black text-amber-900">{s.name}</span>
-                              {type === 'MENSUALITE' && (
-                                <span className="ml-2 text-[9px] font-black text-amber-500 uppercase">
-                                  {s.price} × {duree} mois
-                                </span>
-                              )}
+                              <span className="font-black text-amber-900 text-sm">{s.name}</span>
+                              <span className="ml-2 text-[9px] font-bold text-amber-500 uppercase">
+                                {isMensuel ? '/mois' : 'Ponctuel'}
+                              </span>
                             </div>
-                            <span className="font-black text-amber-800 text-xs">
-                              {montantTotal.toLocaleString('fr-FR')} {currency}
+                            <span className="font-black text-amber-800 text-sm">
+                              {Number(s.price).toLocaleString('fr-FR')} {currency}
                             </span>
                           </div>
                         );
                       })}
                     </div>
-                    <div className="pt-2 border-t border-amber-200 flex justify-between items-center">
-                      <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Total prévisionnel</span>
-                      <span className="font-black text-amber-900 text-sm">
-                        {servicesApplicables.reduce((sum, s) => {
-                          const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-                          const duree = s.dureeMois || s.duree_mois || 1;
-                          return sum + (type === 'MENSUALITE' ? Number(s.price) * duree : Number(s.price));
-                        }, 0).toLocaleString('fr-FR')} {currency}
-                      </span>
+                    <div className="pt-2 border-t border-amber-200 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Premier versement</span>
+                        <span className="font-black text-amber-900 text-sm">
+                          {premierVersement.toLocaleString('fr-FR')} {currency}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-amber-500 font-bold">
+                        Frais ponctuels + 1ère mensualité — les versements suivants sont gérés dans le Recouvrement.
+                      </p>
                     </div>
-                    <p className="text-[9px] text-amber-600 font-bold">
-                      Créez la facture d'inscription via le module Facturation.
-                    </p>
+                    <InscriptionFactureButton
+                      inscritEleve={inscritEleve}
+                      servicesApplicables={servicesApplicables}
+                      currency={currency}
+                    />
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Boutons de génération */}
                 <div>
@@ -1176,7 +1524,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   Terminer
                 </button>
               </div>
-            )}
+              );
+            })()}
 
           </div>
         </div>
@@ -1237,6 +1586,206 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <InfoRow label="WhatsApp" value={selectedEleve.parent1.whatsapp} />
                   {selectedEleve.parent1.email && <InfoRow label="Email" value={selectedEleve.parent1.email} />}
                 </div>
+              </div>
+
+              {/* ── Abonnements & Échéances ── */}
+              <div className="border-t border-slate-100 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Repeat size={12} /> Abonnements & Échéances
+                  </p>
+                  {canModify && (
+                    <button
+                      onClick={() => { setShowAddAbonnement(v => !v); }}
+                      className="px-3 py-1.5 bg-violet-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-violet-700 transition-all flex items-center gap-1.5"
+                    >
+                      <Plus size={11} /> Abonner
+                    </button>
+                  )}
+                </div>
+
+                {/* Formulaire ajout abonnement */}
+                {showAddAbonnement && (
+                  <div className="mb-4 p-4 bg-violet-50 border-2 border-violet-200 rounded-2xl space-y-3 animate-in slide-in-from-top-3 duration-200">
+                    <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">Nouvel Abonnement</p>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Service récurrent</label>
+                      <select
+                        value={newAboForm.serviceId}
+                        onChange={e => setNewAboForm(f => ({ ...f, serviceId: e.target.value }))}
+                        className="w-full bg-white border border-violet-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
+                      >
+                        <option value="">— Choisir un service récurrent —</option>
+                        {allServicesRecurrents.map(s => {
+                          const per = s.periodicite || 'MENSUEL';
+                          const perLabel: Record<string, string> = { HEBDOMADAIRE: 'hebdo', MENSUEL: 'mois', TRIMESTRIEL: 'trim.', SEMESTRIEL: 'sem.', ANNUEL: 'an' };
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {s.name} — {Number(s.price).toLocaleString()} {currency}/{perLabel[per] ?? per}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {allServicesRecurrents.length === 0 && (
+                        <p className="text-[9px] text-violet-500 font-bold">Aucun service récurrent actif. Activez la récurrence dans le module Offres de Scolarité.</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Date de début</label>
+                      <div className="relative">
+                        <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="date"
+                          value={newAboForm.dateDebut}
+                          onChange={e => setNewAboForm(f => ({ ...f, dateDebut: e.target.value }))}
+                          className="w-full bg-white border border-violet-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddAbonnement(false)}
+                        className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-xl font-black text-[9px] uppercase hover:bg-slate-50 transition-all"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddAbonnement}
+                        disabled={!newAboForm.serviceId || aboActionLoading}
+                        className="flex-1 py-2.5 bg-violet-600 text-white rounded-xl font-black text-[9px] uppercase hover:bg-violet-700 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                      >
+                        {aboActionLoading ? <RefreshCw className="animate-spin" size={13} /> : <><Save size={13} /> Abonner</>}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Liste des abonnements */}
+                {abonnementsLoading ? (
+                  <div className="py-6 flex justify-center"><RefreshCw className="animate-spin text-violet-400" size={22} /></div>
+                ) : abonnements.length === 0 ? (
+                  <div className="py-5 text-center border border-dashed border-slate-200 rounded-2xl">
+                    <Repeat size={22} className="mx-auto text-slate-200 mb-2" />
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aucun abonnement actif</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {abonnements.map((abo: any) => {
+                      const echeances: any[] = abo.echeances || [];
+                      const enAttente = echeances.filter(e => e.statut === 'EN_ATTENTE').sort(
+                        (a, b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime()
+                      );
+                      const enRetard = echeances.filter(e => e.statut === 'EN_RETARD');
+                      const payees = echeances.filter(e => e.statut === 'PAYE');
+                      const isExpanded = expandedAbos.has(abo.id);
+                      const perLabel: Record<string, string> = {
+                        HEBDOMADAIRE: 'Hebdomadaire', MENSUEL: 'Mensuel',
+                        TRIMESTRIEL: 'Trimestriel', SEMESTRIEL: 'Semestriel', ANNUEL: 'Annuel'
+                      };
+                      const per = abo.service?.periodicite || abo.periodicite || 'MENSUEL';
+                      return (
+                        <div key={abo.id} className={`rounded-2xl border overflow-hidden transition-all ${abo.isActive ? 'border-violet-200 bg-violet-50' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                          {/* En-tête abonnement */}
+                          <div className="flex items-center justify-between p-4">
+                            <div className="flex items-start gap-3">
+                              <div className="w-9 h-9 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                                <Repeat size={16} />
+                              </div>
+                              <div>
+                                <p className="font-black text-slate-900 text-sm">{abo.service?.name ?? 'Service'}</p>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-100 text-violet-700 border border-violet-200">
+                                    <Repeat size={7} /> {perLabel[per] ?? per}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black ${abo.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {abo.isActive ? 'Actif' : 'Inactif'}
+                                  </span>
+                                  {enRetard.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-100 text-rose-700">
+                                      <AlertTriangle size={7} /> {enRetard.length} en retard
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[9px] text-slate-400 font-bold mt-1">
+                                  Début : {new Date(abo.dateDebut).toLocaleDateString('fr-FR')}
+                                  {abo.dateFin && ` · Fin : ${new Date(abo.dateFin).toLocaleDateString('fr-FR')}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <p className="font-black text-violet-800 text-sm">
+                                {Number(abo.service?.price ?? 0).toLocaleString()} {currency}
+                              </p>
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => setExpandedAbos(prev => {
+                                    const next = new Set(prev);
+                                    next.has(abo.id) ? next.delete(abo.id) : next.add(abo.id);
+                                    return next;
+                                  })}
+                                  className="px-2.5 py-1.5 bg-white border border-violet-200 text-violet-600 rounded-lg text-[8px] font-black uppercase hover:bg-violet-100 transition-all"
+                                >
+                                  {isExpanded ? 'Masquer' : `${echeances.length} échéance(s)`}
+                                </button>
+                                {abo.isActive && canModify && (
+                                  <button
+                                    onClick={() => handleDesactiverAbonnement(abo.id)}
+                                    disabled={aboActionLoading}
+                                    className="px-2.5 py-1.5 bg-white border border-rose-200 text-rose-500 rounded-lg text-[8px] font-black uppercase hover:bg-rose-50 transition-all disabled:opacity-50"
+                                  >
+                                    Désactiver
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Échéances expandées */}
+                          {isExpanded && echeances.length > 0 && (
+                            <div className="border-t border-violet-100 bg-white px-4 py-3 space-y-1.5">
+                              {[...enRetard, ...enAttente, ...payees].map((ech: any) => (
+                                <div key={ech.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl hover:bg-slate-50 transition-all group">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${ech.statut === 'PAYE' ? 'bg-emerald-500' : ech.statut === 'EN_RETARD' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                                    <div>
+                                      <p className="text-xs font-black text-slate-800">{ech.periodeLabel || new Date(ech.dateEcheance).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</p>
+                                      <p className="text-[8px] text-slate-400 font-bold">Échéance le {new Date(ech.dateEcheance).toLocaleDateString('fr-FR')}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-xs font-black ${ech.statut === 'PAYE' ? 'text-emerald-600' : ech.statut === 'EN_RETARD' ? 'text-rose-600' : 'text-amber-600'}`}>
+                                      {Number(ech.montant).toLocaleString()} {currency}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[7px] font-black uppercase ${ech.statut === 'PAYE' ? 'bg-emerald-50 text-emerald-700' : ech.statut === 'EN_RETARD' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                                      {ech.statut === 'PAYE' ? 'Payé' : ech.statut === 'EN_RETARD' ? 'En retard' : 'À payer'}
+                                    </span>
+                                    {(ech.statut === 'EN_ATTENTE' || ech.statut === 'EN_RETARD') && canModify && (
+                                      <button
+                                        onClick={() => handlePayEcheance(ech.id)}
+                                        disabled={aboActionLoading}
+                                        className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-emerald-600 text-white rounded-lg text-[7px] font-black uppercase hover:bg-emerald-700 transition-all disabled:opacity-50"
+                                      >
+                                        Marquer payé
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {isExpanded && echeances.length === 0 && (
+                            <div className="border-t border-violet-100 bg-white px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase">
+                              Aucune échéance générée pour cet abonnement.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Régénérer les documents depuis la fiche */}

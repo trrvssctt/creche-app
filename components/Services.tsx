@@ -4,7 +4,7 @@ import {
   BookOpen, Plus, Search, Edit3, Trash2, X, RefreshCw,
   Lock, Save, AlertCircle, ArrowRight, Loader2,
   Briefcase, ShieldAlert, CheckCircle2, XCircle, Info, Upload, ImageIcon, Eye, Tag,
-  GraduationCap, Bus, UtensilsCrossed, Star, Award, CalendarDays
+  GraduationCap, Bus, UtensilsCrossed, Star, Award, CalendarDays, Repeat
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -36,6 +36,20 @@ const NIVEAUX_SCOLAIRES = [
 ];
 
 type TypeOffre = typeof TYPES_OFFRE[number]['value'];
+
+const PERIODES_RECURRENCE = [
+  { value: 'HEBDOMADAIRE', label: 'Hebdomadaire', suffix: '/semaine' },
+  { value: 'MENSUEL',      label: 'Mensuel',       suffix: '/mois' },
+  { value: 'TRIMESTRIEL',  label: 'Trimestriel',   suffix: '/trimestre' },
+  { value: 'SEMESTRIEL',   label: 'Semestriel',    suffix: '/semestre' },
+  { value: 'ANNUEL',       label: 'Annuel',        suffix: '/an' },
+] as const;
+
+type Periodicite = typeof PERIODES_RECURRENCE[number]['value'];
+
+function getPeriodeSuffix(p: string) {
+  return PERIODES_RECURRENCE.find(x => x.value === p)?.suffix ?? '/période';
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -80,6 +94,8 @@ const emptyOffre = () => ({
   dureeMois: 10,
   inclutCantine: false,
   fraisInscription: 0,
+  estRecurrent: true,
+  periodicite: 'MENSUEL' as Periodicite,
 });
 
 const Services = ({ currency }: { currency: string }) => {
@@ -205,6 +221,8 @@ const Services = ({ currency }: { currency: string }) => {
       dureeMois: service.dureeMois || service.duree_mois || 10,
       inclutCantine: service.inclutCantine || service.inclut_cantine || false,
       fraisInscription: Number(service.fraisInscription || service.frais_inscription || 0),
+      estRecurrent: service.estRecurrent ?? service.est_recurrent ?? false,
+      periodicite: (service.periodicite || 'MENSUEL') as Periodicite,
     }]);
     setModalMode('EDIT');
   };
@@ -335,9 +353,14 @@ const Services = ({ currency }: { currency: string }) => {
                         </div>
                       </div>
 
-                      <div className="mb-3">
+                      <div className="mb-3 flex flex-wrap gap-1">
                         <TypeBadge value={typeVal} />
-                        {inclutCantine && <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200"><UtensilsCrossed size={8}/> Cantine incluse</span>}
+                        {inclutCantine && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200"><UtensilsCrossed size={8}/> Cantine incluse</span>}
+                        {(service.estRecurrent || service.est_recurrent) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-700 border border-violet-200">
+                            <Repeat size={8}/> {PERIODES_RECURRENCE.find(p => p.value === (service.periodicite || service.periodicite_))?.label ?? 'Récurrent'}
+                          </span>
+                        )}
                       </div>
 
                       <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight mb-1 truncate">{service.name}</h3>
@@ -351,7 +374,10 @@ const Services = ({ currency }: { currency: string }) => {
                         <button onClick={() => openDetails(service)} className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-2 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all">DÉTAILS <Eye size={16} /></button>
                         <div className="text-right">
                           <p className="text-2xl font-black text-indigo-600">{Number(service.price).toLocaleString()} <span className="text-[10px] text-slate-400">{currency}</span></p>
-                          {(service.dureeMois || service.duree_mois) && <p className="text-[8px] text-slate-400 font-black uppercase">/ {service.dureeMois || service.duree_mois} mois</p>}
+                          {(service.estRecurrent || service.est_recurrent)
+                            ? <p className="text-[8px] text-violet-500 font-black uppercase">{getPeriodeSuffix(service.periodicite || 'MENSUEL')}</p>
+                            : (service.dureeMois || service.duree_mois) && <p className="text-[8px] text-slate-400 font-black uppercase">/ {service.dureeMois || service.duree_mois} mois</p>
+                          }
                         </div>
                       </div>
                     </div>
@@ -372,9 +398,10 @@ const Services = ({ currency }: { currency: string }) => {
               <tr className="bg-slate-50 text-slate-400 text-[9px] font-black uppercase tracking-widest border-b">
                 <th className="px-6 py-4">Offre</th>
                 <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Récurrence</th>
                 <th className="px-6 py-4">Niveaux ciblés</th>
                 <th className="px-6 py-4 text-center">Statut</th>
-                <th className="px-6 py-4 text-right">Tarif mensuel</th>
+                <th className="px-6 py-4 text-right">Tarif</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -390,9 +417,17 @@ const Services = ({ currency }: { currency: string }) => {
                       <tr key={service.id} className="group hover:bg-slate-50/50 transition-all">
                         <td className="px-6 py-4 font-black text-slate-900">{service.name}</td>
                         <td className="px-6 py-4"><TypeBadge value={service.typeOffre || service.type_offre || 'MENSUALITE'} /></td>
+                        <td className="px-6 py-4">
+                          {(service.estRecurrent || service.est_recurrent)
+                            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-700 border border-violet-200"><Repeat size={8}/> {PERIODES_RECURRENCE.find(p => p.value === service.periodicite)?.label ?? 'Récurrent'}</span>
+                            : <span className="text-slate-300 text-[9px] font-black">Ponctuel</span>}
+                        </td>
                         <td className="px-6 py-4"><NiveauxBadges niveaux={niveaux} /></td>
                         <td className="px-6 py-4 text-center text-[11px] font-black">{service.isActive ? <span className="text-emerald-600">Actif</span> : <span className="text-rose-600">Inactif</span>}</td>
-                        <td className="px-6 py-4 text-right font-black">{Number(service.price).toLocaleString()} {currency}</td>
+                        <td className="px-6 py-4 text-right font-black">
+                          {Number(service.price).toLocaleString()} {currency}
+                          {(service.estRecurrent || service.est_recurrent) && <p className="text-[8px] text-violet-500 font-black">{getPeriodeSuffix(service.periodicite || 'MENSUEL')}</p>}
+                        </td>
                         <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                           <button onClick={() => openDetails(service)} className="px-3 py-2 rounded-xl text-slate-400 hover:text-indigo-600">Voir</button>
                           {canModify && (
@@ -500,6 +535,42 @@ const Services = ({ currency }: { currency: string }) => {
                     <label htmlFor={`cantine_${idx}`} className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2"><UtensilsCrossed size={14} /> Cantine incluse dans cette offre</label>
                   </div>
 
+                  {/* Récurrence */}
+                  <div className="space-y-3 p-5 bg-violet-50 rounded-2xl border border-violet-100">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id={`recurrent_${idx}`}
+                        checked={fd.estRecurrent}
+                        onChange={e => setFormDataList(list => list.map((f, i) => i === idx ? { ...f, estRecurrent: e.target.checked } : f))}
+                        className="w-5 h-5 rounded accent-violet-600"
+                      />
+                      <label htmlFor={`recurrent_${idx}`} className="text-[10px] font-black text-violet-800 uppercase tracking-widest flex items-center gap-2">
+                        <Repeat size={14} /> Service récurrent — génère une échéance par période
+                      </label>
+                    </div>
+                    {fd.estRecurrent && (
+                      <div className="space-y-2 pt-1">
+                        <label className="text-[9px] font-black text-violet-600 uppercase tracking-widest px-1">Fréquence de facturation</label>
+                        <div className="flex flex-wrap gap-2">
+                          {PERIODES_RECURRENCE.map(p => (
+                            <button
+                              key={p.value}
+                              type="button"
+                              onClick={() => setFormDataList(list => list.map((f, i) => i === idx ? { ...f, periodicite: p.value } : f))}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${fd.periodicite === p.value ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-violet-600 border-violet-200 hover:border-violet-400'}`}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-violet-500 font-bold px-1">
+                          Une échéance de <span className="font-black">{Number(fd.price).toLocaleString()} {currency}</span> sera générée automatiquement chaque <span className="font-black">{PERIODES_RECURRENCE.find(p => p.value === fd.periodicite)?.label.toLowerCase()}</span> pour les élèves abonnés à cette offre.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Description */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Description</label>
@@ -573,6 +644,14 @@ const Services = ({ currency }: { currency: string }) => {
                       <div className="flex justify-between"><span className="text-slate-400">Durée</span><span>{selectedService.dureeMois || selectedService.duree_mois || 10} mois</span></div>
                       <div className="flex justify-between"><span className="text-slate-400">Cantine incluse</span><span className={(selectedService.inclutCantine || selectedService.inclut_cantine) ? 'text-emerald-600' : 'text-slate-400'}>{(selectedService.inclutCantine || selectedService.inclut_cantine) ? 'Oui' : 'Non'}</span></div>
                       <div className="flex justify-between"><span className="text-slate-400">Statut</span><span className={selectedService.isActive ? 'text-emerald-600' : 'text-rose-600'}>{selectedService.isActive ? 'Actif' : 'Inactif'}</span></div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Récurrent</span>
+                        <span className={(selectedService.estRecurrent || selectedService.est_recurrent) ? 'text-violet-600' : 'text-slate-400'}>
+                          {(selectedService.estRecurrent || selectedService.est_recurrent)
+                            ? PERIODES_RECURRENCE.find(p => p.value === selectedService.periodicite)?.label ?? 'Oui'
+                            : 'Non (ponctuel)'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
