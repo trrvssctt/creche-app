@@ -1,4 +1,3 @@
-
 import { Tenant } from './Tenant.js';
 import { User } from './User.js';
 import { StockItem } from './StockItem.js';
@@ -51,10 +50,13 @@ import { Delivery } from './Delivery.js';
 import { DeliveryItem } from './DeliveryItem.js';
 import { RegistrationIntent } from './RegistrationIntent.js';
 import { Eleve } from './Eleve.js';
+import { Bulletin } from './Bulletin.js';
+import { Classe } from './Classe.js';
+import { AbonnementEleve } from './AbonnementEleve.js';
+import { EcheancePaiement } from './EcheancePaiement.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
- * Mapping des relations via table Subscription (Bridge Logic)
  */
 
 // --- RELATIONS SAAS (BRIDGING VIA SUBSCRIPTION) ---
@@ -74,6 +76,28 @@ Tenant.hasMany(StockItem, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Customer, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Eleve, { foreignKey: 'tenant_id' });
 Eleve.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+
+Tenant.hasMany(Classe, { foreignKey: 'tenant_id' });
+Classe.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Classe.hasMany(Eleve, { foreignKey: 'classe_id', as: 'eleves' });
+Eleve.belongsTo(Classe, { foreignKey: 'classe_id', as: 'classe' });
+Classe.belongsTo(Employee, { foreignKey: 'enseignant_id', as: 'enseignant' });
+Employee.hasMany(Classe, { foreignKey: 'enseignant_id', as: 'classesResponsable' });
+
+// Abonnements & Échéances
+Eleve.hasMany(AbonnementEleve, { foreignKey: 'eleve_id', as: 'abonnements' });
+AbonnementEleve.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+AbonnementEleve.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
+AbonnementEleve.hasMany(EcheancePaiement, { foreignKey: 'abonnement_id', as: 'echeances' });
+EcheancePaiement.belongsTo(AbonnementEleve, { foreignKey: 'abonnement_id', as: 'abonnement' });
+EcheancePaiement.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+EcheancePaiement.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
+
+Tenant.hasMany(Bulletin, { foreignKey: 'tenant_id' });
+Bulletin.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Eleve.hasMany(Bulletin, { foreignKey: 'eleve_id', as: 'bulletins' });
+Bulletin.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+
 Tenant.hasMany(Sale, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Payment, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Service, { foreignKey: 'tenant_id' });
@@ -273,5 +297,6 @@ export {
   Advance, Prime, Session, SupportTicket, Announcement, HRRule,
   Notification, NotificationRead, OvertimeRequest,
   Supplier, Delivery, DeliveryItem,
-  RegistrationIntent, Eleve,
+  RegistrationIntent, Eleve, Bulletin, Classe,
+  AbonnementEleve, EcheancePaiement,
 };
