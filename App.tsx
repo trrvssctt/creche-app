@@ -21,6 +21,7 @@ import Suppliers from './components/Suppliers';
 import Deliveries from './components/Deliveries';
 import Sales from './components/Sales';
 import Recovery from './components/Recovery';
+import FacturationMensuelle from './components/FacturationMensuelle';
 import Payments from './components/Payments';
 import Services from './components/Services';
 import SecurityPanel from './components/SecurityPanel';
@@ -311,6 +312,7 @@ const App: React.FC = () => {
       case 'sales':              return <Sales currency={appSettings.currency} user={currentUser} tenantSettings={appSettings} />;
       case 'services':           return <Services currency={appSettings.currency} />;
       case 'recovery':           return <Recovery currency={appSettings.currency} />;
+      case 'facturation':        return <FacturationMensuelle currency={appSettings.currency} tenantSettings={appSettings} />;
       case 'payments':           return <Payments currency={appSettings.currency} tenantSettings={appSettings} />;
       case 'my-leaves':          return <LeaveManagement onNavigate={handleContextualNavigate} user={currentUser} />;
       case 'employee-pointage':  return <EmployeePointage onNavigate={handleContextualNavigate} />;

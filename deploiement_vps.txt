@@ -1,0 +1,543 @@
+═══════════════════════════════════════════════════════════════════════════════
+                        GUIDE DE DÉPLOIEMENT VPS
+                    Application Crèche sur VPS 144.91.96.142:1000
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 INFORMATIONS VPS
+─────────────────────────────────────────────────────────────────────────────
+IP du VPS: 144.91.96.142
+Port: 1000
+Repo GitHub: https://github.com/trrvssctt/creche-app.git
+Branche: main (par défaut)
+
+📝 ÉTAPES DE DÉPLOIEMENT
+─────────────────────────────────────────────────────────────────────────────
+
+1️⃣  CONNEXION SSH AU VPS
+─────────────────────────────────────────────────────────────────────────────
+ssh root@144.91.96.142
+
+⚠️  Si vous avez une clé SSH spécifique:
+ssh -i /chemin/vers/clé_privée.pem root@144.91.96.142
+
+⚠️  Si vous avez besoin d'un port SSH différent:
+ssh -p 22 root@144.91.96.142
+
+
+2️⃣  METTRE À JOUR LE SYSTÈME
+─────────────────────────────────────────────────────────────────────────────
+apt update && apt upgrade -y
+
+
+3️⃣  INSTALLER LES DÉPENDANCES SYSTÈME
+─────────────────────────────────────────────────────────────────────────────
+# Installer Node.js et npm
+apt install -y nodejs npm git curl wget
+
+# Vérifier les installations
+node --version
+npm --version
+git --version
+
+
+4️⃣  CRÉER UN DOSSIER DE DÉPLOIEMENT
+─────────────────────────────────────────────────────────────────────────────
+mkdir -p /home/creche-app
+cd /home/creche-app
+
+
+5️⃣  CLONER LE REPOSITORY GITHUB
+─────────────────────────────────────────────────────────────────────────────
+git clone https://github.com/trrvssctt/creche-app.git .
+
+# Ou directement dans un sous-dossier
+git clone https://github.com/trrvssctt/creche-app.git /home/creche-app
+
+
+6️⃣  NAVIGUER AU DOSSIER DU PROJET
+─────────────────────────────────────────────────────────────────────────────
+cd /home/creche-app
+
+
+7️⃣  INSTALLER LES DÉPENDANCES NPM (Frontend)
+─────────────────────────────────────────────────────────────────────────────
+npm install
+
+
+8️⃣  INSTALLER LES DÉPENDANCES BACKEND (si applicable)
+─────────────────────────────────────────────────────────────────────────────
+cd backend
+npm install
+cd ..
+
+
+9️⃣  CONFIGURER LE PORT 1000
+─────────────────────────────────────────────────────────────────────────────
+# Option 1: Via fichier .env
+echo "VITE_PORT=1000" > .env
+echo "PORT=1000" >> .env
+
+# Option 2: Éditer vite.config.ts ou la configuration du serveur
+# Ouvrez le fichier et changez le port à 1000
+
+
+🔟  CONSTRUIRE L'APPLICATION POUR LA PRODUCTION
+─────────────────────────────────────────────────────────────────────────────
+npm run build
+
+
+1️⃣1️⃣  INSTALLER PM2 (GESTIONNAIRE DE PROCESSUS - RECOMMANDÉ)
+─────────────────────────────────────────────────────────────────────────────
+npm install -g pm2
+
+# Créer un fichier ecosystem.config.cjs à la racine (ATTENTION: .cjs pas .js!)
+# Ceci est nécessaire car le package.json contient "type": "module" (ES modules)
+cat > ecosystem.config.cjs << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'creche-app',
+    script: 'backend/server.js',
+    env: {
+      PORT: 1000,
+      NODE_ENV: 'production'
+    },
+    error_file: './logs/pm2-error.log',
+    out_file: './logs/pm2-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    instances: 1,
+    exec_mode: 'fork'
+  }]
+};
+EOF
+
+
+1️⃣2️⃣  DÉMARRER L'APPLICATION AVEC PM2
+─────────────────────────────────────────────────────────────────────────────
+# Si ecosystem.config.js existe déjà (de la première tentative), le supprimer
+rm -f ecosystem.config.js
+
+# Démarrer l'app avec le fichier .cjs
+pm2 start ecosystem.config.cjs
+
+# Sauvegarder PM2 pour démarrage automatique
+pm2 startup
+pm2 save
+
+# Vérifier le statut
+pm2 status
+pm2 logs creche-app
+
+
+1️⃣3️⃣  CONFIGURER NGINX COMME REVERSE PROXY (OPTIONNEL)
+─────────────────────────────────────────────────────────────────────────────
+# Installer Nginx
+apt install -y nginx
+
+# ⚠️  IMPORTANT: Nginx écoutera sur le port 80 (ou 443 pour HTTPS)
+#     et redirigera vers l'app qui tourne sur le port 1000
+
+# Créer la configuration Nginx
+sudo tee /etc/nginx/sites-available/creche-app > /dev/null << 'EOF'
+server {
+    listen 80;
+    server_name 144.91.96.142;
+
+    location / {
+        proxy_pass http://localhost:1000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
+
+# Activer la configuration
+sudo ln -sf /etc/nginx/sites-available/creche-app /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Tester et redémarrer Nginx
+sudo nginx -t
+sudo systemctl restart nginx
+
+# Vérifier le statut
+sudo systemctl status nginx
+
+
+1️⃣4️⃣  CONFIGURER LE PARE-FEU (si UFW est actif)
+─────────────────────────────────────────────────────────────────────────────
+# Autoriser HTTP (port 80)
+ufw allow 80/tcp
+
+# Autoriser HTTPS (port 443) - optionnel
+ufw allow 443/tcp
+
+# Autoriser SSH (important!)
+ufw allow 22/tcp
+
+# Autoriser port 1000 (direct access si pas de Nginx)
+ufw allow 1000/tcp
+
+# Activer le pare-feu
+ufw enable
+
+
+1️⃣5️⃣  VÉRIFIER QUE L'APPLICATION FONCTIONNE
+─────────────────────────────────────────────────────────────────────────────
+# Via Nginx (port 80)
+curl http://144.91.96.142
+
+# Ou avec l'IP directe et port 1000
+curl http://144.91.96.142:1000
+
+# Depuis le VPS
+curl http://localhost:1000
+curl http://localhost:80
+
+# Vérifier les ports en écoute
+netstat -tuln | grep -E "1000|80"
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            COMMANDES UTILES
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 MONITORING
+─────────────────────────────────────────────────────────────────────────────
+pm2 status
+pm2 logs creche-app
+pm2 monit
+systemctl status nginx
+
+
+🔄 REDÉMARRAGE
+─────────────────────────────────────────────────────────────────────────────
+# Redémarrer l'app
+pm2 restart creche-app
+
+# Arrêter l'app
+pm2 stop creche-app
+
+# Redémarrer nginx
+systemctl restart nginx
+
+
+📤 MISE À JOUR
+─────────────────────────────────────────────────────────────────────────────
+# Mettre à jour le code depuis GitHub
+cd /opt/creche-app/creche-app
+git pull origin main
+
+# Réinstaller les dépendances si package.json a changé
+npm install
+cd backend && npm install && cd ..
+
+# Redémarrer l'app avec PM2
+pm2 restart creche-app
+
+# Vérifier les logs
+pm2 logs creche-app
+
+
+🔄 REDÉPLOIEMENT COMPLET (si problème majeur)
+─────────────────────────────────────────────────────────────────────────────
+# Arrêter complètement
+pm2 delete creche-app
+pm2 save
+
+# Reconstruire
+cd /opt/creche-app/creche-app
+git pull origin main
+npm install
+cd backend && npm install && cd ..
+npm run build
+
+# Redémarrer
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 logs creche-app
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    📋 FICHIERS MODIFIÉS & EXPLICATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. backend/middlewares/securityHeaders.js (NOUVEAU)
+   ─────────────────────────────────────────────────
+   Configurationde réponse HTTP pour la sécurité:
+   - Content-Security-Policy (CSP): Autorise les ressources nécessaires
+   - X-Frame-Options: Protection contre le click-jacking
+   - X-Content-Type-Options: Empêche le MIME sniffing
+   - X-XSS-Protection: Protection XSS
+   - Permissions-Policy: Limite l'accès aux APIs sensibles
+
+   Résout l'erreur:
+   ❌ "default-src 'none'" bloque les scripts et images
+   ✅ Maintenant autorise scripts, styles, fonts, images
+
+2. backend/server.js (MODIFIÉ)
+   ─────────────────────────────
+   - Import du middleware securityHeaders
+   - Ajout du middleware avant les autres configurations
+   
+   Cela garantit que toutes les réponses HTTP ont les bons en-têtes de sécurité
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            RÉSUMÉ DE LA CORRECTION
+═══════════════════════════════════════════════════════════════════════════════
+
+ERREUR CSP avant:
+  default-src 'none'
+  → Bloquait TOUS les scripts, images, styles
+
+SOLUTION appliquée:
+  1. Créer un middleware de sécurité robuste
+  2. Configurer une CSP flexible mais sécurisée
+  3. Autoriser les ressources essentielles:
+     - Scripts (local + Tailwind CDN)
+     - Styles (local + Google Fonts)
+     - Images (local + HTTPS)
+     - Connexions (API calls)
+  4. Conserver les protections de sécurité (XSS, clickjacking, etc.)
+
+Après redéploiement:
+  ✅ Les scripts vont s'exécuter correctement
+  ✅ Les images vont se charger (favicon inclus)
+  ✅ Les polices Google Fonts vont fonctionner
+  ✅ Les appels API vont fonctionner
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+🗑️  SUPPRESSION
+─────────────────────────────────────────────────────────────────────────────
+pm2 delete creche-app
+rm -rf /home/creche-app
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    🔧 CORRECTION NGINX (Configuration Actuelle)
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️  La configuration Nginx actuelle pointe vers le mauvais port (3000 au lieu de 1000)
+
+Exécutez ces commandes pour corriger:
+
+# 1. Supprimer la config défectueuse
+sudo rm -f /etc/nginx/sites-enabled/creche-app
+sudo rm -f /etc/nginx/sites-available/creche-app
+
+# 2. Créer la BONNE configuration
+sudo tee /etc/nginx/sites-available/creche-app > /dev/null << 'EOF'
+server {
+    listen 80;
+    server_name 144.91.96.142;
+
+    location / {
+        proxy_pass http://localhost:1000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
+
+# 3. Activer la configuration
+sudo ln -sf /etc/nginx/sites-available/creche-app /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# 4. Tester et redémarrer
+sudo nginx -t
+sudo systemctl restart nginx
+
+# 5. Vérifier le statut
+sudo systemctl status nginx
+curl http://localhost
+
+Maintenant l'app est accessible à:
+- http://144.91.96.142 (via Nginx port 80)
+- http://144.91.96.142:1000 (accès direct)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                    🔧 CORRECTION IMMÉDIATE (PM2 ERROR)
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️  Si vous avez cette erreur:
+  [PM2][ERROR] File ecosystem.config.js malformated
+  ReferenceError: module is not defined in ES module scope
+
+Exécutez ces commandes sur le VPS:
+
+cd /opt/creche-app/creche-app
+
+# 1. Supprimer le fichier ecosystem.config.js défectueux
+rm -f ecosystem.config.js
+
+# 2. Créer le fichier CORRECT en .cjs (CommonJS format)
+cat > ecosystem.config.cjs << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'creche-app',
+    script: 'backend/server.js',
+    env: {
+      PORT: 1000,
+      NODE_ENV: 'production'
+    },
+    error_file: './logs/pm2-error.log',
+    out_file: './logs/pm2-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+  }]
+};
+EOF
+
+# 3. Créer le dossier logs
+mkdir -p logs
+
+# 4. Démarrer avec le fichier .cjs
+pm2 start ecosystem.config.cjs
+
+# 5. Sauvegarder PM2
+pm2 save
+
+# 6. Vérifier le statut
+pm2 status
+pm2 logs creche-app
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        DÉPLOIEMENT COMPLET (RAPIDE)
+═══════════════════════════════════════════════════════════════════════════════
+
+Copier-coller cette commande complète pour déploiement automatisé:
+
+ssh root@144.91.96.142 << 'DEPLOY'
+apt update && apt upgrade -y
+apt install -y nodejs npm git
+mkdir -p /opt/creche-app
+cd /opt/creche-app
+git clone https://github.com/trrvssctt/creche-app.git .
+npm install
+cd backend && npm install && cd ..
+echo "PORT=1000" > .env
+npm run build
+npm install -g pm2
+cat > ecosystem.config.cjs << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'creche-app',
+    script: 'backend/server.js',
+    env: { PORT: 1000, NODE_ENV: 'production' },
+    error_file: './logs/pm2-error.log',
+    out_file: './logs/pm2-out.log'
+  }]
+};
+EOF
+mkdir -p logs
+pm2 start ecosystem.config.cjs
+pm2 startup
+pm2 save
+DEPLOY
+
+Accéder à l'application: http://144.91.96.142:1000
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            ⚠️  NOTES IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. AUTHENTIFICATION SSH
+   - Remplacez root par votre utilisateur si nécessaire
+   - Utilisez une clé SSH pour plus de sécurité
+   - Désactivez l'accès root en production
+
+2. VARIABLES D'ENVIRONNEMENT
+   - Créez un fichier .env avec vos configurations
+   - Ne pas commiter les secrets sur GitHub
+   - Utilisez des fichiers .env.local sur le serveur
+
+3. BASE DE DONNÉES
+   - Assurez-vous que la base de données est accessible
+   - Configurez les variables DB dans .env
+   - Testez la connexion avant de déployer
+
+4. CERTIFICAT SSL (HTTPS)
+   - Installez certbot pour Let's Encrypt
+   - Générez un certificat SSL gratuit
+   - Mettez à jour la configuration Nginx
+
+5. LOGS
+   - Consultez pm2 logs pour les erreurs
+   - Consultez /var/log/nginx/error.log pour Nginx
+   - Activez la rotation des logs
+
+6. SÉCURITÉ
+   - Mettez à jour le système régulièrement
+   - Utilisez un pare-feu (UFW/iptables)
+   - Changez les ports SSH par défaut
+   - Utilisez des clés SSH au lieu de mots de passe
+
+7. POURQUOI .cjs AU LIEU DE .js?
+   ───────────────────────────────────
+   Le projet utilise ES modules ("type": "module" dans package.json)
+   PM2 lit ecosystem.config.js comme du CommonJS par défaut
+   Pour que PM2 comprenne le fichier, le renommer en .cjs indique explicitement
+   qu'il s'agit de CommonJS, pas de ES modules.
+   
+8. ALTERNATIVE: DÉMARRER DIRECTEMENT (sans ecosystem.config)
+   ───────────────────────────────────────────────────────
+   Si vous préférez ne pas utiliser ecosystem.config:
+   
+   pm2 start backend/server.js --name creche-app -- PORT=1000
+   pm2 save
+   pm2 startup
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            🐛 DÉPANNAGE
+═══════════════════════════════════════════════════════════════════════════════
+
+📍 PROBLÈME: Content-Security-Policy Error
+   ERREUR:
+   - "default-src 'none'" bloque les scripts et images
+   - Vous voyez des erreurs de CSP dans la console
+   SOLUTION:
+   - Un middleware de sécurité a été ajouté à backend/middlewares/securityHeaders.js
+   - Redéployer le backend:
+     cd /opt/creche-app/creche-app
+     git pull origin main
+     npm install
+     cd backend && npm install && cd ..
+     pm2 restart creche-app
+
+📍 PROBLÈME: PM2 ne démarre pas l'app
+   SOLUTION:
+   - Vérifier les logs: pm2 logs creche-app
+   - Vérifier que backend/server.js existe et est accessible
+   - Tester le backend directement: cd backend && npm start
+   - Augmenter le timeout: pm2 start --timeout 30000
+
+📍 PROBLÈME: Connexion refusée sur le port 1000
+   SOLUTION:
+   - Vérifier que PM2 est lancé: pm2 status
+   - Vérifier le pare-feu: sudo ufw status
+   - Autoriser le port: sudo ufw allow 1000/tcp
+   - Tester localement: curl http://localhost:1000
+
+📍 PROBLÈME: EADDRINUSE (port déjà utilisé)
+   SOLUTION:
+   - Tuer le processus: sudo lsof -i :1000
+   - Ou utiliser un port différent: PORT=3000 pm2 start ecosystem.config.cjs
+
+📍 PROBLÈME: PM2 ne redémarre pas après reboot
+   SOLUTION:
+   - Vérifier le startup: pm2 startup
+   - Sauvegarder l'état: pm2 save
+   - Vérifier systemd: systemctl status pm2-root
+
+═══════════════════════════════════════════════════════════════════════════════

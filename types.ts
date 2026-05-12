@@ -181,6 +181,10 @@ export interface Delivery {
 
 // ─── SERVICES / OFFRES DE SCOLARITÉ ─────────────────────────────────────────
 
+export type Periodicite = 'HEBDOMADAIRE' | 'MENSUEL' | 'TRIMESTRIEL' | 'SEMESTRIEL' | 'ANNUEL';
+
+export type StatutEcheance = 'EN_ATTENTE' | 'PAYE' | 'EN_RETARD' | 'ANNULE';
+
 export interface Service {
   id: string;
   name: string;
@@ -189,6 +193,43 @@ export interface Service {
   isActive: boolean;
   imageUrl?: string;
   status: string;
+  createdAt: string;
+  // Champs scolarité
+  typeOffre?: string;
+  niveauxCibles?: string[];
+  dureeMois?: number;
+  inclutCantine?: boolean;
+  fraisInscription?: number;
+  // Récurrence
+  estRecurrent?: boolean;
+  periodicite?: Periodicite;
+}
+
+export interface AbonnementEleve {
+  id: string;
+  eleveId: string;
+  serviceId: string;
+  service?: Service;
+  dateDebut: string;
+  dateFin?: string;
+  isActive: boolean;
+  echeances?: EcheancePaiement[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface EcheancePaiement {
+  id: string;
+  abonnementId: string;
+  eleveId: string;
+  serviceId: string;
+  service?: Service;
+  montant: number;
+  dateEcheance: string;
+  periodeLabel: string;
+  statut: StatutEcheance;
+  paidAt?: string;
+  saleId?: string;
   createdAt: string;
 }
 
