@@ -455,6 +455,101 @@ export const connectDB = async () => {
       console.warn('⚠️ Note table eleves:', elevesErr.message);
     }
 
+    // Table classes (module pédagogique)
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS classes (
+          id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id           UUID        NOT NULL,
+          nom                 VARCHAR(100) NOT NULL,
+          niveau              VARCHAR(20) NOT NULL,
+          enseignant_id       UUID        REFERENCES employees(id) ON DELETE SET NULL,
+          capacite_max        INTEGER     DEFAULT 30,
+          annee_scolaire      VARCHAR(10) NOT NULL,
+          description         TEXT,
+          created_at          TIMESTAMPTZ DEFAULT NOW(),
+          updated_at          TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_classes_tenant ON classes(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_classes_niveau ON classes(tenant_id, niveau);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Table classes vérifiée');
+    } catch (classesErr) {
+      console.warn('⚠️ Note table classes:', classesErr.message);
+    }
+
+    // Tables abonnements & échéances (recouvrement scolaire)
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS abonnements_eleves (
+          id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id       UUID        NOT NULL,
+          eleve_id        UUID        NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+          service_id      UUID        NOT NULL,
+          periodicite     VARCHAR(20) NOT NULL,
+          montant         NUMERIC(15,2) NOT NULL,
+          date_debut      DATE        NOT NULL,
+          date_fin        DATE,
+          is_active       BOOLEAN     DEFAULT true,
+          created_at      TIMESTAMPTZ DEFAULT NOW(),
+          updated_at      TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_abo_eleve    ON abonnements_eleves(tenant_id, eleve_id);
+        CREATE INDEX IF NOT EXISTS idx_abo_active   ON abonnements_eleves(tenant_id, is_active);
+
+        CREATE TABLE IF NOT EXISTS echeances_paiements (
+          id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id         UUID        NOT NULL,
+          abonnement_id     UUID        NOT NULL REFERENCES abonnements_eleves(id) ON DELETE CASCADE,
+          eleve_id          UUID        NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+          service_id        UUID        NOT NULL,
+          montant           NUMERIC(15,2) NOT NULL,
+          date_echeance     DATE        NOT NULL,
+          periode_label     VARCHAR(50),
+          statut            VARCHAR(20) DEFAULT 'EN_ATTENTE',
+          paid_at           TIMESTAMPTZ,
+          sale_id           UUID,
+          reminder_sent_at  TIMESTAMPTZ,
+          created_at        TIMESTAMPTZ DEFAULT NOW(),
+          updated_at        TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_ech_eleve   ON echeances_paiements(tenant_id, eleve_id);
+        CREATE INDEX IF NOT EXISTS idx_ech_statut  ON echeances_paiements(tenant_id, statut);
+        CREATE INDEX IF NOT EXISTS idx_ech_date    ON echeances_paiements(tenant_id, date_echeance);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Tables abonnements_eleves & echeances_paiements vérifiées');
+    } catch (aboErr) {
+      console.warn('⚠️ Note tables abonnements/echeances:', aboErr.message);
+    }
+
+    // Table bulletins (module pédagogique)
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS bulletins (
+          id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id           UUID        NOT NULL,
+          eleve_id            UUID        NOT NULL REFERENCES eleves(id) ON DELETE CASCADE,
+          trimestre           VARCHAR(10) NOT NULL,
+          annee_scolaire      VARCHAR(10) NOT NULL,
+          niveau              VARCHAR(10) NOT NULL,
+          domaines            JSONB,
+          matieres            JSONB,
+          moyenne_generale    FLOAT,
+          appreciation_generale TEXT,
+          publie              BOOLEAN     DEFAULT false,
+          date_publication    DATE,
+          created_at          TIMESTAMPTZ DEFAULT NOW(),
+          updated_at          TIMESTAMPTZ DEFAULT NOW(),
+          UNIQUE(eleve_id, trimestre, annee_scolaire)
+        );
+        CREATE INDEX IF NOT EXISTS idx_bulletins_tenant ON bulletins(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_bulletins_eleve  ON bulletins(eleve_id);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Table bulletins vérifiée');
+    } catch (bulletinsErr) {
+      console.warn('⚠️ Note table bulletins:', bulletinsErr.message);
+    }
+
     // 2. Connexion & Sync Registry IA (MySQL)
     await sequelize_db_template.authenticate();
     console.log('✅ Registry IA Connecté (MySQL)');
