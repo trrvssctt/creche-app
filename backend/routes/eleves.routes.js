@@ -10,10 +10,11 @@ const READ_ROLES  = ['ADMIN', 'MAITRESSE', 'ENSEIGNANT', 'COMPTABLE', 'ASSISTANT
 // Rôles autorisés à créer / modifier
 const WRITE_ROLES = ['ADMIN', 'MAITRESSE', 'ENSEIGNANT', 'SALES', 'COMPTABLE', 'ACCOUNTANT'];
 
-router.get('/',    checkPermission(READ_ROLES),  EleveController.list);
-router.get('/:id', checkPermission(READ_ROLES),  EleveController.getById);
-router.post('/',   checkPermission(WRITE_ROLES), EleveController.create);
-router.put('/:id', checkPermission(WRITE_ROLES), EleveController.update);
-router.delete('/:id', checkPermission(['ADMIN']), EleveController.delete);
+router.get('/',       checkPermission(READ_ROLES),  EleveController.list);
+router.get('/:id',    checkPermission(READ_ROLES),  EleveController.getById);
+router.post('/',      checkPermission(WRITE_ROLES), EleveController.create);
+router.put('/:id',    checkPermission(WRITE_ROLES), EleveController.update);
+router.delete('/:id', checkPermission(['ADMIN']),   EleveController.delete);
+router.post('/:id/facture-inscription', checkPermission(WRITE_ROLES), EleveController.factureInscription);
 
 export default router;

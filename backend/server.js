@@ -20,6 +20,8 @@ import apiRoutes from './routes/api.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { securityHeaders } from './middlewares/securityHeaders.js';
 import { BackupService } from './services/BackupService.js';
+import { AbonnementController } from './controllers/AbonnementController.js';
+import { Tenant } from './models/index.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -116,6 +118,21 @@ app.use(errorHandler);
 
 app.listen(PORT, async () => {
   await connectDB();
+
+  // ── Génération des échéances & rappels J-5 (07:00 chaque jour) ────────────
+  cron.schedule('0 7 * * *', async () => {
+    console.log('[CRON] ▶ Génération échéances scolaires…');
+    try {
+      const tenants = await Tenant.findAll({ attributes: ['id'] });
+      for (const t of tenants) {
+        await AbonnementController.cronGenerateEcheances(t.id);
+      }
+      console.log('[CRON] ✅ Échéances scolaires traitées.');
+    } catch (err) {
+      console.error('[CRON] ❌ Échec génération échéances :', err.message);
+    }
+  }, { timezone: 'Africa/Dakar' });
+  console.log('✅ Cron échéances scolaires planifié : tous les jours à 07:00 (Africa/Dakar)');
 
   // ── Sauvegarde automatique quotidienne à 02:00 ──────────────────────────
   // Rétention : 7 jours (purge automatique dans BackupService.runSystemBackup)

@@ -31,6 +31,9 @@ import supportRoutes from './support.routes.js';
 import supplierRoutes from './suppliers.routes.js';
 import deliveryRoutes from './deliveries.routes.js';
 import elevesRoutes from './eleves.routes.js';
+import bulletinsRoutes from './bulletins.routes.js';
+import classesRoutes from './classes.routes.js';
+import abonnementsRoutes from './abonnements.routes.js';
 
 const router = Router();
 
@@ -82,6 +85,9 @@ router.use('/support', tenantIsolation, supportRoutes);
 router.use('/suppliers', tenantIsolation, supplierRoutes);
 router.use('/deliveries', tenantIsolation, deliveryRoutes);
 router.use('/eleves',    tenantIsolation, elevesRoutes);
+router.use('/bulletins', tenantIsolation, bulletinsRoutes);
+router.use('/classes',      tenantIsolation, classesRoutes);
+router.use('/abonnements',  tenantIsolation, abonnementsRoutes);
 
 // Subscription upgrade (tenant ADMIN → PENDING, validated by SuperAdmin)
 router.post('/subscription/upgrade', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.upgradePlan);
