@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import { AnneeProvider } from './contexts/AnneeContext';
+import { NiveauxProvider } from './contexts/NiveauxContext';
 import Layout from './components/Layout';
 import ToastProvider from './components/ToastProvider';
 import Dashboard from './components/Dashboard';
@@ -44,6 +46,7 @@ import TimeDeductionSettings from './components/rh/TimeDeductionSettings';
 import EmployeePointage from './components/rh/EmployeePointage';
 import OvertimeRequests from './components/rh/OvertimeRequests';
 import Login from './components/Login';
+import TeacherPortal from './components/TeacherPortal';
 import AIAnalysis from './components/AIAnalysis';
 import Support from './components/Support';
 import Info from './components/Info';
@@ -97,6 +100,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
+const ACTIVE_TAB_KEY = 'gsp_active_tab';
+
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -117,41 +122,48 @@ const App: React.FC = () => {
 
   // Synchronise les paramètres de l'établissement depuis le backend
   const syncSettings = async (_user: User) => {
+    // Essaie /settings en premier, puis /tenant/info en fallback (ex. rôles sans accès /settings)
+    let settings: any = null;
     try {
-      const settings = await apiClient.get('/settings');
-      if (settings) {
-        setAppSettings({
-          language: settings.language === 'en' ? 'English' : 'Français',
-          currency: settings.currency || 'F CFA',
-          platformLogo: settings.logoUrl || '',
-          invoiceLogo: settings.logoUrl || '',
-          companyName: settings.name || 'Le Toit des Anges',
-          ...settings,
-        });
-        try {
-          if (settings.primaryColor) {
-            document.documentElement.style.setProperty('--primary-kernel', settings.primaryColor);
-          }
-          if (settings.buttonColor || settings.button_color) {
-            document.documentElement.style.setProperty('--button-kernel', settings.buttonColor || settings.button_color);
-          }
-          if (settings.fontFamily) {
-            document.documentElement.style.setProperty('--kernel-font-family', settings.fontFamily);
-            document.documentElement.style.fontFamily = settings.fontFamily;
-          }
-          if (settings.baseFontSize) {
-            document.documentElement.style.setProperty('--base-font-size', `${settings.baseFontSize}px`);
-            document.documentElement.style.fontSize = `${settings.baseFontSize}px`;
-          }
-          const isDark = settings.theme === 'dark' || settings.is_dark === true;
-          document.documentElement.classList.toggle('dark', Boolean(isDark));
-          document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-        } catch {
-          // no-op
-        }
-      }
+      settings = await apiClient.get('/settings');
     } catch {
-      // Paramètres backend non disponibles — on garde les défauts
+      try {
+        settings = await apiClient.get('/tenant/info');
+      } catch (e) {
+        console.warn('[syncSettings] Impossible de charger les paramètres tenant:', e);
+      }
+    }
+
+    if (!settings) return;
+
+    setAppSettings({
+      language: settings.language === 'en' ? 'English' : 'Français',
+      currency: settings.currency || 'F CFA',
+      platformLogo: settings.logoUrl || '',
+      invoiceLogo: settings.logoUrl || '',
+      companyName: settings.name || 'Le Toit des Anges',
+      ...settings,
+    });
+    try {
+      if (settings.primaryColor) {
+        document.documentElement.style.setProperty('--primary-kernel', settings.primaryColor);
+      }
+      if (settings.buttonColor || settings.button_color) {
+        document.documentElement.style.setProperty('--button-kernel', settings.buttonColor || settings.button_color);
+      }
+      if (settings.fontFamily) {
+        document.documentElement.style.setProperty('--kernel-font-family', settings.fontFamily);
+        document.documentElement.style.fontFamily = settings.fontFamily;
+      }
+      if (settings.baseFontSize) {
+        document.documentElement.style.setProperty('--base-font-size', `${settings.baseFontSize}px`);
+        document.documentElement.style.fontSize = `${settings.baseFontSize}px`;
+      }
+      const isDark = settings.theme === 'dark' || settings.is_dark === true;
+      document.documentElement.classList.toggle('dark', Boolean(isDark));
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    } catch {
+      // no-op
     }
   };
 
@@ -161,12 +173,24 @@ const App: React.FC = () => {
       const session = authBridge.getSession();
       if (session) {
         const freshUser = await authBridge.fetchMe(session.token);
-        if (freshUser && freshUser.isActive) {
-          await syncSettings(freshUser);
-          setCurrentUser(freshUser);
-          setIsLoggedIn(true);
+        let userToRestore: User | null = null;
+
+        if (freshUser) {
+          // Réponse backend reçue
+          userToRestore = freshUser.isActive ? freshUser : null;
+          if (!freshUser.isActive) authBridge.clearSession();
         } else {
-          authBridge.clearSession();
+          // fetchMe a échoué (réseau/VPS indisponible) → utiliser l'utilisateur en cache
+          // Si le token est vraiment expiré, le prochain appel API renverra un 401 et déconnectera proprement
+          userToRestore = session.user ?? null;
+        }
+
+        if (userToRestore) {
+          await syncSettings(userToRestore);
+          setCurrentUser(userToRestore);
+          setIsLoggedIn(true);
+          const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+          if (savedTab) setActiveTab(savedTab);
         }
       }
       setIsInitializing(false);
@@ -197,11 +221,13 @@ const App: React.FC = () => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     await syncSettings(user);
+    localStorage.setItem(ACTIVE_TAB_KEY, 'dashboard');
     setActiveTab('dashboard');
   };
 
   const handleLogout = () => {
     authBridge.clearSession();
+    localStorage.removeItem(ACTIVE_TAB_KEY);
     setIsLoggedIn(false);
     setCurrentUser(null);
     setActiveTab('dashboard');
@@ -211,6 +237,7 @@ const App: React.FC = () => {
   const handleContextualNavigate = (tab: string, meta?: any) => {
     if (currentUser && authBridge.canAccess(currentUser, tab)) {
       setNavigationMetadata(meta);
+      localStorage.setItem(ACTIVE_TAB_KEY, tab);
       setActiveTab(tab);
     }
   };
@@ -290,7 +317,13 @@ const App: React.FC = () => {
     }
 
     switch (activeTab) {
-      case 'dashboard':          return <Dashboard user={currentUser} currency={appSettings.currency} onNavigate={handleContextualNavigate} />;
+      case 'dashboard': {
+        const rolesArr = Array.isArray(currentUser.roles) && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
+        const isTeacher = rolesArr.includes(UserRole.ENSEIGNANT) || rolesArr.includes(UserRole.MAITRESSE);
+        return isTeacher
+          ? <TeacherPortal user={currentUser} currency={appSettings.currency} onNavigate={handleContextualNavigate} />
+          : <Dashboard user={currentUser} currency={appSettings.currency} onNavigate={handleContextualNavigate} />;
+      }
       case 'ai_analysis':        return <AIAnalysis user={currentUser} />;
       case 'categories':         return <CategoryManager />;
       case 'subcategories':      return <SubcategoryManager />;
@@ -314,6 +347,7 @@ const App: React.FC = () => {
       case 'recovery':           return <Recovery currency={appSettings.currency} />;
       case 'facturation':        return <FacturationMensuelle currency={appSettings.currency} tenantSettings={appSettings} />;
       case 'payments':           return <Payments currency={appSettings.currency} tenantSettings={appSettings} />;
+      case 'presences':          return <TeacherPortal user={currentUser} currency={appSettings.currency} onNavigate={handleContextualNavigate} initialSection="presences" />;
       case 'my-leaves':          return <LeaveManagement onNavigate={handleContextualNavigate} user={currentUser} />;
       case 'employee-pointage':  return <EmployeePointage onNavigate={handleContextualNavigate} />;
       case 'governance':         return <Governance tenantId={currentUser.tenantId} />;
@@ -328,6 +362,8 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
+      <NiveauxProvider>
+      <AnneeProvider>
       <ToastProvider>
         <div className="min-h-screen bg-slate-50">
           {/* Bannière rappel pointage */}
@@ -338,7 +374,7 @@ const App: React.FC = () => {
                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Vous n'avez pas encore pointé aujourd'hui</p>
               </div>
               <button
-                onClick={() => { setActiveTab('employee-pointage'); setPointageReminder(false); }}
+                onClick={() => { localStorage.setItem(ACTIVE_TAB_KEY, 'employee-pointage'); setActiveTab('employee-pointage'); setPointageReminder(false); }}
                 className="px-3 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all"
               >
                 Pointer
@@ -357,6 +393,7 @@ const App: React.FC = () => {
             activeTab={activeTab}
             setActiveTab={(tab) => {
               setNavigationMetadata(null);
+              localStorage.setItem(ACTIVE_TAB_KEY, tab);
               setActiveTab(tab);
             }}
             onLogout={handleLogout}
@@ -369,6 +406,8 @@ const App: React.FC = () => {
           <ChatInterface user={currentUser!} />
         </div>
       </ToastProvider>
+      </AnneeProvider>
+      </NiveauxProvider>
     </ErrorBoundary>
   );
 };

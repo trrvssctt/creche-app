@@ -7,7 +7,9 @@ export enum UserRole {
   COMPTABLE  = 'COMPTABLE',
   ASSISTANTE = 'ASSISTANTE',
   HR_MANAGER = 'HR_MANAGER',  // conservé pour le module RH backend
-  EMPLOYEE   = 'EMPLOYEE',    // personnel non-enseignant
+  EMPLOYEE   = 'EMPLOYEE',    // personnel non-enseignant générique
+  INFIRMIERE = 'INFIRMIERE',  // infirmière / agent de santé
+  CHAUFFEUR  = 'CHAUFFEUR',   // chauffeur / transport scolaire
   // Aliases de compatibilité (anciens rôles ERP SaaS)
   SUPER_ADMIN   = 'ADMIN',
   ACCOUNTANT    = 'COMPTABLE',
@@ -428,16 +430,7 @@ export interface HRDocument {
 
 // ─── MODULE SCOLAIRE ─────────────────────────────────────────────────────────
 
-export type NiveauScolaire =
-  | 'CRECHE'
-  | 'PS'   // Petite Section
-  | 'MS'   // Moyenne Section
-  | 'GS'   // Grande Section
-  | 'CP'
-  | 'CE1'
-  | 'CE2'
-  | 'CM1'
-  | 'CM2';
+export type NiveauScolaire = string;
 
 export type RegimeFinancier =
   | 'NORMAL'
@@ -463,6 +456,9 @@ export interface ContactParent {
   whatsapp: string;
   email?: string;
   lien: 'PERE' | 'MERE' | 'TUTEUR';
+  telDomicile?: string;
+  telTravail?: string;
+  adresse?: string;
 }
 
 export interface ContactUrgence {
@@ -497,6 +493,52 @@ export interface Eleve {
   photoUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+  // ── Fiche sanitaire ────────────────────────────────────────────────────────
+  sexe?: 'M' | 'F' | '';
+  // Vaccinations
+  vaccDiphterie?: boolean;    vaccDiphterieDate?: string;
+  vaccTetanos?: boolean;      vaccTetanosDate?: string;
+  vaccPolio?: boolean;        vaccPolioDate?: string;
+  vaccCoqueluche?: boolean;   vaccCoquelucheDate?: string;
+  vaccBCG?: boolean;          vaccBCGDate?: string;
+  vaccHepB?: boolean;         vaccHepBDate?: string;
+  vaccROR?: boolean;          vaccRORDate?: string;
+  certifContrIndication?: boolean;
+  // Traitement médical
+  traitementMedical?: boolean;
+  traitementDetail?: string;
+  // Maladies antérieures
+  maladieRubeole?: boolean;
+  maladieVaricelle?: boolean;
+  maladieAngine?: boolean;
+  maladieRhumatisme?: boolean;
+  maladieScarlatine?: boolean;
+  maladieCoqueluche?: boolean;
+  maladieOtite?: boolean;
+  maladieRougeole?: boolean;
+  maladieOreillons?: boolean;
+  // Allergies
+  allergieAsthme?: boolean;
+  allergieMedicament?: boolean;
+  allergieAlimentaire?: boolean;
+  allergieAutres?: string;
+  allergieConduite?: string;
+  // Difficultés de santé
+  difficulteSante?: string;
+  // Équipements portés
+  equipeLunettes?: boolean;
+  equipeLentilles?: boolean;
+  equipeProtheseAuditive?: boolean;
+  equipeProtheseDentaire?: boolean;
+  equipePrecisions?: string;
+  // Énurésie nocturne
+  mouillerLit?: 'OUI' | 'NON' | 'OCCASIONNELLEMENT' | '';
+  // Médecin traitant
+  medecinNom?: string;
+  medecinTel?: string;
+  // Autorisations
+  autorisationPhoto?: boolean;
+  autorisationSoins?: boolean;
 }
 
 export interface Classe {

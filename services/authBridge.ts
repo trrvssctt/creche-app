@@ -3,6 +3,18 @@ import { User, UserRole } from '../types';
 const AUTH_STORAGE_KEY = 'gsp_session_vault';
 const SESSION_TOKEN_KEY = 'gsp_session_token';
 
+// Résolution dynamique de l'URL backend — même logique que api.ts, sans import circulaire
+const getBackendUrl = (): string => {
+  const buildTime = (import.meta as any).env?.VITE_BACKEND_URL;
+  if (buildTime) return buildTime.replace(/\/+$/, '');
+  try {
+    const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : '';
+    if (origin && /localhost:517[3-9]/.test(origin)) return 'http://localhost:3000';
+    if (origin && !/localhost|127\.0\.0\.1/.test(origin)) return origin;
+  } catch { /* noop */ }
+  return 'http://localhost:3000';
+};
+
 // Tous les modules disponibles dans l'application
 const ALL_MODULES = [
   'dashboard',
@@ -45,16 +57,18 @@ const ROLE_MODULES: Record<string, string[]> = {
 
   [UserRole.ENSEIGNANT]: [
     'dashboard',
-    'eleves', 'classes', 'customers', 'admission',
-    'bulletins', 'emploidutemps', 'certificats', 'evenements',
+    'presences',
+    'eleves', 'classes',
+    'bulletins', 'emploidutemps', 'evenements',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
 
   [UserRole.MAITRESSE]: [
     'dashboard',
-    'eleves', 'classes', 'customers', 'admission',
-    'bulletins', 'emploidutemps', 'certificats', 'evenements',
+    'presences',
+    'eleves', 'classes',
+    'bulletins', 'emploidutemps', 'evenements',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
@@ -75,10 +89,24 @@ const ROLE_MODULES: Record<string, string[]> = {
     'dashboard',
     'eleves', 'classes', 'customers', 'admission',
     'whatsapp', 'certificats', 'emploidutemps', 'evenements',
+    'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
 
   [UserRole.EMPLOYEE]: [
+    'dashboard',
+    'my-leaves', 'employee-pointage',
+    'info', 'support',
+  ],
+
+  [UserRole.INFIRMIERE]: [
+    'dashboard',
+    'eleves',
+    'my-leaves', 'employee-pointage',
+    'info', 'support',
+  ],
+
+  [UserRole.CHAUFFEUR]: [
     'dashboard',
     'my-leaves', 'employee-pointage',
     'info', 'support',
@@ -97,13 +125,13 @@ export const authBridge = {
     }
 
     const sessionUser = { ...user, roles };
-    sessionStorage.setItem(
+    localStorage.setItem(
       AUTH_STORAGE_KEY,
       JSON.stringify({ user: sessionUser, token, sessionToken, timestamp: Date.now() })
     );
 
     if (sessionToken) {
-      sessionStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
+      localStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
     }
 
     // Appliquer les préférences visuelles de l'établissement
@@ -135,7 +163,7 @@ export const authBridge = {
   },
 
   getSession: (): { user: User; token: string; sessionToken?: string } | null => {
-    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return null;
     try {
       const data = JSON.parse(raw);
@@ -151,8 +179,7 @@ export const authBridge = {
 
   fetchMe: async (token: string): Promise<User | null> => {
     try {
-      //const response = await fetch('https://gestock.realtechprint.com/api/auth/me', {
-      const response = await fetch('http://localhost:3000/api/auth/me', {
+      const response = await fetch(`${getBackendUrl()}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) return null;
@@ -167,20 +194,19 @@ export const authBridge = {
   },
 
   clearSession: () => {
-    sessionStorage.removeItem(AUTH_STORAGE_KEY);
-    sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(SESSION_TOKEN_KEY);
   },
 
   getSessionToken: (): string | null => {
-    return sessionStorage.getItem(SESSION_TOKEN_KEY);
+    return localStorage.getItem(SESSION_TOKEN_KEY);
   },
 
   validateCurrentSession: async (): Promise<boolean> => {
     const sessionToken = authBridge.getSessionToken();
     if (!sessionToken) return false;
     try {
-      //const response = await fetch('https://gestock.realtechprint.com/api/auth/validate-session', {
-      const response = await fetch('http://localhost:3000/api/auth/validate-session', {
+      const response = await fetch(`${getBackendUrl()}/api/auth/validate-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -202,8 +228,7 @@ export const authBridge = {
     const sessionToken = authBridge.getSessionToken();
     try {
       if (sessionToken) {
-        //await fetch('https://gestock.realtechprint.com/api/auth/logout', {
-        await fetch('http://localhost:3000/api/auth/logout', {
+        await fetch(`${getBackendUrl()}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -261,31 +286,35 @@ export const authBridge = {
    * Vérifie si une action CRUD est autorisée
    */
   canPerform: (user: User, action: 'CREATE' | 'EDIT' | 'DELETE' | 'VIEW', resource: string): boolean => {
-    const roles = Array.isArray(user.roles) ? user.roles : [user.role];
+    // Consolidation robuste des rôles : roles[] en priorité, sinon role simple
+    const rolesArr = Array.isArray(user.roles) && user.roles.length > 0
+      ? user.roles
+      : (user.role ? [user.role] : []);
 
-    // ADMIN / DIRECTEUR : tout autorisé
-    if (roles.some(r => r === UserRole.ADMIN || r === UserRole.DIRECTEUR)) return true;
+    // ADMIN / DIRECTEUR : accès total sans restriction
+    if (rolesArr.some(r => r === UserRole.ADMIN || r === UserRole.DIRECTEUR)) return true;
 
     // ASSISTANTE : lecture seule
-    if (roles.includes(UserRole.ASSISTANTE)) return action === 'VIEW';
+    if (rolesArr.includes(UserRole.ASSISTANTE)) return action === 'VIEW';
 
     // HR_MANAGER : CRUD sur les ressources RH
-    if (roles.includes(UserRole.HR_MANAGER)) {
+    if (rolesArr.includes(UserRole.HR_MANAGER)) {
       const rhResources = ['employees', 'contracts', 'payroll', 'payslips', 'advances', 'declarations', 'documents', 'organigram', 'time', 'performance', 'leaves'];
       if (rhResources.includes(resource)) return true;
       return action === 'VIEW';
     }
 
     // COMPTABLE : CRUD finances, lecture reste
-    if (roles.includes(UserRole.COMPTABLE)) {
+    if (rolesArr.includes(UserRole.COMPTABLE)) {
       const finResources = ['payments', 'recovery', 'sales', 'customers', 'eleves', 'services', 'payroll', 'payslips', 'advances', 'declarations'];
       if (finResources.includes(resource)) return true;
       return action === 'VIEW';
     }
 
-    // ENSEIGNANT / MAITRESSE : écriture sur les ressources pédagogiques, lecture reste
-    if (roles.some(r => r === UserRole.ENSEIGNANT || r === UserRole.MAITRESSE)) {
-      const pedagResources = ['bulletins', 'competences', 'cahier-texte', 'emploi-temps'];
+    // ENSEIGNANT / MAITRESSE : écriture sur leurs propres ressources pédagogiques
+    // L'emploi du temps est géré exclusivement par le DIRECTEUR — les profs ne peuvent que consulter
+    if (rolesArr.some(r => r === UserRole.ENSEIGNANT || r === UserRole.MAITRESSE)) {
+      const pedagResources = ['bulletins', 'competences', 'cahier-texte'];
       if (pedagResources.includes(resource)) return true;
       return action === 'VIEW';
     }
@@ -310,7 +339,8 @@ export const authBridge = {
       return rhResources.includes(resource);
     }
     if (role === UserRole.ENSEIGNANT || role === UserRole.MAITRESSE) {
-      const pedagResources = ['bulletins', 'emploi-temps', 'eleves', 'competences'];
+      // emploi-temps retiré : les profs consultent uniquement, le DIRECTEUR gère
+      const pedagResources = ['bulletins', 'eleves', 'competences'];
       return pedagResources.includes(resource);
     }
     return false;
