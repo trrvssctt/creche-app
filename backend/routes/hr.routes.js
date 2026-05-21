@@ -46,7 +46,10 @@ router.get('/employees', checkPermission(['ADMIN','ACCOUNTANT','STOCK_MANAGER','
 router.post('/employees', checkPermission(['ADMIN','HR_MANAGER']), EmployeeController.create);
 router.get('/employees/:id/current-month-salary', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER']), EmployeeController.getCurrentMonthSalary);
 router.get('/employees/:id/advance-deductions', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER']), EmployeeController.getAdvanceDeductions);
-router.get('/employees/:id', checkPermission(['ADMIN','ACCOUNTANT','STOCK_MANAGER','EMPLOYEE','HR_MANAGER']), EmployeeController.get);
+router.get('/employees/:id', checkPermission([
+  'ADMIN','ACCOUNTANT','STOCK_MANAGER','EMPLOYEE','HR_MANAGER',
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+]), EmployeeController.get);
 router.put('/employees/:id', checkPermission(['ADMIN','HR_MANAGER']), EmployeeController.update);
 router.delete('/employees/:id', checkPermission(['ADMIN','HR_MANAGER']), EmployeeController.remove);
 
@@ -84,8 +87,14 @@ router.get('/payslips', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER']), Pa
 router.post('/payslips/generate', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER']), PayslipController.generate);
 router.post('/payslips/generate-bulk', checkPermission(['ADMIN','HR_MANAGER']), PayslipController.generateBulkPayslips);
 router.delete('/payslips/:payslipId', checkPermission(['ADMIN','HR_MANAGER']), PayslipController.deletePayslip);
-router.get('/employees/:employeeId/payslips', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER','EMPLOYEE']), PayslipController.getEmployeePayslips);
-router.get('/payslips/download', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER','EMPLOYEE']), PayslipController.downloadPayslip);
+router.get('/employees/:employeeId/payslips', checkPermission([
+  'ADMIN','ACCOUNTANT','HR_MANAGER','EMPLOYEE',
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+]), PayslipController.getEmployeePayslips);
+router.get('/payslips/download', checkPermission([
+  'ADMIN','ACCOUNTANT','HR_MANAGER','EMPLOYEE',
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+]), PayslipController.downloadPayslip);
 router.get('/payslips/download-all-zip', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER']), PayslipController.downloadAllAsZip);
 
 // ========== PAYROLL SETTINGS ==========
@@ -118,7 +127,11 @@ router.post('/payroll-items/initialize-defaults', checkPermission(['ADMIN','HR_M
 
 // ========== ATTENDANCE ==========
 // Routes self-service : tous les rôles non-admin peuvent pointer
-const POINTAGE_ROLES = ['EMPLOYEE','ADMIN','HR_MANAGER','STOCK_MANAGER','ACCOUNTANT','SALES'];
+const POINTAGE_ROLES = [
+  'EMPLOYEE','ADMIN','HR_MANAGER','STOCK_MANAGER','ACCOUNTANT','SALES',
+  // Rôles établissement
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+];
 // Routes spécifiques employee (AVANT les routes génériques /:id)
 router.get('/attendance/my/today',           checkPermission(POINTAGE_ROLES), AttendanceController.myToday);
 router.get('/attendance/my/overtime-summary',checkPermission(POINTAGE_ROLES), AttendanceController.myOvertimeSummary);
@@ -139,7 +152,10 @@ router.post('/attendance', checkPermission(['ADMIN','STOCK_MANAGER','EMPLOYEE','
 router.put('/attendance/:id', checkPermission(['ADMIN','STOCK_MANAGER','HR_MANAGER']), AttendanceController.update);
 
 // ========== OVERTIME REQUESTS (HEURES SUPPLÉMENTAIRES) ==========
-const OVERTIME_ROLES = ['EMPLOYEE','ADMIN','HR_MANAGER','STOCK_MANAGER','ACCOUNTANT','SALES'];
+const OVERTIME_ROLES = [
+  'EMPLOYEE','ADMIN','HR_MANAGER','STOCK_MANAGER','ACCOUNTANT','SALES',
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+];
 router.get('/overtime/my',              checkPermission(OVERTIME_ROLES),              OvertimeController.myList);
 router.post('/overtime',                checkPermission(OVERTIME_ROLES),              OvertimeController.create);
 router.get('/overtime',                 checkPermission(['ADMIN','HR_MANAGER']),       OvertimeController.list);
@@ -149,11 +165,15 @@ router.post('/overtime/:id/reject',     checkPermission(['ADMIN','HR_MANAGER']),
 router.post('/overtime/:id/complete',   checkPermission(['ADMIN','HR_MANAGER']),       OvertimeController.complete);
 
 // ========== LEAVES (CONGÉS) ==========
-router.post('/leaves/my/justify-absence', checkPermission(['ADMIN','HR_MANAGER','EMPLOYEE','STOCK_MANAGER','SALES','ACCOUNTANT']), LeaveController.justifyAbsence);
-router.get('/leaves', checkPermission(['ADMIN','HR_MANAGER','EMPLOYEE','STOCK_MANAGER','SALES','ACCOUNTANT']), LeaveController.list);
-router.post('/leaves', checkPermission(['ADMIN','HR_MANAGER','EMPLOYEE','STOCK_MANAGER','SALES','ACCOUNTANT']), leaveDocumentUpload, LeaveController.create);
-router.get('/leaves/:id', checkPermission(['ADMIN','HR_MANAGER','EMPLOYEE','STOCK_MANAGER','SALES','ACCOUNTANT']), LeaveController.get);
-router.put('/leaves/:id', checkPermission(['ADMIN','HR_MANAGER','EMPLOYEE','STOCK_MANAGER','SALES','ACCOUNTANT']), leaveDocumentUpload, LeaveController.update);
+const LEAVES_ROLES = [
+  'ADMIN','HR_MANAGER','EMPLOYEE','STOCK_MANAGER','SALES','ACCOUNTANT',
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+];
+router.post('/leaves/my/justify-absence', checkPermission(LEAVES_ROLES), LeaveController.justifyAbsence);
+router.get('/leaves',      checkPermission(LEAVES_ROLES), LeaveController.list);
+router.post('/leaves',     checkPermission(LEAVES_ROLES), leaveDocumentUpload, LeaveController.create);
+router.get('/leaves/:id',  checkPermission(LEAVES_ROLES), LeaveController.get);
+router.put('/leaves/:id',  checkPermission(LEAVES_ROLES), leaveDocumentUpload, LeaveController.update);
 router.post('/leaves/:id/approve', checkPermission(['ADMIN','HR_MANAGER']), LeaveController.approve);
 router.delete('/leaves/:id', checkPermission(['ADMIN','HR_MANAGER']), LeaveController.remove);
 
@@ -213,7 +233,10 @@ router.delete('/rules/:id', checkPermission(['ADMIN','HR_MANAGER']), HRRuleContr
 router.patch('/rules/:id/toggle', checkPermission(['ADMIN','HR_MANAGER']), HRRuleController.toggle);
 
 // ========== SOLDE DE CONGÉS ==========
-router.get('/leaves/balance/:employeeId', checkPermission(['ADMIN','HR_MANAGER','EMPLOYEE','ACCOUNTANT']), LeaveController.getLeaveBalance);
+router.get('/leaves/balance/:employeeId', checkPermission([
+  'ADMIN','HR_MANAGER','EMPLOYEE','ACCOUNTANT',
+  'DIRECTEUR','ENSEIGNANT','MAITRESSE','ASSISTANTE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+]), LeaveController.getLeaveBalance);
 
 // ========== DECLARATIONS SOCIALES & FISCALES ==========
 router.get('/declarations/settings', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER']), DeclarationController.getDeclarationSettings);

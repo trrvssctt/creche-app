@@ -17,6 +17,7 @@ router.use((req, res, next) => checkRole(['SUPER_ADMIN', 'ADMIN'])(req, res, nex
 
 // Dashboard
 router.get('/dashboard', AdminController.getGlobalDashboard);
+router.get('/school-dashboard', AdminController.getSchoolDashboard);
 router.get('/payments/recent', AdminController.getRecentPayments);
 
 // Logs / Audit

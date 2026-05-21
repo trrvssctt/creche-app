@@ -16,5 +16,6 @@ router.post('/',      checkPermission(WRITE_ROLES), EleveController.create);
 router.put('/:id',    checkPermission(WRITE_ROLES), EleveController.update);
 router.delete('/:id', checkPermission(['ADMIN']),   EleveController.delete);
 router.post('/:id/facture-inscription', checkPermission(WRITE_ROLES), EleveController.factureInscription);
+router.post('/:id/reinscription',        checkPermission(WRITE_ROLES), EleveController.reinscription);
 
 export default router;

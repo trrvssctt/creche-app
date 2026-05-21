@@ -31,9 +31,13 @@ import supportRoutes from './support.routes.js';
 import supplierRoutes from './suppliers.routes.js';
 import deliveryRoutes from './deliveries.routes.js';
 import elevesRoutes from './eleves.routes.js';
+import eleveDossierRoutes from './eleve-dossier.routes.js';
 import bulletinsRoutes from './bulletins.routes.js';
 import classesRoutes from './classes.routes.js';
 import abonnementsRoutes from './abonnements.routes.js';
+import teacherRoutes from './teacher.routes.js';
+import scheduleRoutes from './schedule.routes.js';
+import planningRoutes from './planning.routes.js';
 
 const router = Router();
 
@@ -85,9 +89,13 @@ router.use('/support', tenantIsolation, supportRoutes);
 router.use('/suppliers', tenantIsolation, supplierRoutes);
 router.use('/deliveries', tenantIsolation, deliveryRoutes);
 router.use('/eleves',    tenantIsolation, elevesRoutes);
+router.use('/eleves/:eleveId/dossier', tenantIsolation, eleveDossierRoutes);
 router.use('/bulletins', tenantIsolation, bulletinsRoutes);
 router.use('/classes',      tenantIsolation, classesRoutes);
 router.use('/abonnements',  tenantIsolation, abonnementsRoutes);
+router.use('/teacher',      tenantIsolation, teacherRoutes);
+router.use('/schedule',     tenantIsolation, scheduleRoutes);
+router.use('/planning',    tenantIsolation, planningRoutes);
 
 // Subscription upgrade (tenant ADMIN → PENDING, validated by SuperAdmin)
 router.post('/subscription/upgrade', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.upgradePlan);
@@ -97,11 +105,15 @@ router.post('/subscription/payment', tenantIsolation, checkPermission(['ADMIN'])
 // Routes admin pour la gestion des messages de contact (après JWT)
 router.use('/admin/contact', contactAdminRoutes);
 
-router.get('/settings', tenantIsolation, checkPermission(['ADMIN', 'SALES', 'STOCK_MANAGER', 'ACCOUNTANT']), TenantController.getSettings);
+// Lecture des paramètres tenant : tous les membres de l'établissement (branding, config année, etc.)
+const ALL_TENANT_ROLES = ['ADMIN', 'SALES', 'STOCK_MANAGER', 'ACCOUNTANT', 'EMPLOYEE', 'HR_MANAGER', 'ENSEIGNANT', 'MAITRESSE', 'DIRECTEUR', 'ASSISTANTE'];
+router.get('/settings', tenantIsolation, checkPermission(ALL_TENANT_ROLES), TenantController.getSettings);
 router.put('/settings', tenantIsolation, checkPermission(['ADMIN']), TenantController.updateSettings);
+router.post('/settings/annee/cloturer', tenantIsolation, checkPermission(['ADMIN']), TenantController.cloturerAnnee);
+router.post('/settings/annee/nouvelle', tenantIsolation, checkPermission(['ADMIN']), TenantController.demarrerNouvelleAnnee);
 
-// Route pour récupérer les informations du tenant
-router.get('/tenant/info', tenantIsolation, checkPermission(['ADMIN', 'SALES', 'STOCK_MANAGER', 'ACCOUNTANT', 'EMPLOYEE']), TenantController.getSettings);
+// Route pour récupérer les informations du tenant (alias de /settings en lecture)
+router.get('/tenant/info', tenantIsolation, checkPermission(ALL_TENANT_ROLES), TenantController.getSettings);
 
 // Suspension / Réactivation du compte par le tenant lui-même (ADMIN uniquement)
 // Note : ces routes n'utilisent PAS tenantIsolation pour que la réactivation soit possible même compte suspendu
