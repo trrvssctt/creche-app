@@ -42,6 +42,11 @@ Service.init({
     field: 'frais_inscription',
     defaultValue: 0,
   },
+  anneeScolaire: {
+    type: DataTypes.STRING(20),
+    field: 'annee_scolaire',
+    allowNull: true,
+  },
   deletedAt: {
     type: DataTypes.DATE,
     field: 'deleted_at'

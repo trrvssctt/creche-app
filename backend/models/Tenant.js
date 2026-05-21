@@ -30,6 +30,9 @@ Tenant.init({
   baseFontSize: { type: DataTypes.INTEGER, defaultValue: 14, field: 'base_font_size' },
   buttonColor: { type: DataTypes.STRING(7), field: 'button_color' },
   
+  // Contact WhatsApp Business
+  whatsappNumber: { type: DataTypes.STRING(30), allowNull: true, field: 'whatsapp_number' },
+
   // Paramètres Facturation
   invoicePrefix: { type: DataTypes.STRING(20), defaultValue: 'INV-', field: 'invoice_prefix' },
   invoiceFooter: { type: DataTypes.TEXT, field: 'invoice_footer' },
@@ -61,7 +64,11 @@ Tenant.init({
   deletionBackupPath: { type: DataTypes.STRING(500), allowNull: true, field: 'deletion_backup_path' },
 
   // Stockage S3 utilisé (en octets)
-  storageUsedBytes: { type: DataTypes.BIGINT, defaultValue: 0, field: 'storage_used_bytes' }
+  storageUsedBytes: { type: DataTypes.BIGINT, defaultValue: 0, field: 'storage_used_bytes' },
+
+  // Gestion des campagnes d'années scolaires
+  anneeActive:      { type: DataTypes.STRING(20), allowNull: true, field: 'annee_active' },
+  anneesCloturees:  { type: DataTypes.JSON,       allowNull: true, defaultValue: [], field: 'annees_cloturees' }
 }, {
   sequelize,
   modelName: 'tenant',

@@ -54,6 +54,11 @@ import { Bulletin } from './Bulletin.js';
 import { Classe } from './Classe.js';
 import { AbonnementEleve } from './AbonnementEleve.js';
 import { EcheancePaiement } from './EcheancePaiement.js';
+import { Presence } from './Presence.js';
+import { CreneauHoraire } from './CreneauHoraire.js';
+import { PlanningConfig } from './PlanningConfig.js';
+import { PlanningException } from './PlanningException.js';
+import { EleveDocument } from './EleveDocument.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
@@ -83,6 +88,31 @@ Classe.hasMany(Eleve, { foreignKey: 'classe_id', as: 'eleves' });
 Eleve.belongsTo(Classe, { foreignKey: 'classe_id', as: 'classe' });
 Classe.belongsTo(Employee, { foreignKey: 'enseignant_id', as: 'enseignant' });
 Employee.hasMany(Classe, { foreignKey: 'enseignant_id', as: 'classesResponsable' });
+
+// Créneaux horaires (emploi du temps)
+Tenant.hasMany(CreneauHoraire, { foreignKey: 'tenant_id' });
+CreneauHoraire.belongsTo(Tenant,   { foreignKey: 'tenant_id' });
+CreneauHoraire.belongsTo(Classe,   { foreignKey: 'classe_id',     as: 'classe' });
+CreneauHoraire.belongsTo(Employee, { foreignKey: 'enseignant_id', as: 'enseignant' });
+Classe.hasMany(CreneauHoraire,     { foreignKey: 'classe_id',     as: 'creneaux' });
+Employee.hasMany(CreneauHoraire,   { foreignKey: 'enseignant_id', as: 'creneauxEnseignant' });
+
+// Planning récurrent (config période + exceptions par date)
+Tenant.hasMany(PlanningConfig,    { foreignKey: 'tenant_id' });
+PlanningConfig.belongsTo(Tenant,  { foreignKey: 'tenant_id' });
+Tenant.hasMany(PlanningException, { foreignKey: 'tenant_id' });
+PlanningException.belongsTo(Tenant,       { foreignKey: 'tenant_id' });
+PlanningException.belongsTo(CreneauHoraire, { foreignKey: 'creneau_id', as: 'creneau' });
+CreneauHoraire.hasMany(PlanningException,   { foreignKey: 'creneau_id', as: 'exceptions' });
+
+// Présences élèves
+Tenant.hasMany(Presence, { foreignKey: 'tenant_id' });
+Presence.belongsTo(Tenant,   { foreignKey: 'tenant_id' });
+Presence.belongsTo(Classe,   { foreignKey: 'classe_id',     as: 'classe' });
+Presence.belongsTo(Eleve,    { foreignKey: 'eleve_id',      as: 'eleve' });
+Presence.belongsTo(Employee, { foreignKey: 'enseignant_id', as: 'enseignant' });
+Classe.hasMany(Presence,     { foreignKey: 'classe_id',     as: 'presences' });
+Eleve.hasMany(Presence,      { foreignKey: 'eleve_id',      as: 'presences' });
 
 // Abonnements & Échéances
 Eleve.hasMany(AbonnementEleve, { foreignKey: 'eleve_id', as: 'abonnements' });
@@ -286,6 +316,7 @@ Subcategory.hasMany(StockItem, { foreignKey: 'subcategory_id' });
 StockItem.belongsTo(Subcategory, { foreignKey: 'subcategory_id' });
 
 export {
+  Presence,
   Tenant, User, StockItem, ProductMovement,
   Customer, Invoice, InvoiceItem, Subscription,
   Plan, AuditLog, Backup, Document, Category, Subcategory,
@@ -299,4 +330,7 @@ export {
   Supplier, Delivery, DeliveryItem,
   RegistrationIntent, Eleve, Bulletin, Classe,
   AbonnementEleve, EcheancePaiement,
+  CreneauHoraire,
+  PlanningConfig, PlanningException,
+  EleveDocument,
 };

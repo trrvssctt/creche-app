@@ -27,6 +27,9 @@ Eleve.init({
   whatsappPrincipal: { type: DataTypes.STRING(50), field: 'whatsapp_principal' },
   anneeScolaire:  { type: DataTypes.STRING(10), field: 'annee_scolaire' },
   photoUrl:       { type: DataTypes.STRING(500), field: 'photo_url' },
+  notes:          { type: DataTypes.TEXT },
+  sexe:           { type: DataTypes.CHAR(1) },
+  ficheSanitaire: { type: DataTypes.JSONB, field: 'fiche_sanitaire' },
 }, {
   sequelize,
   modelName: 'eleve',
