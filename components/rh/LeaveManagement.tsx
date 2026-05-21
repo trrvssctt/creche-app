@@ -82,13 +82,21 @@ const LeaveManagement: React.FC<LeaveManagementProps> = ({ onNavigate, user }) =
   
   // Hook pour vérifier le statut d'absence de l'employé connecté
 
-  // Détermine si l'utilisateur courant est un employé (mode employé uniquement)
+  // Détermine si l'utilisateur courant est un employé (mode auto-service : mes congés)
   const isEmployeeMode = user && (() => {
     const roles = Array.isArray(user.roles) ? user.roles : [user.role];
-    const canAccessLeaves = roles.some(role => 
-      [UserRole.EMPLOYEE, UserRole.STOCK_MANAGER, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.HR_MANAGER].includes(role)
+    const canAccessLeaves = roles.some(role =>
+      [
+        UserRole.EMPLOYEE, UserRole.STOCK_MANAGER, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.HR_MANAGER,
+        // Rôles établissement
+        UserRole.ENSEIGNANT, UserRole.MAITRESSE, UserRole.ASSISTANTE,
+        UserRole.INFIRMIERE, UserRole.CHAUFFEUR,
+      ].includes(role)
     );
-    const isAdminOrSuper = roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN);
+    const isAdminOrSuper =
+      roles.includes(UserRole.ADMIN) ||
+      roles.includes(UserRole.DIRECTEUR) ||
+      roles.includes(UserRole.SUPER_ADMIN);
     return canAccessLeaves && !isAdminOrSuper;
   })();
 
