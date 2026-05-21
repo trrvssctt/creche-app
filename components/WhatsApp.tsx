@@ -10,6 +10,7 @@ import {
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { useAnnee } from '../contexts/AnneeContext';
 import { User, NiveauScolaire } from '../types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -297,6 +298,7 @@ const SAMPLE_VARS: Record<string, string> = {
 
 const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
   const showToast = useToast();
+  const { annee: anneeScolaire } = useAnnee();
   const canSend = authBridge.canPerform(user, 'EDIT', 'whatsapp');
 
   const [activeTab, setActiveTab] = useState<'templates' | 'envoyer' | 'historique' | 'groupe'>('templates');
@@ -325,24 +327,28 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
     date_limite: `05/${String(new Date().getMonth() + 2).padStart(2, '0')}/${new Date().getFullYear()}`,
     montant: '',
     trimestre: 'Trimestre 1',
-    annee_scolaire: '2025-2026',
+    annee_scolaire: anneeScolaire,
   });
   const [groupeResult, setGroupeResult] = useState<{ nom: string; phone: string; link: string }[]>([]);
   const [groupeGenerated, setGroupeGenerated] = useState(false);
 
   // ── Charger élèves ───────────────────────────────────────────────────────
 
+  useEffect(() => {
+    setGroupeVars(v => ({ ...v, annee_scolaire: anneeScolaire }));
+  }, [anneeScolaire]);
+
   const fetchEleves = useCallback(async () => {
     setLoadingEleves(true);
     try {
-      const data = await apiClient.get('/customers');
+      const data = await apiClient.get('/customers', { params: { anneeScolaire } });
       setEleves(data || []);
     } catch {
       showToast('Impossible de charger les élèves.', 'error');
     } finally {
       setLoadingEleves(false);
     }
-  }, []);
+  }, [anneeScolaire]);
 
   useEffect(() => {
     if (activeTab === 'envoyer' || activeTab === 'groupe') fetchEleves();
@@ -531,7 +537,7 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
   ] as const;
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6">
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

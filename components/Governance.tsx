@@ -1,22 +1,34 @@
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Shield, Users, Key, Plus, X, Search, 
+import {
+  Shield, Users, Key, Plus, X, Search,
   ShieldCheck, UserPlus, Check, ArrowRight,
   RefreshCw, Trash2, Edit3, AlertCircle, Lock,
-  Copy, Dices, Eye, EyeOff
+  Copy, Dices, Eye, EyeOff, GraduationCap, Building2,
+  FileText
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 
 const AVAILABLE_ROLES = [
-  { id: 'ADMIN', label: 'Administrateur', desc: 'Accès total à l\'instance.' },
-  { id: 'STOCK_MANAGER', label: 'Gestionnaire Stock', desc: 'Contrôle logistique et inventaire.' },
-  { id: 'ACCOUNTANT', label: 'Comptable', desc: 'Gestion financière et facturation.' },
-  { id: 'SALES', label: 'Commercial', desc: 'Gestion des ventes et des clients.' },
-  //{ id: 'EMPLOYEE', label: 'Employé', desc: 'Accès standard et consultations.' },
+  // ── Système ──────────────────────────────────────────────────────────
+  { id: 'ADMIN',         label: 'Administrateur',           desc: 'Accès total à l\'instance.',                       groupe: 'Système' },
+  { id: 'ACCOUNTANT',    label: 'Comptable',                desc: 'Gestion financière et facturation.',               groupe: 'Système' },
+  { id: 'STOCK_MANAGER', label: 'Gestionnaire Stock',       desc: 'Contrôle logistique et inventaire.',               groupe: 'Système' },
+  { id: 'SALES',         label: 'Commercial',               desc: 'Gestion des ventes et des clients.',               groupe: 'Système' },
+  // ── Établissement ────────────────────────────────────────────────────
+  { id: 'DIRECTEUR',     label: 'Directeur / Directrice',   desc: 'Direction pédagogique et administrative.',         groupe: 'Établissement' },
+  { id: 'ENSEIGNANT',    label: 'Enseignant(e) / Maîtresse', desc: 'Accès pédagogie — modification et insertion.',    groupe: 'Établissement' },
+  { id: 'ASSISTANTE',    label: 'Assistante',               desc: 'Accès consultation — lecture seule.',              groupe: 'Établissement' },
+  { id: 'INFIRMIERE',    label: 'Infirmière / Santé',        desc: 'Accès dossiers sanitaires des élèves.',           groupe: 'Établissement' },
+  { id: 'CHAUFFEUR',     label: 'Chauffeur',                desc: 'Accès module transport scolaire.',                 groupe: 'Établissement' },
 ];
+
+const ROLE_GROUPES = ['Système', 'Établissement'];
+
+const getRoleLabel = (roleId: string) =>
+  AVAILABLE_ROLES.find(r => r.id === roleId)?.label ?? roleId;
 
 interface GovernanceProps {
   tenantId: string;
@@ -65,14 +77,12 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
   };
 
   const fetchAvailableEmployees = async () => {
-    // Charger les employés disponibles seulement si c'est ENTERPRISE/ENTERPRISE CLOUD et qu'on crée un nouvel utilisateur
-    if (planId.includes('ENTERPRISE') && !editingUser) {
-      try {
-        const employees = await apiClient.get('/auth/available-employees');
-        setAvailableEmployees(employees);
-      } catch (err) {
-        console.error('Erreur lors du chargement des employés:', err);
-      }
+    try {
+      // L'endpoint ne retourne que les employés avec un contrat actif
+      const employees = await apiClient.get('/auth/available-employees');
+      setAvailableEmployees(employees);
+    } catch (err) {
+      console.error('Erreur lors du chargement des employés:', err);
     }
   };
 
@@ -161,7 +171,6 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
   const planId = String(plan?.id || plan?.name || plan?.plan || '').toUpperCase() || 'BASIC';
   const isUserCreationAllowed = authBridge.isCreationAllowed({ planId } as any, 'users', users.length);
   const isUserLimitReached = !isUserCreationAllowed;
-  const isEnterprise = planId.includes('ENTERPRISE');
 
   const toggleRole = (roleId: string) => {
     setUserData(prev => ({
@@ -210,13 +219,8 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
         return;
       }
 
-      // Préparer le payload en excluant employeeId si vide ou pour les plans non-ENTERPRISE
       const payload = { ...userData };
-      
-      // Pour les plans non-ENTERPRISE ou si employeeId est vide, on ne l'envoie pas
-      if (!isEnterprise || !payload.employeeId) {
-        delete (payload as any).employeeId;
-      }
+      if (!payload.employeeId) delete (payload as any).employeeId;
 
       if (editingUser) {
         // Mise à jour : le password est optionnel
@@ -301,10 +305,7 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
             onClick={() => {
               closeModal();
               setShowUserModal(true);
-              // Charger les employés disponibles si ENTERPRISE
-              if (isEnterprise) {
-                fetchAvailableEmployees();
-              }
+              fetchAvailableEmployees();
             }}
             className="bg-slate-900 text-white px-4 md:px-8 py-4 rounded-2xl font-black hover:bg-indigo-600 transition-all shadow-xl flex items-center gap-3 text-xs uppercase tracking-widest"
           >
@@ -369,11 +370,20 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
                   </td>
                   <td className="px-4 md:px-10 py-6">
                     <div className="flex flex-wrap gap-2">
-                      {roles.map((r: string) => (
-                        <span key={r} className={`px-2 py-0.5 rounded-lg text-[7px] font-black uppercase border ${r === 'ADMIN' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                          {r}
-                        </span>
-                      ))}
+                      {roles.map((r: string) => {
+                        const roleDef = AVAILABLE_ROLES.find(x => x.id === r);
+                        const isAdmin = r === 'ADMIN';
+                        const isEtab = roleDef?.groupe === 'Établissement';
+                        return (
+                          <span key={r} className={`px-2 py-0.5 rounded-lg text-[7px] font-black uppercase border ${
+                            isAdmin  ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                            isEtab   ? 'bg-violet-50 text-violet-600 border-violet-100' :
+                                       'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}>
+                            {roleDef?.label ?? r}
+                          </span>
+                        );
+                      })}
                     </div>
                   </td>
                   <td className="px-4 md:px-10 py-6 text-right flex justify-end gap-2">
@@ -423,53 +433,63 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
                    <div className="space-y-4">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Identité & Sécurité</label>
                       
-                      {/* Sélecteur d'employé pour ENTERPRISE (création uniquement) */}
-                      {isEnterprise && !editingUser && (
-                        <div className="mb-4">
-                          <select 
+                      {/* Sélecteur d'employé — création uniquement */}
+                      {!editingUser && (
+                        <div className="space-y-2">
+                          <select
                             value={userData.employeeId}
                             onChange={e => {
-                              const selectedEmployee = availableEmployees.find(emp => emp.id === e.target.value);
-                              if (selectedEmployee) {
+                              const sel = availableEmployees.find(emp => emp.id === e.target.value);
+                              if (sel) {
                                 setUserData({
-                                  ...userData, 
+                                  ...userData,
                                   employeeId: e.target.value,
-                                  name: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`,
-                                  email: selectedEmployee.email
+                                  name: `${sel.firstName} ${sel.lastName}`,
+                                  email: sel.email
                                 });
                               } else {
-                                setUserData({...userData, employeeId: e.target.value});
+                                setUserData({ ...userData, employeeId: '', name: '', email: '' });
                               }
                             }}
                             className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
                           >
-                            <option value="">Créer un utilisateur indépendant</option>
-                            {availableEmployees.map(emp => (
-                              <option key={emp.id} value={emp.id}>
-                                {emp.firstName} {emp.lastName} - {emp.department} ({emp.position})
-                              </option>
-                            ))}
+                            <option value="">— Créer un accès sans lien RH —</option>
+                            {availableEmployees.length === 0 ? (
+                              <option disabled>Aucun employé avec contrat actif</option>
+                            ) : (
+                              availableEmployees.map(emp => (
+                                <option key={emp.id} value={emp.id}>
+                                  {emp.firstName} {emp.lastName}
+                                  {emp.position ? ` — ${emp.position}` : ''}
+                                  {emp.department ? ` (${emp.department})` : ''}
+                                </option>
+                              ))
+                            )}
                           </select>
+                          <p className="text-[8px] text-slate-400 font-bold px-2 flex items-center gap-1">
+                            <FileText size={10} className="shrink-0" />
+                            Seuls les employés avec un contrat actif sont listés
+                          </p>
                         </div>
                       )}
                       
-                      <input 
-                        type="text" 
-                        required 
-                        value={userData.name} 
-                        onChange={e => setUserData({...userData, name: e.target.value})} 
-                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all" 
-                        placeholder="Nom Complet" 
-                        readOnly={isEnterprise && !editingUser && userData.employeeId}
+                      <input
+                        type="text"
+                        required
+                        value={userData.name}
+                        onChange={e => setUserData({...userData, name: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                        placeholder="Nom Complet"
+                        readOnly={!editingUser && !!userData.employeeId}
                       />
-                      <input 
-                        type="email" 
-                        required 
-                        value={userData.email} 
-                        onChange={e => setUserData({...userData, email: e.target.value})} 
-                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all" 
-                        placeholder="Email Professionnel" 
-                        readOnly={isEnterprise && !editingUser && userData.employeeId}
+                      <input
+                        type="email"
+                        required
+                        value={userData.email}
+                        onChange={e => setUserData({...userData, email: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                        placeholder="Email Professionnel"
+                        readOnly={!editingUser && !!userData.employeeId}
                       />
                       
                       {/* Champ mot de passe avec générateur */}
@@ -544,22 +564,30 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
 
                    <div className="space-y-4">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Sélection des Rôles</label>
-                      <div className="space-y-2">
-                        {AVAILABLE_ROLES.map(role => (
-                          <button 
-                            key={role.id}
-                            type="button"
-                            onClick={() => toggleRole(role.id)}
-                            className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between group ${userData.roles.includes(role.id) ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-slate-200'}`}
-                          >
-                            <div>
-                              <p className={`text-[10px] font-black uppercase ${userData.roles.includes(role.id) ? 'text-indigo-600' : 'text-slate-700'}`}>{role.label}</p>
-                              <p className="text-[8px] text-slate-400 font-bold leading-tight">{role.desc}</p>
-                            </div>
-                            <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-colors ${userData.roles.includes(role.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200 group-hover:border-slate-300'}`}>
-                              {userData.roles.includes(role.id) && <Check size={12} className="text-white"/>}
-                            </div>
-                          </button>
+                      <div className="space-y-4">
+                        {ROLE_GROUPES.map(groupe => (
+                          <div key={groupe} className="space-y-2">
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest px-1 flex items-center gap-1.5">
+                              {groupe === 'Établissement' ? <GraduationCap size={10}/> : <Building2 size={10}/>}
+                              {groupe}
+                            </p>
+                            {AVAILABLE_ROLES.filter(r => r.groupe === groupe).map(role => (
+                              <button
+                                key={role.id}
+                                type="button"
+                                onClick={() => toggleRole(role.id)}
+                                className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between group ${userData.roles.includes(role.id) ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-slate-200'}`}
+                              >
+                                <div>
+                                  <p className={`text-[10px] font-black uppercase ${userData.roles.includes(role.id) ? 'text-indigo-600' : 'text-slate-700'}`}>{role.label}</p>
+                                  <p className="text-[8px] text-slate-400 font-bold leading-tight">{role.desc}</p>
+                                </div>
+                                <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-colors shrink-0 ${userData.roles.includes(role.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200 group-hover:border-slate-300'}`}>
+                                  {userData.roles.includes(role.id) && <Check size={12} className="text-white"/>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
                         ))}
                       </div>
                    </div>

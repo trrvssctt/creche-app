@@ -6,13 +6,16 @@ import {
   UserCheck, UserX, Clock, GraduationCap, Heart,
   ArrowRight, ChevronLeft, FileText, FolderOpen,
   ClipboardCheck, UserPlus, ClipboardList, Banknote,
-  Repeat, Calendar, AlertTriangle,
+  Repeat, Calendar, AlertTriangle, Lock,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
 import { openInvoicePrintWindow, type StudentInvoiceData } from '../services/invoicePdf';
+import { downloadSingleAdminDoc, downloadAdminDocsZip } from '../services/adminDocsPdf';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
+import { useAnnee } from '../contexts/AnneeContext';
+import { EleveDossier } from './EleveDossier';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -43,16 +46,16 @@ const STATUTS: { value: StatutAdmission; label: string; color: string }[] = [
   { value: 'SUSPENDU',   label: 'Suspendu',    color: 'bg-slate-100 text-slate-600 border-slate-200' },
 ];
 
-const ANNEE_COURANTE = '2026-2027';
+// ANNEE_COURANTE est fourni par useAnnee() dans le composant
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function genMatricule(niveau: NiveauScolaire): string {
+function genMatricule(niveau: NiveauScolaire, annee: string = new Date().getFullYear().toString()): string {
   const prefix: Record<NiveauScolaire, string> = {
     CRECHE: 'CR', PS: 'PS', MS: 'MS', GS: 'GS',
     CP: 'CP', CE1: 'C1', CE2: 'C2', CM1: 'M1', CM2: 'M2',
   };
-  return `${prefix[niveau]}-${ANNEE_COURANTE.slice(0, 4)}-${String(Date.now()).slice(-4)}`;
+  return `${prefix[niveau]}-${annee.slice(0, 4)}-${String(Date.now()).slice(-4)}`;
 }
 
 function niveauLabel(n: NiveauScolaire) {
@@ -75,7 +78,7 @@ function regimeBadge(r: RegimeFinancier) {
 
 // ─── Formulaire vide ─────────────────────────────────────────────────────────
 
-const emptyForm = (): Partial<Eleve> => ({
+const emptyForm = (annee = ''): Partial<Eleve> => ({
   matricule: '',
   nom: '',
   prenom: '',
@@ -91,195 +94,13 @@ const emptyForm = (): Partial<Eleve> => ({
   statut: 'INSCRIT',
   dateAdmission: new Date().toISOString().slice(0, 10),
   whatsappPrincipal: '',
-  anneeScolaire: ANNEE_COURANTE,
+  anneeScolaire: annee,
   parent1: { nom: '', prenom: '', telephone: '', whatsapp: '', email: '', lien: 'MERE' },
   parent2: undefined,
   contactUrgence: undefined,
 });
 
-// ─── Document HTML helpers ────────────────────────────────────────────────────
-
-const SCHOOL_HEADER = (annee: string) => `
-  <div class="header">
-    <h1>Le Toit des Anges</h1>
-    <p>469 Cité Cheikh Omar TALL, Ouakam, Dakar</p>
-    <p>Année scolaire ${annee}</p>
-  </div>`;
-
-const SHARED_STYLES = `
-  @page{size:A4;margin:20mm}
-  body{font-family:Arial,sans-serif;font-size:11pt;color:#1e293b;margin:0}
-  .header{text-align:center;border-bottom:3px solid #4f46e5;padding-bottom:14px;margin-bottom:22px}
-  .header h1{font-size:17pt;margin:0 0 4px;color:#4f46e5;font-weight:900;text-transform:uppercase;letter-spacing:2px}
-  .header p{margin:2px 0;font-size:9pt;color:#64748b}
-  .titre{font-size:14pt;font-weight:bold;text-align:center;margin:0 0 14px;text-transform:uppercase;letter-spacing:3px;color:#0f172a}
-  .matricule{text-align:center;background:#eef2ff;padding:10px;border-radius:10px;font-family:monospace;font-size:14pt;font-weight:bold;color:#4f46e5;margin-bottom:6px;border:2px solid #c7d2fe}
-  .dossier{text-align:center;font-size:8pt;color:#64748b;margin-bottom:22px;font-family:monospace}
-  .section{margin-bottom:18px}
-  .section h2{font-size:9pt;text-transform:uppercase;letter-spacing:1px;color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:10px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .field label{font-size:8pt;text-transform:uppercase;color:#94a3b8;display:block;margin-bottom:2px}
-  .field span{font-weight:bold;font-size:11pt}
-  .sigs{margin-top:44px;display:grid;grid-template-columns:1fr 1fr;gap:50px}
-  .sig{border-top:1px solid #cbd5e1;padding-top:8px;font-size:9pt;color:#64748b;height:70px}`;
-
-function openPrintWindow(title: string, bodyHtml: string) {
-  const w = window.open('', '_blank', 'width=820,height=1100');
-  if (!w) return;
-  w.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${title}</title><style>${SHARED_STYLES}</style></head><body>${bodyHtml}</body></html>`);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 600);
-}
-
-function buildDossierNom(eleve: Partial<Eleve>): string {
-  return `${eleve.matricule}-${(eleve.nom || '').toUpperCase()}-${(eleve.prenom || '').toUpperCase()}-${eleve.niveau}`;
-}
-
-function imprimerFicheInscription(eleve: Partial<Eleve>) {
-  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim();
-  const parent = eleve.parent1;
-  const niveauLib = NIVEAUX.find(n => n.value === eleve.niveau)?.label || eleve.niveau || '—';
-  const regimeLib = REGIMES.find(r => r.value === eleve.regimeFinancier)?.label || '—';
-  const options = [eleve.cantine ? 'Cantine' : '', eleve.transportBus ? 'Bus scolaire' : ''].filter(Boolean).join(', ') || '—';
-  const dossier = buildDossierNom(eleve);
-  openPrintWindow(`Fiche Inscription — ${nomComplet}`, `
-    ${SCHOOL_HEADER(ANNEE_COURANTE)}
-    <div class="titre">Fiche d'Inscription</div>
-    <div class="matricule">${eleve.matricule || '—'}</div>
-    <div class="dossier">Dossier : ${dossier}</div>
-    <div class="section">
-      <h2>Identité de l'élève</h2>
-      <div class="grid">
-        <div class="field"><label>Nom & Prénom</label><span>${nomComplet}</span></div>
-        <div class="field"><label>Date de naissance</label><span>${eleve.dateNaissance ? new Date(eleve.dateNaissance).toLocaleDateString('fr-FR') : '—'}</span></div>
-        <div class="field"><label>Lieu de naissance</label><span>${eleve.lieuNaissance || '—'}</span></div>
-        <div class="field"><label>Classe / Niveau</label><span>${niveauLib}</span></div>
-        <div class="field"><label>Régime financier</label><span>${regimeLib}</span></div>
-        <div class="field"><label>Options</label><span>${options}</span></div>
-      </div>
-    </div>
-    <div class="section">
-      <h2>Parent / Tuteur légal</h2>
-      <div class="grid">
-        <div class="field"><label>Nom & Prénom</label><span>${parent ? `${parent.prenom} ${parent.nom}`.trim() : '—'}</span></div>
-        <div class="field"><label>Qualité</label><span>${parent?.lien === 'MERE' ? 'Mère' : parent?.lien === 'PERE' ? 'Père' : 'Tuteur légal'}</span></div>
-        <div class="field"><label>Téléphone / WhatsApp</label><span>${parent?.whatsapp || parent?.telephone || '—'}</span></div>
-        <div class="field"><label>Email</label><span>${parent?.email || '—'}</span></div>
-      </div>
-    </div>
-    <div class="sigs">
-      <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
-    </div>`);
-}
-
-function imprimerCertificatScolarite(eleve: Partial<Eleve>) {
-  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim();
-  const niveauLib = NIVEAUX.find(n => n.value === eleve.niveau)?.label || eleve.niveau || '—';
-  const ref = `CERT-SCOL-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
-  openPrintWindow(`Certificat de Scolarité — ${nomComplet}`, `
-    ${SCHOOL_HEADER(ANNEE_COURANTE)}
-    <div class="titre">Certificat de Scolarité</div>
-    <div class="matricule">${ref}</div>
-    <div class="dossier">Matricule élève : ${eleve.matricule || '—'}</div>
-    <div style="margin:30px 0;font-size:12pt;line-height:2;text-align:justify">
-      <p>La Directrice de l'établissement <strong>Le Toit des Anges</strong> certifie que l'élève&nbsp;:</p>
-      <p style="text-align:center;font-size:15pt;font-weight:900;text-transform:uppercase;margin:20px 0">${nomComplet}</p>
-      <p>né(e) le <strong>${eleve.dateNaissance ? new Date(eleve.dateNaissance).toLocaleDateString('fr-FR') : '—'}</strong>
-         à <strong>${eleve.lieuNaissance || '—'}</strong>,
-         est régulièrement inscrit(e) dans notre établissement pour l'année scolaire
-         <strong>${ANNEE_COURANTE}</strong>, en classe de <strong>${niveauLib}</strong>.</p>
-      <p>Ce certificat est délivré pour servir et valoir ce que de droit.</p>
-    </div>
-    <div style="margin-top:20px;font-size:9pt;color:#64748b">Dakar, le ${new Date().toLocaleDateString('fr-FR')}</div>
-    <div class="sigs" style="margin-top:30px">
-      <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
-    </div>`);
-}
-
-function imprimerFicheSanitaire(eleve: Partial<Eleve>) {
-  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim();
-  const parent = eleve.parent1;
-  const urgence = eleve.contactUrgence;
-  openPrintWindow(`Fiche Sanitaire — ${nomComplet}`, `
-    ${SCHOOL_HEADER(ANNEE_COURANTE)}
-    <div class="titre">Fiche Sanitaire</div>
-    <div class="matricule">${eleve.matricule || '—'}</div>
-    <div class="dossier">Dossier : ${buildDossierNom(eleve)}</div>
-    <div class="section">
-      <h2>Identité</h2>
-      <div class="grid">
-        <div class="field"><label>Nom & Prénom</label><span>${nomComplet}</span></div>
-        <div class="field"><label>Date de naissance</label><span>${eleve.dateNaissance ? new Date(eleve.dateNaissance).toLocaleDateString('fr-FR') : '—'}</span></div>
-        <div class="field"><label>Besoins spécifiques / Allergies</label><span>${eleve.besoinSpecifique || 'Aucun signalé'}</span></div>
-      </div>
-    </div>
-    <div class="section">
-      <h2>Contact parent / tuteur légal</h2>
-      <div class="grid">
-        <div class="field"><label>Nom & Prénom</label><span>${parent ? `${parent.prenom} ${parent.nom}`.trim() : '—'}</span></div>
-        <div class="field"><label>Téléphone</label><span>${parent?.telephone || parent?.whatsapp || '—'}</span></div>
-        <div class="field"><label>WhatsApp</label><span>${parent?.whatsapp || '—'}</span></div>
-        <div class="field"><label>Email</label><span>${parent?.email || '—'}</span></div>
-      </div>
-    </div>
-    <div class="section">
-      <h2>Contact d'urgence</h2>
-      <div class="grid">
-        <div class="field"><label>Nom & Prénom</label><span>${urgence ? `${urgence.prenom || ''} ${urgence.nom}`.trim() : '—'}</span></div>
-        <div class="field"><label>Téléphone</label><span>${urgence?.telephone || '—'}</span></div>
-        <div class="field"><label>Lien avec l'enfant</label><span>${urgence?.lien || '—'}</span></div>
-      </div>
-    </div>
-    <div class="section">
-      <h2>Informations médicales (à compléter par le parent)</h2>
-      <table style="width:100%;border-collapse:collapse;font-size:10pt">
-        ${['Groupe sanguin','Allergies alimentaires','Allergies médicamenteuses','Traitements en cours','Médecin traitant','Téléphone médecin'].map(l =>
-          `<tr><td style="border:1px solid #e2e8f0;padding:8px 10px;width:40%;color:#64748b;font-weight:bold">${l}</td><td style="border:1px solid #e2e8f0;padding:8px 10px"></td></tr>`
-        ).join('')}
-      </table>
-    </div>
-    <div class="sigs">
-      <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
-    </div>`);
-}
-
-function imprimerAutorisationSortie(eleve: Partial<Eleve>) {
-  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim();
-  const parent = eleve.parent1;
-  const niveauLib = NIVEAUX.find(n => n.value === eleve.niveau)?.label || eleve.niveau || '—';
-  openPrintWindow(`Autorisation de Sortie — ${nomComplet}`, `
-    ${SCHOOL_HEADER(ANNEE_COURANTE)}
-    <div class="titre">Autorisation de Sortie Scolaire</div>
-    <div class="dossier">Année scolaire ${ANNEE_COURANTE} — Classe : ${niveauLib}</div>
-    <div style="margin:24px 0;font-size:12pt;line-height:2;text-align:justify">
-      <p>Je soussigné(e) <strong>${parent ? `${parent.prenom} ${parent.nom}`.trim() : '___________________'}</strong>,
-         parent/tuteur légal de l'élève <strong>${nomComplet}</strong> (matricule : ${eleve.matricule || '—'}),
-         inscrit(e) en classe de <strong>${niveauLib}</strong>,</p>
-      <p>autorise mon enfant à participer aux sorties scolaires et activités extrascolaires organisées par l'établissement
-         <strong>Le Toit des Anges</strong> durant l'année scolaire <strong>${ANNEE_COURANTE}</strong>.</p>
-      <p>Je reconnais avoir été informé(e) des conditions d'encadrement et des mesures de sécurité mises en place.</p>
-    </div>
-    <div style="margin-top:16px">
-      <table style="width:100%;border-collapse:collapse;font-size:10pt">
-        <tr>
-          <td style="border:1px solid #e2e8f0;padding:8px 10px;width:50%;color:#64748b;font-weight:bold">En cas d'urgence, appeler</td>
-          <td style="border:1px solid #e2e8f0;padding:8px 10px">${parent?.telephone || parent?.whatsapp || '—'}</td>
-        </tr>
-        <tr>
-          <td style="border:1px solid #e2e8f0;padding:8px 10px;color:#64748b;font-weight:bold">Autorisation de soins d'urgence</td>
-          <td style="border:1px solid #e2e8f0;padding:8px 10px">☐ Oui &nbsp;&nbsp; ☐ Non</td>
-        </tr>
-      </table>
-    </div>
-    <div class="sigs" style="margin-top:36px">
-      <div class="sig">Fait à Dakar, le ________________<br>Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
-    </div>`);
-}
+// ─── Document helpers (délégués à adminDocsPdf.ts) ───────────────────────────
 
 // ─── Composant principal ─────────────────────────────────────────────────────
 
@@ -413,7 +234,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [showModal, setShowModal] = useState<'CREATE' | 'EDIT' | 'VIEW' | null>(null);
   const [selectedEleve, setSelectedEleve] = useState<Eleve | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<Eleve | null>(null);
-  const [formData, setFormData] = useState<Partial<Eleve>>(emptyForm());
+  const [formData, setFormData] = useState<Partial<Eleve>>(emptyForm(/* will be set by ANNEE_COURANTE on first use */));
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -441,10 +262,19 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [newAboForm, setNewAboForm] = useState({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10) });
   const [aboActionLoading, setAboActionLoading] = useState(false);
   const [expandedAbos, setExpandedAbos] = useState<Set<string>>(new Set());
+  const [genLoading, setGenLoading] = useState<string | null>(null);
+  const [viewDocLoading, setViewDocLoading] = useState<string | null>(null);
+  const [showDossier, setShowDossier] = useState(false);
+  const [reinscModal, setReinscModal] = useState<Eleve | null>(null);
+  const [reinscNiveau, setReinscNiveau] = useState<NiveauScolaire>('PS');
+  const [reinscClasseId, setReinscClasseId] = useState<string>('');
+  const [reinscLoading, setReinscLoading] = useState(false);
+  const [classesNextYear, setClassesNextYear] = useState<any[]>([]);
 
   const showToast = useToast();
-  const canModify = authBridge.canPerform(user, 'EDIT', 'eleves');
-  const canDelete  = authBridge.canPerform(user, 'DELETE', 'eleves');
+  const { annee: ANNEE_COURANTE, anneeNext, isReadOnly } = useAnnee();
+  const canModify = authBridge.canPerform(user, 'EDIT', 'eleves') && !isReadOnly;
+  const canDelete  = authBridge.canPerform(user, 'DELETE', 'eleves') && !isReadOnly;
 
   // ── Fetch élèves ───────────────────────────────────────────────────────────
 
@@ -453,8 +283,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setError(null);
     try {
       const [elevesData, classesData] = await Promise.all([
-        apiClient.get('/eleves'),
-        apiClient.get('/classes')
+        apiClient.get('/eleves', { params: { anneeScolaire: ANNEE_COURANTE } }),
+        apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }),
       ]);
       setEleves(Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []));
       setClasses(Array.isArray(classesData) ? classesData : []);
@@ -465,7 +295,48 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     }
   };
 
-  useEffect(() => { fetchEleves(); }, [refreshKey]);
+  useEffect(() => { fetchEleves(); }, [refreshKey, ANNEE_COURANTE]);
+
+  // ── Réinscription ──────────────────────────────────────────────────────────
+
+  const NIVEAU_PROGRESSION: Record<NiveauScolaire, NiveauScolaire> = {
+    CRECHE: 'PS', PS: 'MS', MS: 'GS', GS: 'CP',
+    CP: 'CE1', CE1: 'CE2', CE2: 'CM1', CM1: 'CM2', CM2: 'CM2',
+  };
+
+  const openReinscModal = async (eleve: Eleve) => {
+    const nextNiveau = NIVEAU_PROGRESSION[eleve.niveau] ?? eleve.niveau;
+    setReinscModal(eleve);
+    setReinscNiveau(nextNiveau as NiveauScolaire);
+    setReinscClasseId('');
+    // Charger les classes de l'année suivante
+    try {
+      const data = await apiClient.get('/classes', { params: { anneeScolaire: anneeNext } });
+      setClassesNextYear(Array.isArray(data) ? data : []);
+    } catch {
+      setClassesNextYear([]);
+    }
+  };
+
+  const handleReinscription = async () => {
+    if (!reinscModal) return;
+    setReinscLoading(true);
+    try {
+      await apiClient.post(`/eleves/${reinscModal.id}/reinscription`, {
+        newAnneeScolaire: anneeNext,
+        newNiveau: reinscNiveau,
+        newClasseId: reinscClasseId || null,
+      });
+      showToast(`${reinscModal.prenom} ${reinscModal.nom} réinscrit(e) pour ${anneeNext}`, 'success');
+      setReinscModal(null);
+      fetchEleves();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Erreur lors de la réinscription';
+      showToast(msg, 'error');
+    } finally {
+      setReinscLoading(false);
+    }
+  };
 
   // ── Fetch dossiers d'admission (EN_ATTENTE + ADMIS — pas encore inscrits) ────
 
@@ -526,15 +397,70 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       statut: 'INSCRIT',
       dateAdmission: new Date().toISOString().slice(0, 10),
       anneeScolaire: ANNEE_COURANTE,
-      whatsappPrincipal: d.phone || '',
+      whatsappPrincipal: d.parent1Whatsapp || d.phone || '',
       parent1: {
         nom: p1Nom || p1Prenom,
         prenom: p1Nom ? p1Prenom : '',
         telephone: d.phone || '',
-        whatsapp: d.phone || '',
+        whatsapp: d.parent1Whatsapp || d.phone || '',
         email: emailIsGenerated ? '' : (d.email || ''),
-        lien: 'MERE',
+        lien: (d.parent1Lien as any) || 'MERE',
+        telDomicile: d.parent1TelDomicile || '',
+        telTravail: d.parent1TelTravail || '',
+        adresse: d.parent1Adresse || '',
       },
+      parent2: (d.parent2Nom || d.parent2Prenom) ? {
+        nom: d.parent2Nom || '',
+        prenom: d.parent2Prenom || '',
+        telephone: d.parent2Tel || '',
+        whatsapp: d.parent2Tel || '',
+        lien: (d.parent2Lien as any) || 'PERE',
+        telDomicile: d.parent2TelDomicile || '',
+        telTravail: d.parent2TelTravail || '',
+      } : undefined,
+      contactUrgence: d.urgenceNom ? {
+        nom: d.urgenceNom,
+        prenom: '',
+        telephone: d.urgenceTel || '',
+        lien: d.urgenceLien || '',
+      } : undefined,
+      // ── Fiche sanitaire ───────────────────────────────────────────────────
+      sexe: (d.sexe || '') as any,
+      vaccDiphterie:   !!d.vaccDiphterie,   vaccDiphterieDate:   d.vaccDiphterieDate || '',
+      vaccTetanos:     !!d.vaccTetanos,     vaccTetanosDate:     d.vaccTetanosDate || '',
+      vaccPolio:       !!d.vaccPolio,       vaccPolioDate:       d.vaccPolioDate || '',
+      vaccCoqueluche:  !!d.vaccCoqueluche,  vaccCoquelucheDate:  d.vaccCoquelucheDate || '',
+      vaccBCG:         !!d.vaccBCG,         vaccBCGDate:         d.vaccBCGDate || '',
+      vaccHepB:        !!d.vaccHepB,        vaccHepBDate:        d.vaccHepBDate || '',
+      vaccROR:         !!d.vaccROR,         vaccRORDate:         d.vaccRORDate || '',
+      certifContrIndication: !!d.certifContrIndication,
+      traitementMedical: !!d.traitementMedical,
+      traitementDetail:   d.traitementDetail || '',
+      maladieRubeole:     !!d.maladieRubeole,
+      maladieVaricelle:   !!d.maladieVaricelle,
+      maladieAngine:      !!d.maladieAngine,
+      maladieRhumatisme:  !!d.maladieRhumatisme,
+      maladieScarlatine:  !!d.maladieScarlatine,
+      maladieCoqueluche:  !!d.maladieCoqueluche,
+      maladieOtite:       !!d.maladieOtite,
+      maladieRougeole:    !!d.maladieRougeole,
+      maladieOreillons:   !!d.maladieOreillons,
+      allergieAsthme:      !!d.allergieAsthme,
+      allergieMedicament:  !!d.allergieMedicament,
+      allergieAlimentaire: !!d.allergieAlimentaire,
+      allergieAutres:      d.allergieAutres || '',
+      allergieConduite:    d.allergieConduite || '',
+      difficulteSante:     d.difficulteSante || '',
+      equipeLunettes:         !!d.equipeLunettes,
+      equipeLentilles:        !!d.equipeLentilles,
+      equipeProtheseAuditive: !!d.equipeProtheseAuditive,
+      equipeProtheseDentaire: !!d.equipeProtheseDentaire,
+      equipePrecisions:       d.equipePrecisions || '',
+      mouillerLit:  (d.mouillerLit || '') as any,
+      medecinNom:   d.medecinNom || '',
+      medecinTel:   d.medecinTel || '',
+      autorisationPhoto: d.autorisationPhoto !== false,
+      autorisationSoins: d.autorisationSoins !== false,
     });
     setCreateStep('FORM');
   };
@@ -750,7 +676,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   };
 
   const openCreate = () => {
-    setFormData(emptyForm());
+    setFormData(emptyForm(ANNEE_COURANTE));
     setError(null);
     setCreateStep('SELECTION');
     setAdmissionSearch('');
@@ -807,6 +733,16 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
           </button>
         )}
       </div>
+
+      {/* Bannière lecture seule */}
+      {isReadOnly && (
+        <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800">
+          <Lock size={16} className="shrink-0 text-amber-600" />
+          <p className="text-[11px] font-bold">
+            <strong>Mode lecture seule — {ANNEE_COURANTE}.</strong> Cette année scolaire est terminée. Vous pouvez consulter les données mais aucune modification n'est autorisée.
+          </p>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -961,6 +897,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <Eye size={16} />
                   </button>
                   {canModify && (
+                    <button onClick={() => openReinscModal(eleve)} title={`Réinscrire pour ${anneeNext}`}
+                      className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all">
+                      <Repeat size={15} />
+                    </button>
+                  )}
+                  {canModify && (
                     <button onClick={() => openEdit(eleve)} title="Modifier"
                       className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-xl transition-all">
                       <Edit3 size={16} />
@@ -1031,6 +973,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <td className="px-6 py-4">
                     <div className="flex gap-2">
                       <button onClick={() => openView(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all"><Eye size={14} /></button>
+                      {canModify && <button onClick={() => openReinscModal(eleve)} title={`Réinscrire pour ${anneeNext}`} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all"><Repeat size={13} /></button>}
                       {canModify && <button onClick={() => openEdit(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-lg transition-all"><Edit3 size={14} /></button>}
                       {canDelete && <button onClick={() => setShowDeleteConfirm(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"><Trash2 size={14} /></button>}
                     </div>
@@ -1144,7 +1087,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                 {/* Bouton saisie manuelle */}
                 <div className="pt-2 border-t border-slate-100">
                   <button
-                    onClick={() => { setFormData(emptyForm()); setCreateStep('FORM'); }}
+                    onClick={() => { setFormData(emptyForm(ANNEE_COURANTE)); setCreateStep('FORM'); }}
                     className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
                   >
                     <UserPlus size={16} /> Inscrire sans dossier préexistant
@@ -1413,7 +1356,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <FolderOpen size={12} /> Nom du dossier élève
                   </p>
                   <p className="font-black text-indigo-900 text-sm font-mono break-all">
-                    {buildDossierNom(inscritEleve)}
+                    {`${inscritEleve.matricule || ''}-${(inscritEleve.nom || '').toUpperCase()}-${(inscritEleve.prenom || '').toUpperCase()}-${inscritEleve.niveau || ''}`}
                   </p>
                   <p className="text-indigo-500 text-[10px] font-bold mt-2">
                     Créez un dossier physique ou numérique avec ce nom pour regrouper tous les documents de l'élève.
@@ -1473,36 +1416,44 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                 {/* Boutons de génération */}
                 <div>
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <FileText size={13} /> Documents administratifs à générer
+                    <FileText size={13} /> Documents administratifs — PDF
                   </h4>
+
+                  {/* Bouton ZIP principal */}
+                  <button
+                    onClick={async () => {
+                      setGenLoading('zip');
+                      try { await downloadAdminDocsZip(inscritEleve!); }
+                      finally { setGenLoading(null); }
+                    }}
+                    disabled={genLoading !== null}
+                    className="w-full mb-4 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                  >
+                    {genLoading === 'zip'
+                      ? <><RefreshCw size={14} className="animate-spin" /> Génération en cours…</>
+                      : <><FolderOpen size={14} /> Télécharger le dossier complet (.zip)</>}
+                  </button>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      {
-                        label: 'Fiche d\'inscription',
-                        desc: 'Document de référence de l\'inscription',
-                        action: () => imprimerFicheInscription(inscritEleve),
-                      },
-                      {
-                        label: 'Certificat de scolarité',
-                        desc: 'Atteste l\'inscription pour l\'année en cours',
-                        action: () => imprimerCertificatScolarite(inscritEleve),
-                      },
-                      {
-                        label: 'Fiche sanitaire',
-                        desc: 'Informations médicales et contacts urgence',
-                        action: () => imprimerFicheSanitaire(inscritEleve),
-                      },
-                      {
-                        label: 'Autorisation de sortie',
-                        desc: 'Autorisation annuelle pour les sorties scolaires',
-                        action: () => imprimerAutorisationSortie(inscritEleve),
-                      },
-                    ].map(doc => (
-                      <button key={doc.label} onClick={doc.action}
-                        className="p-4 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl text-left transition-all group">
+                    {([
+                      { key: 'fiche_inscription',    type: 'fiche_inscription'    as const, label: "Fiche d'inscription",    desc: "Document de référence de l'inscription" },
+                      { key: 'certificat_scolarite', type: 'certificat_scolarite' as const, label: 'Certificat de scolarité', desc: "Atteste l'inscription pour l'année en cours" },
+                      { key: 'fiche_sanitaire',      type: 'fiche_sanitaire'      as const, label: 'Fiche sanitaire',         desc: 'Informations médicales et contacts urgence' },
+                      { key: 'autorisation_sortie',  type: 'autorisation_sortie'  as const, label: 'Autorisation de sortie',  desc: 'Autorisation annuelle pour les sorties scolaires' },
+                    ] as const).map(doc => (
+                      <button key={doc.key}
+                        onClick={async () => {
+                          setGenLoading(doc.key);
+                          try { await downloadSingleAdminDoc(doc.type, inscritEleve!); }
+                          finally { setGenLoading(null); }
+                        }}
+                        disabled={genLoading !== null}
+                        className="p-4 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-60 rounded-2xl text-left transition-all group">
                         <div className="flex items-start gap-3">
                           <div className="w-9 h-9 bg-slate-100 group-hover:bg-indigo-100 text-slate-400 group-hover:text-indigo-600 rounded-xl flex items-center justify-center shrink-0 transition-all">
-                            <FileText size={16} />
+                            {genLoading === doc.key
+                              ? <RefreshCw size={14} className="animate-spin" />
+                              : <FileText size={16} />}
                           </div>
                           <div>
                             <p className="font-black text-slate-900 text-sm">{doc.label}</p>
@@ -1513,7 +1464,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     ))}
                   </div>
                   <p className="mt-3 text-[10px] text-slate-400 font-bold text-center">
-                    Chaque document s'ouvre dans un nouvel onglet — utilisez "Imprimer → Enregistrer en PDF" pour sauvegarder.
+                    Cliquez sur un document pour l'ouvrir et l'imprimer (ou enregistrer en PDF).
                   </p>
                 </div>
 
@@ -1788,21 +1739,55 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                 )}
               </div>
 
-              {/* Régénérer les documents depuis la fiche */}
+              {/* Dossier numérique élève */}
               <div className="border-t border-slate-100 pt-6">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <FileText size={12} /> Documents
+                  <FolderOpen size={12} /> Dossier numérique
+                </p>
+                <button
+                  onClick={() => setShowDossier(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  <FolderOpen size={11} /> Ouvrir le dossier
+                </button>
+              </div>
+
+              {/* Documents administratifs PDF */}
+              <div className="border-t border-slate-100 pt-6">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <FileText size={12} /> Documents administratifs
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {[
-                    { label: 'Fiche inscription',     action: () => imprimerFicheInscription(selectedEleve) },
-                    { label: 'Certificat scolarité',  action: () => imprimerCertificatScolarite(selectedEleve) },
-                    { label: 'Fiche sanitaire',       action: () => imprimerFicheSanitaire(selectedEleve) },
-                    { label: 'Autorisation sortie',   action: () => imprimerAutorisationSortie(selectedEleve) },
-                  ].map(d => (
-                    <button key={d.label} onClick={d.action}
-                      className="px-4 py-2 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
-                      <FileText size={12} /> {d.label}
+                  <button
+                    onClick={async () => {
+                      setViewDocLoading('zip');
+                      try { await downloadAdminDocsZip(selectedEleve!); }
+                      finally { setViewDocLoading(null); }
+                    }}
+                    disabled={viewDocLoading !== null}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white border border-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
+                    {viewDocLoading === 'zip'
+                      ? <><RefreshCw size={11} className="animate-spin" /> Génération…</>
+                      : <><FolderOpen size={11} /> Dossier complet .zip</>}
+                  </button>
+                  {([
+                    { key: 'fiche_inscription',    type: 'fiche_inscription'    as const, label: 'Fiche inscription' },
+                    { key: 'certificat_scolarite', type: 'certificat_scolarite' as const, label: 'Certificat scolarité' },
+                    { key: 'fiche_sanitaire',      type: 'fiche_sanitaire'      as const, label: 'Fiche sanitaire' },
+                    { key: 'autorisation_sortie',  type: 'autorisation_sortie'  as const, label: 'Autorisation sortie' },
+                  ] as const).map(d => (
+                    <button key={d.key}
+                      onClick={async () => {
+                        setViewDocLoading(d.key);
+                        try { await downloadSingleAdminDoc(d.type, selectedEleve!); }
+                        finally { setViewDocLoading(null); }
+                      }}
+                      disabled={viewDocLoading !== null}
+                      className="px-4 py-2 bg-slate-50 hover:bg-indigo-50 disabled:opacity-60 text-slate-600 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2">
+                      {viewDocLoading === d.key
+                        ? <RefreshCw size={11} className="animate-spin" />
+                        : <FileText size={11} />}
+                      {d.label}
                     </button>
                   ))}
                 </div>
@@ -1810,6 +1795,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Dossier numérique élève ───────────────────────────────────────── */}
+      {showDossier && selectedEleve && (
+        <EleveDossier
+          eleve={selectedEleve}
+          onClose={() => setShowDossier(false)}
+        />
       )}
 
       {/* ── Confirmation suppression ───────────────────────────────────────── */}
@@ -1833,6 +1826,118 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
               <button onClick={() => handleDelete(showDeleteConfirm)} disabled={actionLoading}
                 className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
                 {actionLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />} Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Réinscription ────────────────────────────────────────────── */}
+      {reinscModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl animate-in zoom-in-95 duration-300 space-y-6">
+
+            {/* En-tête */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-[1.2rem] flex items-center justify-center border border-emerald-100">
+                  <Repeat size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Réinscription</h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                    {reinscModal.prenom} {reinscModal.nom} &mdash; {anneeNext}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setReinscModal(null)} className="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Récap élève */}
+            <div className="bg-slate-50 rounded-2xl p-4 flex items-center gap-4">
+              <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-[1rem] flex items-center justify-center font-black text-sm">
+                {reinscModal.prenom[0]}{reinscModal.nom[0]}
+              </div>
+              <div>
+                <p className="font-black text-slate-900">{reinscModal.prenom} {reinscModal.nom}</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">{reinscModal.matricule}</p>
+                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-0.5">
+                  Actuellement : {niveauLabel(reinscModal.niveau)} — {ANNEE_COURANTE}
+                </p>
+              </div>
+            </div>
+
+            {/* Flèche progression */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-slate-100 rounded-xl px-4 py-3 text-center">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Année actuelle</p>
+                <p className="font-black text-slate-900 text-sm">{ANNEE_COURANTE}</p>
+                <p className="text-[10px] font-bold text-indigo-600 mt-1">{niveauLabel(reinscModal.niveau)}</p>
+              </div>
+              <ArrowRight size={20} className="text-emerald-500 shrink-0" />
+              <div className="flex-1 bg-emerald-50 border-2 border-emerald-200 rounded-xl px-4 py-3 text-center">
+                <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-1">Nouvelle année</p>
+                <p className="font-black text-emerald-800 text-sm">{anneeNext}</p>
+                <p className="text-[10px] font-bold text-emerald-600 mt-1">{niveauLabel(reinscNiveau)}</p>
+              </div>
+            </div>
+
+            {/* Sélecteur niveau */}
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Niveau pour {anneeNext}
+              </label>
+              <select
+                value={reinscNiveau}
+                onChange={e => { setReinscNiveau(e.target.value as NiveauScolaire); setReinscClasseId(''); }}
+                className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-2xl font-bold text-slate-900 focus:border-indigo-400 outline-none transition-all"
+              >
+                {NIVEAUX.map(n => (
+                  <option key={n.value} value={n.value}>{n.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sélecteur classe */}
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Classe pour {anneeNext} <span className="text-slate-300">(optionnel)</span>
+              </label>
+              {classesNextYear.filter(c => c.niveau === reinscNiveau).length === 0 ? (
+                <p className="text-[10px] text-amber-600 font-bold bg-amber-50 rounded-xl p-3 border border-amber-200">
+                  Aucune classe {niveauLabel(reinscNiveau)} créée pour {anneeNext}. Créez-en une dans le module Classes, ou laissez vide.
+                </p>
+              ) : (
+                <select
+                  value={reinscClasseId}
+                  onChange={e => setReinscClasseId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-2xl font-bold text-slate-900 focus:border-indigo-400 outline-none transition-all"
+                >
+                  <option value="">— Sans classe assignée —</option>
+                  {classesNextYear
+                    .filter(c => c.niveau === reinscNiveau)
+                    .map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.nom} ({c._count?.eleves ?? 0}/{c.capaciteMax} élèves)
+                      </option>
+                    ))}
+                </select>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setReinscModal(null)}
+                className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">
+                Annuler
+              </button>
+              <button onClick={handleReinscription} disabled={reinscLoading}
+                className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                {reinscLoading
+                  ? <><RefreshCw size={14} className="animate-spin" /> Traitement…</>
+                  : <><Repeat size={14} /> Confirmer la réinscription</>}
               </button>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import SchoolAdminDashboard from './SchoolAdminDashboard';
 import {
   TrendingUp, Package, Users, ShieldCheck,
   AlertTriangle, Zap, RefreshCw,
@@ -24,6 +25,7 @@ import {
 import { User, UserRole, StockItem } from '../types';
 import { apiClient } from '../services/api';
 import { authBridge } from '../services/authBridge';
+import { useAnnee } from '../contexts/AnneeContext';
 import waveQr from '../assets/qr_code_marchant_wave.png';
 import { Timer } from 'lucide-react';
 import TimeMachineFilter, {
@@ -106,6 +108,7 @@ const Dashboard: React.FC<{
   onNavigate?: (tab: string, meta?: any) => void,
   onLogout?: () => void
 }> = ({ user, currency, onNavigate, onLogout }) => {
+  const { annee: anneeScolaire } = useAnnee();
   const [sales, setSales] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [stocks, setStocks] = useState<StockItem[]>([]);
@@ -179,17 +182,18 @@ const Dashboard: React.FC<{
           setPendingValidations(payload.pendingValidations || []);
         } else {
           const toData = (r: any) => (r && r.data !== undefined) ? r.data : r;
+          const anneeParams = { params: { anneeScolaire } };
           if (userRoles.includes(UserRole.ACCOUNTANT)) {
             const [salesRes, customersRes] = await Promise.all([
-              apiClient.get('/sales'),
-              apiClient.get('/customers')
+              apiClient.get('/sales', anneeParams),
+              apiClient.get('/customers', anneeParams)
             ]);
             setSales(toData(salesRes) || []);
             setCustomers(toData(customersRes) || []);
           } else {
             const endpoints: any[] = [
-              apiClient.get('/sales'),
-              apiClient.get('/customers'),
+              apiClient.get('/sales', anneeParams),
+              apiClient.get('/customers', anneeParams),
               apiClient.get('/stock'),
               apiClient.get('/services')
             ];
@@ -219,7 +223,7 @@ const Dashboard: React.FC<{
       }
     };
     fetchDashboardData();
-  }, [userRoles]);
+  }, [userRoles, anneeScolaire]); // eslint-disable-line
 
   // --- ESSAI GRATUIT : jours restants ---
   const trialDaysLeft = useMemo(() => authBridge.getTrialDaysRemaining(user), [user]);
@@ -1844,7 +1848,8 @@ const Dashboard: React.FC<{
         </div>
       );
     }
-    if (userRoles.includes(UserRole.SUPER_ADMIN) || userRoles.includes(UserRole.ADMIN)) return renderAdminDashboard();
+    if (userRoles.includes(UserRole.SUPER_ADMIN) || userRoles.includes(UserRole.ADMIN))
+      return <SchoolAdminDashboard user={user} currency={currency} onNavigate={onNavigate} />;
     if (userRoles.includes(UserRole.ACCOUNTANT)) return renderAccountantDashboard();
     if (userRoles.includes(UserRole.STOCK_MANAGER)) return renderStockManagerDashboard();
     if (userRoles.includes(UserRole.HR_MANAGER)) return renderHRManagerDashboard();

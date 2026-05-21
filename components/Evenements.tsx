@@ -4,11 +4,12 @@ import {
   Search, ChevronLeft, ChevronRight, MapPin, Users,
   Clock, CheckCircle2, AlertCircle, Loader2, MessageSquare,
   Save, Info, Tag, FileText, GraduationCap, ExternalLink,
-  Megaphone, PartyPopper, BookOpen, AlertTriangle, Home
+  Megaphone, PartyPopper, BookOpen, AlertTriangle, Home, Archive, Lock
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { useAnnee } from '../contexts/AnneeContext';
 import { User, NiveauScolaire, EvenementEcole } from '../types';
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
@@ -232,7 +233,8 @@ function CalendrierMensuel({
 
 const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const showToast = useToast();
-  const canModify = authBridge.canPerform(user, 'EDIT', 'evenements');
+  const { annee: anneeScolaire, isReadOnly, isAnneeCloturee } = useAnnee();
+  const canModify = authBridge.canPerform(user, 'EDIT', 'evenements') && !isReadOnly;
 
   // --- état général
   const [activeTab, setActiveTab] = useState<'liste' | 'calendrier'>('liste');
@@ -255,9 +257,16 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const [diffusionEvent, setDiffusionEvent] = useState<Evenement | null>(null);
   const [diffusionLinks, setDiffusionLinks] = useState<{ nom: string; phone: string; link: string }[]>([]);
 
-  // --- calendrier
-  const [calAnnee, setCalAnnee] = useState(new Date().getFullYear());
-  const [calMois, setCalMois] = useState(new Date().getMonth());
+  // --- calendrier — synchronisé sur l'année scolaire sélectionnée
+  const anneeStartYear = parseInt(anneeScolaire.split('-')[0]) || new Date().getFullYear();
+  const [calAnnee, setCalAnnee] = useState(anneeStartYear);
+  const [calMois, setCalMois] = useState(8); // Septembre = début d'année scolaire
+
+  // Re-synchro quand l'utilisateur change d'année scolaire
+  useEffect(() => {
+    setCalAnnee(parseInt(anneeScolaire.split('-')[0]) || new Date().getFullYear());
+    setCalMois(8);
+  }, [anneeScolaire]);
 
   // ── Charger élèves ─────────────────────────────────────────────────────────
 
@@ -272,9 +281,16 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
 
   // ── Filtres ────────────────────────────────────────────────────────────────
 
+  // Bornes de l'année scolaire sélectionnée (ex: "2025-2026" → sept 2025 – août 2026)
+  const anneeRange = useMemo(() => {
+    const [sy, ey] = anneeScolaire.split('-');
+    return { debut: `${sy}-09-01`, fin: `${ey}-08-31` };
+  }, [anneeScolaire]);
+
   const filtered = useMemo(() => {
     return events
       .filter(ev => {
+        const matchAnnee = ev.dateDebut >= anneeRange.debut && ev.dateDebut <= anneeRange.fin;
         const matchSearch = ev.titre.toLowerCase().includes(search.toLowerCase()) ||
           ev.description.toLowerCase().includes(search.toLowerCase());
         const matchType   = filterType   === 'ALL' || ev.typeEvenement === filterType;
@@ -282,10 +298,10 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
         const matchNiveau = filterNiveau === 'ALL' ||
           ev.niveauxCibles.includes('TOUS') ||
           ev.niveauxCibles.includes(filterNiveau as NiveauScolaire);
-        return matchSearch && matchType && matchStatut && matchNiveau;
+        return matchAnnee && matchSearch && matchType && matchStatut && matchNiveau;
       })
       .sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
-  }, [events, search, filterType, filterStatut, filterNiveau]);
+  }, [events, anneeRange, search, filterType, filterStatut, filterNiveau]);
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
 
@@ -408,7 +424,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6">
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -416,7 +432,19 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
             <span className="p-2 bg-violet-600 rounded-xl text-white"><Bell size={22} /></span>
             Événements &amp; Communication
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Agenda scolaire et diffusion d'informations aux parents</p>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <p className="text-slate-500 text-sm">Agenda scolaire · {anneeScolaire}</p>
+            {isAnneeCloturee && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[9px] font-black uppercase tracking-widest">
+                <Archive size={10}/> Année clôturée — lecture seule
+              </span>
+            )}
+            {!isAnneeCloturee && isReadOnly && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[9px] font-black uppercase tracking-widest">
+                <Lock size={10}/> Année passée — lecture seule
+              </span>
+            )}
+          </div>
         </div>
         {canModify && (
           <button

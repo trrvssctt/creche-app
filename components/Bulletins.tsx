@@ -3,7 +3,7 @@ import {
   BookOpen, GraduationCap, CheckCircle2, AlertCircle, Clock,
   Search, X, Printer, Send, Eye, Edit3,
   Baby, Users, Award, RefreshCw,
-  CheckSquare, Circle, MinusCircle, Save, Lock,
+  CheckSquare, Circle, MinusCircle, Save, Lock, Archive,
   ChevronLeft, ChevronRight, Phone, Calendar, MapPin,
   ArrowRight, User as UserIcon, BarChart2,
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
 import { User, NiveauScolaire, Trimestre, NiveauCompetence } from '../types';
+import { useAnnee } from '../contexts/AnneeContext';
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ interface BulletinLocal {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const ANNEE_COURANTE = '2025-2026';
+// ANNEE_COURANTE provient du contexte useAnnee() dans le composant
 
 const TRIMESTRES: { value: Trimestre; label: string; mois: string }[] = [
   { value: 'T1', label: 'Trimestre 1', mois: 'Décembre' },
@@ -361,7 +362,8 @@ interface Props { user: User }
 
 export default function Bulletins({ user }: Props) {
   const { addToast } = useToast();
-  const canModify = authBridge.hasPermission(user.role, 'bulletins', 'write');
+  const { annee: ANNEE_COURANTE, isReadOnly, isAnneeCloturee } = useAnnee();
+  const canModify = authBridge.hasPermission(user.role, 'bulletins', 'write') && !isReadOnly;
 
   // ── Navigation état ────────────────────────────────────────────────────────
   const [viewStep, setViewStep] = useState<'CLASSES' | 'ELEVES'>('CLASSES');
@@ -663,7 +665,19 @@ export default function Bulletins({ user }: Props) {
                   </>
                 )}
               </div>
-              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.25em]">Année {ANNEE_COURANTE}</p>
+              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.25em]">Année {ANNEE_COURANTE}</p>
+                {isAnneeCloturee && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[8px] font-black uppercase tracking-widest">
+                    <Archive size={9}/> Clôturée
+                  </span>
+                )}
+                {!isAnneeCloturee && isReadOnly && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[8px] font-black uppercase tracking-widest">
+                    <Lock size={9}/> Lecture seule
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

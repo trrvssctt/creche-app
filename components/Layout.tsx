@@ -1,15 +1,18 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LayoutDashboard, Package, FileText, ShieldAlert, LogOut, Truck,
   Users as UsersIcon, Settings as SettingsIcon, Activity,
   ShieldCheck, ShieldHalf, Loader2,
   Layers, GitMerge, Wallet, History, TrendingDown, Sparkles,
   AlertTriangle, Clock, Calendar, Menu, LifeBuoy, Bell, ClipboardList,
-  BookOpen, GraduationCap, MessageSquare, Stamp, CalendarDays, Megaphone, School, Receipt
+  BookOpen, GraduationCap, MessageSquare, Stamp, CalendarDays, Megaphone, School, Receipt,
+  ChevronDown, Lock, Eye, RefreshCw, Archive
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { authBridge } from '../services/authBridge';
+import { useAnnee } from '../contexts/AnneeContext';
 import { useCurrentEmployeeAbsenceStatus, getLeaveTypeLabel, getDaysUntilReturn } from '../services/employeeStatusService';
 
 interface LayoutProps {
@@ -21,6 +24,156 @@ interface LayoutProps {
   logoUrl?: string;
   companyName?: string;
 }
+
+// ── Sélecteur d'année scolaire (avec confirmation + lecture seule) ────────────
+
+const AnneeSelector: React.FC = () => {
+  const { annee, setAnnee, anneesDisponibles, isReadOnly, anneeActiveToday, anneesCloturees, isAnneeCloturee } = useAnnee();
+  const [open, setOpen] = useState(false);
+  const [pendingAnnee, setPendingAnnee] = useState<string | null>(null);
+
+  const isPast = (a: string) => parseInt(a.slice(0, 4)) < parseInt(anneeActiveToday.slice(0, 4));
+  const isCurrent = (a: string) => a === anneeActiveToday;
+
+  const handleSelect = (a: string) => {
+    if (a === annee) { setOpen(false); return; }
+    setPendingAnnee(a);
+    setOpen(false);
+  };
+
+  const confirmChange = () => {
+    if (pendingAnnee) { setAnnee(pendingAnnee); setPendingAnnee(null); }
+  };
+
+  return (
+    <>
+      {/* Bouton déclencheur */}
+      <div className="relative">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all
+            ${isAnneeCloturee
+              ? 'bg-rose-50 border-rose-300 text-rose-700 hover:bg-rose-100'
+              : isReadOnly
+                ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'}`}
+        >
+          {isAnneeCloturee ? <Archive size={12} /> : isReadOnly ? <Lock size={12} /> : <Calendar size={13} />}
+          {annee}
+          <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="absolute right-0 top-full mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-4 pt-3 pb-1">
+                Changer l'année scolaire
+              </p>
+              {[...anneesDisponibles].reverse().map(a => {
+                const cloturee = anneesCloturees.includes(a);
+                return (
+                  <button
+                    key={a}
+                    onClick={() => handleSelect(a)}
+                    className={`w-full text-left px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-between gap-2
+                      ${a === annee
+                        ? 'bg-indigo-600 text-white'
+                        : cloturee
+                          ? 'text-rose-700 hover:bg-rose-50'
+                          : isPast(a)
+                            ? 'text-amber-700 hover:bg-amber-50'
+                            : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'}`}
+                  >
+                    <span>{a}</span>
+                    {a === annee
+                      ? <span className="text-[8px] opacity-80">Actif</span>
+                      : cloturee
+                        ? <span className="flex items-center gap-1 text-[8px]"><Archive size={9}/> Clôturée</span>
+                        : isPast(a)
+                          ? <Lock size={10} />
+                          : isCurrent(a)
+                            ? <span className="text-[8px] text-emerald-600">En cours</span>
+                            : null}
+                  </button>
+                );
+              })}
+              <p className="px-4 py-2 text-[8px] text-slate-400 font-bold border-t border-slate-100">
+                Les années passées sont en lecture seule.
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Modale de confirmation — rendue dans document.body via portal */}
+      {pendingAnnee && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className={`w-14 h-14 rounded-[1.2rem] flex items-center justify-center mx-auto border
+              ${isPast(pendingAnnee)
+                ? 'bg-amber-50 text-amber-600 border-amber-200'
+                : 'bg-indigo-50 text-indigo-600 border-indigo-200'}`}>
+              {isPast(pendingAnnee) ? <Lock size={24} /> : <RefreshCw size={24} />}
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                Changer d'année scolaire
+              </h3>
+              <p className="text-sm text-slate-500 font-bold mt-1">
+                {annee} → <span className="text-indigo-700">{pendingAnnee}</span>
+              </p>
+            </div>
+
+            {pendingAnnee && anneesCloturees.includes(pendingAnnee) && (
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex gap-3">
+                <Archive size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-rose-700 font-bold">
+                  <strong>{pendingAnnee}</strong> est une année officiellement <strong>clôturée</strong>.
+                  Consultation autorisée en lecture seule uniquement.
+                </p>
+              </div>
+            )}
+            {pendingAnnee && !anneesCloturees.includes(pendingAnnee) && isPast(pendingAnnee) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
+                <Lock size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-700 font-bold">
+                  <strong>{pendingAnnee}</strong> est une année passée.
+                  Vous pourrez consulter toutes les données, mais <strong>aucune modification ne sera autorisée</strong>.
+                </p>
+              </div>
+            )}
+
+            {!isPast(pendingAnnee) && (
+              <p className="text-[11px] text-slate-500 font-bold text-center">
+                Toutes les données de l'application seront rechargées pour l'année <strong>{pendingAnnee}</strong>.
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setPendingAnnee(null)}
+                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">
+                Annuler
+              </button>
+              <button onClick={confirmChange}
+                className={`flex-1 py-3 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2
+                  ${isPast(pendingAnnee)
+                    ? 'bg-amber-500 hover:bg-amber-600'
+                    : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                {isPast(pendingAnnee) ? <Eye size={13} /> : <RefreshCw size={13} />}
+                {isPast(pendingAnnee) ? 'Voir en lecture seule' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+// ── Layout principal ───────────────────────────────────────────────────────────
 
 const Layout: React.FC<LayoutProps> = ({
   user,
@@ -49,6 +202,15 @@ const Layout: React.FC<LayoutProps> = ({
     lateMinutes: number;
   } | null>(null);
 
+  // Année scolaire active et état lecture seule
+  const {
+    isReadOnly: isReadOnlyMode,
+    annee: anneeActive,
+    isAnneeCloturee: isAnneeClotureeMode,
+    setAnnee: setAnneeCtx,
+    anneeActiveToday,
+  } = useAnnee();
+
   // Hook pour vérifier le statut d'absence de l'employé connecté
   const { absenceStatus, loading: absenceLoading } = useCurrentEmployeeAbsenceStatus();
 
@@ -57,6 +219,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'eleves',            label: 'Élèves',               icon: UsersIcon },
     { id: 'classes',           label: 'Classes',              icon: School },
     { id: 'admission',         label: 'Admissions',           icon: ClipboardList },
+    { id: 'presences',         label: 'Présences / Absences', icon: ClipboardList },
     { id: 'bulletins',         label: 'Bulletins',            icon: BookOpen },
     { id: 'whatsapp',          label: 'WhatsApp',             icon: MessageSquare },
     { id: 'certificats',       label: 'Certificats',          icon: Stamp },
@@ -210,7 +373,15 @@ const Layout: React.FC<LayoutProps> = ({
 
   const roles = Array.isArray(user.roles) ? user.roles : [user.role];
   const isAdminOrSuper = roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN);
+  const isDirecteurRole = roles.includes(UserRole.DIRECTEUR);
   const isEmployee = roles.some((r: UserRole) => r === UserRole.EMPLOYEE);
+
+  // Les rôles non-admin/directeur voient toujours l'année scolaire courante
+  useEffect(() => {
+    if (!isAdminOrSuper && !isDirecteurRole) {
+      setAnneeCtx(anneeActiveToday);
+    }
+  }, [user.id]);
 
   // Fetch du statut de pointage pour les employés (toutes les 2 minutes)
   useEffect(() => {
@@ -319,18 +490,21 @@ const Layout: React.FC<LayoutProps> = ({
               return hasBaseAccess && (isAdminOrSuper || isHrManager);
             }
 
-            // Mon Pointage : accessible à tous les employés non-admin (sans restriction de plan)
+            // Mon Pointage : accessible à tous les employés non-admin
             if (item.id === 'employee-pointage') {
               return roles.some((r: UserRole) =>
-                [UserRole.EMPLOYEE, UserRole.STOCK_MANAGER, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.HR_MANAGER].includes(r)
+                [UserRole.EMPLOYEE, UserRole.STOCK_MANAGER, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.HR_MANAGER,
+                 UserRole.ENSEIGNANT, UserRole.MAITRESSE, UserRole.COMPTABLE, UserRole.ASSISTANTE,
+                 UserRole.INFIRMIERE, UserRole.CHAUFFEUR].includes(r)
               ) && !isAdminOrSuper;
             }
 
-            // Mes Congés : accessible à tous les employés non-admin (sans restriction de plan)
+            // Mes Congés : accessible à tous les employés non-admin
             if (item.id === 'my-leaves') {
               return roles.some((r: UserRole) =>
                 [UserRole.EMPLOYEE, UserRole.STOCK_MANAGER, UserRole.SALES, UserRole.ACCOUNTANT, UserRole.HR_MANAGER,
-                 UserRole.ENSEIGNANT, UserRole.MAITRESSE, UserRole.COMPTABLE, UserRole.ASSISTANTE].includes(r)
+                 UserRole.ENSEIGNANT, UserRole.MAITRESSE, UserRole.COMPTABLE, UserRole.ASSISTANTE,
+                 UserRole.INFIRMIERE, UserRole.CHAUFFEUR].includes(r)
               ) && !isAdminOrSuper;
             }
 
@@ -470,7 +644,7 @@ const Layout: React.FC<LayoutProps> = ({
             <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Instance / </span>
             <span className="text-xs font-black text-slate-900 uppercase tracking-widest">{activeTab}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
             {/* Indicateur d'absence dans le header */}
             {!absenceLoading && absenceStatus && !absenceStatus.isPresent && absenceStatus.leave && (
               <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 text-[10px] font-black uppercase tracking-widest animate-pulse">
@@ -478,7 +652,22 @@ const Layout: React.FC<LayoutProps> = ({
                 <span>EN ABSENCE - Retour le {new Date(absenceStatus.leave.endDate).toLocaleDateString('fr-FR')}</span>
               </div>
             )}
-            
+
+            {/* ── Bannière année clôturée / lecture seule ── */}
+            {isAnneeClotureeMode && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-rose-50 text-rose-700 rounded-full border border-rose-300 text-[10px] font-black uppercase tracking-widest">
+                <Archive size={12} /> Année clôturée — {anneeActive}
+              </div>
+            )}
+            {!isAnneeClotureeMode && isReadOnlyMode && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-300 text-[10px] font-black uppercase tracking-widest">
+                <Lock size={12} /> Lecture seule — {anneeActive}
+              </div>
+            )}
+
+            {/* ── Sélecteur d'année scolaire (admin / directeur uniquement) ── */}
+            {(isAdminOrSuper || isDirecteurRole) && <AnneeSelector />}
+
             <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 text-[10px] font-black uppercase tracking-widest">
               <ShieldCheck size={14} /> KERNEL ACTIVE
             </div>

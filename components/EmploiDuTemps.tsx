@@ -1,1007 +1,1704 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   CalendarDays, BookOpen, Edit3, Save, X, Plus, Trash2,
-  ChevronLeft, ChevronRight, MessageCircle, Send, Copy, Check, Printer,
+  MessageCircle, Send, Copy, Check, Printer, Clock,
+  GraduationCap, RefreshCw, Zap, School, ChevronDown,
+  User as UserIcon, Settings, ChevronLeft, ChevronRight,
+  Calendar, AlertCircle, Ban, Star, Umbrella, Archive, Lock,
 } from 'lucide-react';
+import { apiClient } from '../services/api';
 import { authBridge } from '../services/authBridge';
+import { useAnnee } from '../contexts/AnneeContext';
 import { useToast } from './ToastProvider';
-import { User } from '../types';
+import { User, UserRole } from '../types';
+const MOIS   = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+const GRID_START = 7 * 60 + 30;   // 07:30 en minutes
+const GRID_END   = 18 * 60;       // 18:00 en minutes
+const SLOT_MINS  = 30;
+const SLOT_H     = 56;            // px par tranche de 30 min
+const GRID_H     = ((GRID_END - GRID_START) / SLOT_MINS) * SLOT_H; // 1176px
+const JOURS      = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+
+const TIME_RULER = Array.from(
+  { length: (GRID_END - GRID_START) / SLOT_MINS + 1 },
+  (_, i) => {
+    const m = GRID_START + i * SLOT_MINS;
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  }
+);
+
+const COULEURS: Record<string, { pill: string; block: string; bar: string }> = {
+  blue:    { pill: 'bg-blue-100 text-blue-700 border-blue-200',    block: 'bg-blue-50 border-l-4 border-l-blue-500',    bar: 'bg-blue-500'    },
+  emerald: { pill: 'bg-emerald-100 text-emerald-700 border-emerald-200', block: 'bg-emerald-50 border-l-4 border-l-emerald-500', bar: 'bg-emerald-500' },
+  violet:  { pill: 'bg-violet-100 text-violet-700 border-violet-200',  block: 'bg-violet-50 border-l-4 border-l-violet-500',  bar: 'bg-violet-500'  },
+  amber:   { pill: 'bg-amber-100 text-amber-700 border-amber-200',    block: 'bg-amber-50 border-l-4 border-l-amber-400',    bar: 'bg-amber-400'   },
+  rose:    { pill: 'bg-rose-100 text-rose-700 border-rose-200',      block: 'bg-rose-50 border-l-4 border-l-rose-500',      bar: 'bg-rose-500'    },
+  teal:    { pill: 'bg-teal-100 text-teal-700 border-teal-200',      block: 'bg-teal-50 border-l-4 border-l-teal-500',      bar: 'bg-teal-500'    },
+  indigo:  { pill: 'bg-indigo-100 text-indigo-700 border-indigo-200',  block: 'bg-indigo-50 border-l-4 border-l-indigo-500',  bar: 'bg-indigo-500'  },
+  orange:  { pill: 'bg-orange-100 text-orange-700 border-orange-200',  block: 'bg-orange-50 border-l-4 border-l-orange-500',  bar: 'bg-orange-500'  },
+  slate:   { pill: 'bg-slate-100 text-slate-600 border-slate-200',    block: 'bg-slate-50 border-l-4 border-l-slate-400',    bar: 'bg-slate-400'   },
+};
+
+const MATIERES: Record<string, string[]> = {
+  CRECHE: ['Éveil', 'Motricité', 'Langage', 'Sieste', 'Activités libres', 'Musique', 'Accueil'],
+  PS:  ['Langage', 'Motricité fine', 'Arts plastiques', 'Musique', 'Sieste', 'Récréation'],
+  MS:  ['Langage', 'Graphisme', 'Mathématiques', 'Arts plastiques', 'Musique', 'Sieste', 'Récréation'],
+  GS:  ['Langage', 'Lecture préparatoire', 'Mathématiques', 'Arts plastiques', 'Musique', 'Récréation'],
+  CP:  ['Français', 'Mathématiques', 'Lecture', 'Sciences', 'Sport', 'Morale', 'Récréation'],
+  CE1: ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géo', 'Anglais', 'Sport', 'Arts', 'Récréation'],
+  CE2: ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géo', 'Anglais', 'Sport', 'Arts', 'Récréation'],
+  CM1: ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géo', 'Anglais', 'Sport', 'Informatique', 'Récréation'],
+  CM2: ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géo', 'Anglais', 'Sport', 'Informatique', 'Récréation'],
+};
+
+const HORAIRES = [
+  '07:30','08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+  '12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00',
+  '16:30','17:00','17:30','18:00',
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type NiveauScolaire = 'CRECHE' | 'PS' | 'MS' | 'GS' | 'CP' | 'CE1' | 'CE2' | 'CM1' | 'CM2';
+type Tab = 'grille' | 'calendrier' | 'mon-planning' | 'cahier';
+
+interface ClasseInfo { id: string; nom: string; niveau: string; }
+interface EmpInfo    { id: string; firstName: string; lastName: string; }
 
 interface Creneau {
   id: string;
-  jour: number;        // 0=Lun … 4=Ven
-  heureDebut: string;  // "08:00"
-  heureFin: string;    // "09:00"
+  classeId: string;
+  enseignantId?: string;
+  jour: number;
+  heureDebut: string;
+  heureFin: string;
   matiere: string;
-  enseignant: string;
   couleur: string;
+  anneeScolaire: string;
+  enseignant?: EmpInfo;
+  classe?: ClasseInfo;
+}
+
+interface JourRepos { date: string; type: 'CONGE' | 'FERIE'; }
+
+interface PlanningConfig {
+  id: string;
+  anneeScolaire: string;
+  dateDebut: string;
+  dateFin: string;
+  joursRepos: (JourRepos | string)[];
+}
+
+interface PlanningException {
+  id: string;
+  creneauId: string;
+  dateException: string;
+  typeException: 'ANNULE' | 'MODIFIE';
+  matiereOverride?: string;
+  heureDebutOverride?: string;
+  heureFinOverride?: string;
+  note?: string;
 }
 
 interface CahierEntry {
   id: string;
-  date: string;       // ISO YYYY-MM-DD
-  niveau: NiveauScolaire;
+  date: string;
+  classeId: string;
   matiere: string;
   contenu: string;
   devoirs: string;
   auteur: string;
 }
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
-
-const NIVEAUX: { value: NiveauScolaire; label: string; cycle: string }[] = [
-  { value: 'CRECHE', label: 'Crèche',         cycle: 'Crèche' },
-  { value: 'PS',     label: 'Petite Section',  cycle: 'Maternelle' },
-  { value: 'MS',     label: 'Moyenne Section', cycle: 'Maternelle' },
-  { value: 'GS',     label: 'Grande Section',  cycle: 'Maternelle' },
-  { value: 'CP',     label: 'CP',              cycle: 'Élémentaire' },
-  { value: 'CE1',    label: 'CE1',             cycle: 'Élémentaire' },
-  { value: 'CE2',    label: 'CE2',             cycle: 'Élémentaire' },
-  { value: 'CM1',    label: 'CM1',             cycle: 'Élémentaire' },
-  { value: 'CM2',    label: 'CM2',             cycle: 'Élémentaire' },
-];
-
-const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
-
-const CRENEAUX_HORAIRES = [
-  '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:15', '10:30',
-  '11:00', '11:15', '11:30', '12:00', '12:30', '13:00', '13:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00',
-];
-
-const MATIERES_PAR_NIVEAU: Record<NiveauScolaire, string[]> = {
-  CRECHE: ['Éveil sensoriel', 'Motricité', 'Langage', 'Sieste', 'Activités libres', 'Repas', 'Accueil'],
-  PS:    ['Langage', 'Motricité fine', 'Motricité globale', 'Arts plastiques', 'Musique', 'Éveil', 'Sieste', 'Récréation'],
-  MS:    ['Langage', 'Graphisme', 'Mathématiques', 'Arts plastiques', 'Musique', 'Éveil scientifique', 'Sieste', 'Récréation'],
-  GS:    ['Langage', 'Lecture préparatoire', 'Mathématiques', 'Arts plastiques', 'Musique', 'Éveil', 'Récréation'],
-  CP:    ['Français', 'Mathématiques', 'Lecture', 'Écriture', 'Sciences', 'Sport', 'Morale / Civisme', 'Récréation'],
-  CE1:   ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géographie', 'Anglais', 'Sport', 'Arts', 'Récréation'],
-  CE2:   ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géographie', 'Anglais', 'Sport', 'Arts', 'Récréation'],
-  CM1:   ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géographie', 'Anglais', 'Sport', 'Informatique', 'Récréation'],
-  CM2:   ['Français', 'Mathématiques', 'Sciences', 'Histoire-Géographie', 'Anglais', 'Sport', 'Informatique', 'Récréation'],
-};
-
-const COULEURS_MATIERES = [
-  { label: 'Bleu',   value: 'blue',    bg: 'bg-blue-100',    text: 'text-blue-800',    border: 'border-blue-300' },
-  { label: 'Vert',   value: 'emerald', bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
-  { label: 'Violet', value: 'violet',  bg: 'bg-violet-100',  text: 'text-violet-800',  border: 'border-violet-300' },
-  { label: 'Orange', value: 'amber',   bg: 'bg-amber-100',   text: 'text-amber-800',   border: 'border-amber-300' },
-  { label: 'Rose',   value: 'pink',    bg: 'bg-pink-100',    text: 'text-pink-800',    border: 'border-pink-300' },
-  { label: 'Teal',   value: 'teal',    bg: 'bg-teal-100',    text: 'text-teal-800',    border: 'border-teal-300' },
-  { label: 'Gris',   value: 'slate',   bg: 'bg-slate-100',   text: 'text-slate-800',   border: 'border-slate-300' },
-];
-
-// ─── Storage (v2 : clé par semaine) ──────────────────────────────────────────
-
-const LS_EDT_KEY    = 'edt_creneaux_v2';
-const LS_CAHIER_KEY = 'cahier_entries';
-
-function edtStorageKey(niveau: string, week: string): string {
-  return `${niveau}__${week}`;
-}
-
-function loadEdt(): Record<string, Creneau[]> {
-  try {
-    const raw = localStorage.getItem(LS_EDT_KEY);
-    if (raw) return JSON.parse(raw);
-    // Migration depuis v1 (sans semaine) → semaine courante
-    const legacyRaw = localStorage.getItem('edt_creneaux');
-    if (legacyRaw) {
-      const legacy: Record<string, Creneau[]> = JSON.parse(legacyRaw);
-      const week = startOfWeek(isoToday());
-      const migrated: Record<string, Creneau[]> = {};
-      Object.entries(legacy).forEach(([niveau, creneaux]) => {
-        if (Array.isArray(creneaux) && creneaux.length > 0)
-          migrated[edtStorageKey(niveau, week)] = creneaux;
-      });
-      localStorage.setItem(LS_EDT_KEY, JSON.stringify(migrated));
-      return migrated;
-    }
-    return {};
-  } catch { return {}; }
-}
-
-function saveEdt(data: Record<string, Creneau[]>) {
-  try { localStorage.setItem(LS_EDT_KEY, JSON.stringify(data)); } catch {}
-}
-
-function loadCahier(): CahierEntry[] {
-  try {
-    const raw = localStorage.getItem(LS_CAHIER_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveCahier(data: CahierEntry[]) {
-  try { localStorage.setItem(LS_CAHIER_KEY, JSON.stringify(data)); } catch {}
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function tY(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return ((h * 60 + m - GRID_START) / SLOT_MINS) * SLOT_H;
+}
+
+function tH(start: string, end: string): number {
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  return Math.max(SLOT_H, ((eh * 60 + em - sh * 60 - sm) / SLOT_MINS) * SLOT_H);
+}
+
+function nowY(): number {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  if (mins < GRID_START || mins > GRID_END) return -1;
+  return ((mins - GRID_START) / SLOT_MINS) * SLOT_H;
+}
+
+function todayJour(): number {
+  const d = new Date().getDay();
+  return d === 0 || d === 6 ? -1 : d - 1;
+}
+
+function empNom(e?: EmpInfo | null): string {
+  if (!e) return '';
+  return `${e.firstName || ''} ${e.lastName || ''}`.trim();
+}
+
 function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; }
-function isoToday(): string { return new Date().toISOString().split('T')[0]; }
+function isoToday() { return new Date().toISOString().split('T')[0]; }
 
-function formatDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-}
-
-function formatShortDate(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-}
-
-function formatLongWeek(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function addDays(iso: string, n: number): string {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
-}
-
-function startOfWeek(iso: string): string {
-  const d = new Date(iso + 'T00:00:00');
+function getMondayOfWeek(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
-  return d.toISOString().split('T')[0];
+  return d;
 }
 
-function getCouleur(v: string) {
-  return COULEURS_MATIERES.find(c => c.value === v) ?? COULEURS_MATIERES[0];
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
-function getNiveauInfo(v: NiveauScolaire) {
-  return NIVEAUX.find(n => n.value === v) ?? NIVEAUX[0];
+function toISO(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
-function generateEdtText(niveau: NiveauScolaire, week: string, creneaux: Creneau[]): string {
-  const niveauLabel = getNiveauInfo(niveau).label;
-  const weekEnd = addDays(week, 4);
-  const byDay: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
-  creneaux.forEach(c => {
-    byDay[c.jour] = [...(byDay[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
-  });
-  const body = JOURS.map((jour, i) => {
-    const list = byDay[i] || [];
-    if (!list.length) return null;
-    const lines = list.map(c =>
-      `  • ${c.heureDebut}–${c.heureFin} : ${c.matiere}${c.enseignant ? ` (${c.enseignant})` : ''}`
-    ).join('\n');
-    return `*${jour}*\n${lines}`;
-  }).filter(Boolean).join('\n\n');
-
-  return (
-    `🏫 *LE TOIT DES ANGES*\n` +
-    `📚 Emploi du Temps — ${niveauLabel}\n` +
-    `📅 Semaine du ${formatShortDate(week)} au ${formatShortDate(weekEnd)}\n\n` +
-    (body || '— Aucun créneau cette semaine —') +
-    `\n\n_Le Toit des Anges — +221 33 820 00 00_`
-  );
+function formatDateFr(iso: string): string {
+  const d = new Date(iso + 'T00:00:00');
+  return `${d.getDate()} ${MOIS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function buildPrintHtml(
-  niveau: NiveauScolaire,
-  week: string,
-  creneaux: Creneau[],
-): string {
-  const niveauLabel = getNiveauInfo(niveau).label;
-  const weekEnd = addDays(week, 4);
-  const byDay: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
-  creneaux.forEach(c => {
-    byDay[c.jour] = [...(byDay[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
-  });
-
-  const cols = JOURS.map((j, i) =>
-    `<th>${j}<br><small>${formatShortDate(addDays(week, i))}</small></th>`
-  ).join('');
-
-  const cells = [0, 1, 2, 3, 4].map(i => {
-    const list = byDay[i] || [];
-    if (!list.length) return '<td style="color:#ccc;text-align:center">—</td>';
-    const items = list.map(c =>
-      `<div class="cr"><strong>${c.matiere}</strong>` +
-      `<span>${c.heureDebut}–${c.heureFin}${c.enseignant ? ' · ' + c.enseignant : ''}</span></div>`
-    ).join('');
-    return `<td>${items}</td>`;
-  }).join('');
-
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>EDT ${niveauLabel}</title>
-  <style>
-    body{font-family:Arial,sans-serif;font-size:10pt;margin:15mm}
-    h1{font-size:14pt;text-align:center;margin-bottom:4px}
-    .sub{text-align:center;font-size:11pt;color:#555;margin-bottom:2px}
-    table{width:100%;border-collapse:collapse;margin-top:14px}
-    th{background:#e2e8f0;padding:8px;font-size:9pt;text-align:center;border:1px solid #cbd5e1}
-    th small{font-weight:normal;color:#64748b}
-    td{padding:5px 6px;border:1px solid #e2e8f0;vertical-align:top;min-height:20px}
-    .cr{margin-bottom:5px;padding:3px 5px;background:#f0fdf4;border-left:3px solid #16a34a}
-    .cr strong{display:block;font-size:9pt}
-    .cr span{color:#64748b;font-size:8pt}
-    .footer{text-align:center;font-size:8pt;color:#94a3b8;margin-top:14px}
-    @media print{body{margin:10mm}}
-  </style></head><body>
-  <h1>🏫 Le Toit des Anges</h1>
-  <div class="sub">Emploi du Temps — ${niveauLabel}</div>
-  <div class="sub">Semaine du ${formatShortDate(week)} au ${formatShortDate(weekEnd)}</div>
-  <table>
-    <tr>${cols}</tr>
-    <tr>${cells}</tr>
-  </table>
-  <div class="footer">Le Toit des Anges — +221 33 820 00 00 — Imprimé le ${new Date().toLocaleDateString('fr-FR')}</div>
-  </body></html>`;
+function formatShortFr(date: Date): string {
+  return `${date.getDate()} ${MOIS[date.getMonth()]}`;
 }
 
-const emptyForm = (niveau: NiveauScolaire): Omit<Creneau, 'id'> => ({
-  jour: 0,
-  heureDebut: '08:00',
-  heureFin: '09:00',
-  matiere: MATIERES_PAR_NIVEAU[niveau][0] ?? '',
-  enseignant: '',
-  couleur: 'blue',
-});
+const LS_CAHIER = 'cahier_v3';
+function loadCahier(): CahierEntry[] {
+  try { return JSON.parse(localStorage.getItem(LS_CAHIER) || '[]'); } catch { return []; }
+}
+function saveCahier(d: CahierEntry[]) {
+  try { localStorage.setItem(LS_CAHIER, JSON.stringify(d)); } catch {}
+}
+
+function normalizeJoursRepos(raw?: (JourRepos | string)[]): JourRepos[] {
+  return (raw || []).map(j => typeof j === 'string' ? { date: j, type: 'CONGE' as const } : j);
+}
+function findRepos(joursRepos: (JourRepos | string)[] | undefined, dateStr: string): JourRepos | null {
+  const normalized = normalizeJoursRepos(joursRepos);
+  return normalized.find(j => j.date === dateStr) ?? null;
+}
+
+const NIVEAUX_LABELS: Record<string, string> = {
+  CRECHE: 'Crèche', PS: 'PS', MS: 'MS', GS: 'GS',
+  CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
+};
 
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
-  const showToast = useToast();
-  const canModify = authBridge.canPerform(user, 'EDIT', 'emploi-temps');
+  const toast = useToast();
+  const { annee: ANNEE, anneeActiveToday, isReadOnly, isAnneeCloturee } = useAnnee();
+  const canEdit = authBridge.canPerform(user, 'EDIT', 'emploi-temps') && !isReadOnly;
+  const userRoles = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : (user.role ? [user.role] : []);
+  const isDirecteur = userRoles.some(r => r === UserRole.ADMIN || r === UserRole.DIRECTEUR);
+  const isTeacher = !isDirecteur && userRoles.some(r => r === UserRole.ENSEIGNANT || r === UserRole.MAITRESSE);
+  // Les enseignants sont toujours verrouillés sur l'année courante
+  const anneeEffective = isTeacher ? anneeActiveToday : ANNEE;
 
-  const [activeTab, setActiveTab] = useState<'edt' | 'cahier'>('edt');
+  const [tab, setTab] = useState<Tab>(isTeacher ? 'mon-planning' : 'grille');
 
-  // -- EDT
-  const [edtData, setEdtData] = useState<Record<string, Creneau[]>>(loadEdt);
-  const [edtNiveau, setEdtNiveau] = useState<NiveauScolaire>('PS');
-  const [edtWeek, setEdtWeek]   = useState(startOfWeek(isoToday()));
-  const [editingCreneau, setEditingCreneau] = useState<Creneau | null>(null);
-  const [form, setForm] = useState<Omit<Creneau, 'id'>>(emptyForm('PS'));
-  const [showForm, setShowForm] = useState(false);
+  // Données
+  const [classes, setClasses]   = useState<ClasseInfo[]>([]);
+  const [employees, setEmployees] = useState<EmpInfo[]>([]);
+  const [creneaux, setCreneaux] = useState<Creneau[]>([]);
+  const [myCreneaux, setMyCreneaux] = useState<Creneau[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [loadingCreneaux, setLoadingCreneaux] = useState(false);
 
-  // -- WhatsApp modal
-  const [showWAModal, setShowWAModal] = useState(false);
-  const [waPhone, setWaPhone]         = useState('');
-  const [waText, setWaText]           = useState('');
-  const [copied, setCopied]           = useState(false);
+  // Planning récurrent
+  const [planningConfig, setPlanningConfig] = useState<PlanningConfig | null>(null);
+  const [exceptions, setExceptions] = useState<PlanningException[]>([]);
+  const [weekStart, setWeekStart] = useState<Date>(() => getMondayOfWeek(new Date()));
+  const [loadingExceptions, setLoadingExceptions] = useState(false);
 
-  // -- Cahier de texte
-  const [cahierData, setCahierData]   = useState<CahierEntry[]>(loadCahier);
-  const [cahierNiveau, setCahierNiveau] = useState<NiveauScolaire>('PS');
-  const [cahierWeek, setCahierWeek]   = useState(startOfWeek(isoToday()));
-  const [editingEntry, setEditingEntry] = useState<CahierEntry | null>(null);
-  const [entryForm, setEntryForm]     = useState<Omit<CahierEntry, 'id'>>({
-    date: isoToday(),
-    niveau: 'PS',
-    matiere: '',
-    contenu: '',
-    devoirs: '',
-    auteur: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || 'Enseignant(e)',
+  // Modal config période scolaire
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configForm, setConfigForm] = useState<{ dateDebut: string; dateFin: string; joursRepos: JourRepos[]; newJourRepos: string; newTypeRepos: 'CONGE' | 'FERIE' }>({ dateDebut: '', dateFin: '', joursRepos: [], newJourRepos: '', newTypeRepos: 'CONGE' });
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  // Modal confirmation suppression créneau
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Duplication semaine
+  const [copyingWeek, setCopyingWeek] = useState(false);
+
+  // Modal exception
+  const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [exceptionTarget, setExceptionTarget] = useState<{ creneau: Creneau; date: string; existing?: PlanningException } | null>(null);
+  const [exceptionForm, setExceptionForm] = useState<{ typeException: 'ANNULE' | 'MODIFIE'; matiereOverride: string; heureDebutOverride: string; heureFinOverride: string; note: string }>({
+    typeException: 'ANNULE', matiereOverride: '', heureDebutOverride: '', heureFinOverride: '', note: '',
   });
-  const [showEntryForm, setShowEntryForm] = useState(false);
+  const [savingException, setSavingException] = useState(false);
 
-  // ── EDT computed ────────────────────────────────────────────────────────────
+  // Sélection classe
+  const [selectedClasseId, setSelectedClasseId] = useState('');
 
-  const currentEdtKey  = useMemo(() => edtStorageKey(edtNiveau, edtWeek), [edtNiveau, edtWeek]);
-  const prevEdtKey     = useMemo(() => edtStorageKey(edtNiveau, addDays(edtWeek, -7)), [edtNiveau, edtWeek]);
-  const creneauxNiveau = useMemo(() => edtData[currentEdtKey] || [], [edtData, currentEdtKey]);
-  const hasPrevData    = useMemo(() => (edtData[prevEdtKey] || []).length > 0, [edtData, prevEdtKey]);
+  // Cahier
+  const [cahier, setCahier]   = useState<CahierEntry[]>(loadCahier);
+  const [cahierClasseId, setCahierClasseId] = useState('');
+  const [cahierDate, setCahierDate] = useState(isoToday());
 
+  // Modal creneau
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing]     = useState<Creneau | null>(null);
+  const [form, setForm] = useState<Omit<Creneau, 'id' | 'anneeScolaire' | 'enseignant' | 'classe'>>({
+    classeId: '', enseignantId: '', jour: 0,
+    heureDebut: '08:00', heureFin: '09:00', matiere: '', couleur: 'blue',
+  });
+
+  // Modal cahier
+  const [showCahierModal, setShowCahierModal] = useState(false);
+  const [editingCahier, setEditingCahier] = useState<CahierEntry | null>(null);
+  const [cahierForm, setCahierForm] = useState<Omit<CahierEntry, 'id'>>({
+    date: isoToday(), classeId: '', matiere: '', contenu: '', devoirs: '',
+    auteur: user.name || '',
+  });
+
+  // WhatsApp
+  const [showWA, setShowWA] = useState(false);
+  const [waPhone, setWaPhone] = useState('');
+  const [waTxt, setWaTxt]   = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // Indicateur heure courante
+  const [currentY, setCurrentY] = useState(nowY());
+  useEffect(() => {
+    const t = setInterval(() => setCurrentY(nowY()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const todayIdx = todayJour();
+  const empMap = useMemo(() => {
+    const m = new Map<string, EmpInfo>();
+    employees.forEach(e => m.set(e.id, e));
+    return m;
+  }, [employees]);
+
+  // ── Chargement initial ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      try {
+        const [cls, emps, cfg] = await Promise.all([
+          apiClient.get('/classes', { params: { anneeScolaire: anneeEffective } }).catch(() => []),
+          // Les enseignants n'ont pas accès à la liste globale des employés — échec silencieux
+          apiClient.get('/hr/employees').catch(() => []),
+          apiClient.get('/planning/config', { params: { anneeScolaire: anneeEffective } }).catch(() => null),
+        ]);
+        const clsArr = Array.isArray(cls) ? cls : (cls?.rows ?? []);
+        const empArr = Array.isArray(emps) ? emps : (emps?.rows ?? []);
+        setClasses(clsArr);
+        setEmployees(empArr);
+        if (cfg) setPlanningConfig(cfg);
+        if (clsArr.length > 0) setSelectedClasseId(clsArr[0].id);
+        if (clsArr.length > 0) setCahierClasseId(clsArr[0].id);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [anneeEffective]);
+
+  // ── Charger exceptions pour la semaine affichée ─────────────────────────────
+  useEffect(() => {
+    if (tab !== 'calendrier' || !selectedClasseId) return;
+    const dateDebut = toISO(weekStart);
+    const dateFin   = toISO(addDays(weekStart, 4));
+    setLoadingExceptions(true);
+    apiClient.get('/planning/exceptions', { params: { classeId: selectedClasseId, dateDebut, dateFin } })
+      .then(data => setExceptions(Array.isArray(data) ? data : []))
+      .catch(() => setExceptions([]))
+      .finally(() => setLoadingExceptions(false));
+  }, [tab, weekStart, selectedClasseId]);
+
+  // ── Charger creneaux quand classe ou année change ─────────────────────────
+  useEffect(() => {
+    if (!selectedClasseId) return;
+    const load = async () => {
+      setLoadingCreneaux(true);
+      try {
+        const data = await apiClient.get('/schedule', {
+          params: { classeId: selectedClasseId, anneeScolaire: anneeEffective }
+        }).catch(() => []);
+        setCreneaux(Array.isArray(data) ? data : []);
+      } finally {
+        setLoadingCreneaux(false);
+      }
+    };
+    load();
+  }, [selectedClasseId, anneeEffective]);
+
+  // ── Charger mon planning (prof) ────────────────────────────────────────────
+  useEffect(() => {
+    if (tab !== 'mon-planning') return;
+    apiClient.get('/schedule/my', { params: { anneeScolaire: anneeEffective } })
+      .then(d => setMyCreneaux(Array.isArray(d) ? d : []))
+      .catch(() => setMyCreneaux([]));
+  }, [tab, anneeEffective]);
+
+  // ── Creneaux par jour ──────────────────────────────────────────────────────
   const creneauxParJour = useMemo(() => {
     const map: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
-    creneauxNiveau.forEach(c => {
+    creneaux.forEach(c => {
       map[c.jour] = [...(map[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
     });
     return map;
-  }, [creneauxNiveau]);
+  }, [creneaux]);
 
-  const edtWeekDays  = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(edtWeek, i)), [edtWeek]);
-  const todayWeek    = startOfWeek(isoToday());
-  const isCurrentWeek = edtWeek === todayWeek;
-  const isPastWeek    = edtWeek < todayWeek;
+  const myCreneauxParJour = useMemo(() => {
+    const map: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+    myCreneaux.forEach(c => {
+      map[c.jour] = [...(map[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
+    });
+    return map;
+  }, [myCreneaux]);
 
-  // ── EDT handlers ────────────────────────────────────────────────────────────
+  // ── Stats prof ─────────────────────────────────────────────────────────────
+  const myStats = useMemo(() => {
+    const total = myCreneaux.length;
+    const today = myCreneauxParJour[todayIdx] || [];
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const prochain = today.find(c => {
+      const [h, m] = c.heureDebut.split(':').map(Number);
+      return h * 60 + m > nowMins;
+    });
+    const enCours = today.find(c => {
+      const [sh, sm] = c.heureDebut.split(':').map(Number);
+      const [eh, em] = c.heureFin.split(':').map(Number);
+      return sh * 60 + sm <= nowMins && nowMins < eh * 60 + em;
+    });
+    return { total, today: today.length, prochain, enCours };
+  }, [myCreneaux, myCreneauxParJour, todayIdx]);
 
-  const handleOpenForm = (creneau?: Creneau) => {
-    if (creneau) {
-      setEditingCreneau(creneau);
-      setForm({ jour: creneau.jour, heureDebut: creneau.heureDebut, heureFin: creneau.heureFin, matiere: creneau.matiere, enseignant: creneau.enseignant, couleur: creneau.couleur });
+  // ── CRUD creneaux ──────────────────────────────────────────────────────────
+  const openModal = (c?: Creneau) => {
+    const sel = classes.find(cl => cl.id === selectedClasseId);
+    if (c) {
+      setEditing(c);
+      setForm({ classeId: c.classeId, enseignantId: c.enseignantId || '', jour: c.jour, heureDebut: c.heureDebut, heureFin: c.heureFin, matiere: c.matiere, couleur: c.couleur });
     } else {
-      setEditingCreneau(null);
-      setForm(emptyForm(edtNiveau));
+      setEditing(null);
+      const mats = sel ? (MATIERES[sel.niveau] || []) : [];
+      setForm({ classeId: selectedClasseId, enseignantId: '', jour: 0, heureDebut: '08:00', heureFin: '09:00', matiere: mats[0] || '', couleur: 'blue' });
     }
-    setShowForm(true);
+    setShowModal(true);
   };
 
-  const handleSaveCreneau = () => {
-    if (!form.matiere || !form.heureDebut || !form.heureFin) {
-      showToast('Remplissez tous les champs obligatoires.', 'error');
-      return;
-    }
-    const current = edtData[currentEdtKey] || [];
-    const updated  = editingCreneau
-      ? current.map(c => c.id === editingCreneau.id ? { ...form, id: editingCreneau.id } : c)
-      : [...current, { ...form, id: genId() }];
-    const newData = { ...edtData, [currentEdtKey]: updated };
-    setEdtData(newData);
-    saveEdt(newData);
-    setShowForm(false);
-    showToast(editingCreneau ? 'Créneau mis à jour.' : 'Créneau ajouté.', 'success');
-  };
-
-  const handleDeleteCreneau = (id: string) => {
-    const updated = (edtData[currentEdtKey] || []).filter(c => c.id !== id);
-    const newData = { ...edtData, [currentEdtKey]: updated };
-    setEdtData(newData);
-    saveEdt(newData);
-    showToast('Créneau supprimé.', 'info');
-  };
-
-  const handleCopyFromPrevWeek = () => {
-    const prevCreneaux = edtData[prevEdtKey] || [];
-    if (!prevCreneaux.length) { showToast('Aucun créneau la semaine précédente.', 'info'); return; }
-    const newCreneaux = prevCreneaux.map(c => ({ ...c, id: genId() }));
-    const newData = { ...edtData, [currentEdtKey]: newCreneaux };
-    setEdtData(newData);
-    saveEdt(newData);
-    showToast(`${newCreneaux.length} créneaux copiés depuis la semaine précédente.`, 'success');
-  };
-
-  const handleOpenWAModal = () => {
-    setWaText(generateEdtText(edtNiveau, edtWeek, creneauxNiveau));
-    setWaPhone('');
-    setCopied(false);
-    setShowWAModal(true);
-  };
-
-  const handleCopyToClipboard = async () => {
+  const handleSave = async () => {
+    if (!form.matiere || !form.heureDebut || !form.heureFin) { toast('Matière, heure début et heure fin sont requis.', 'error'); return; }
     try {
-      await navigator.clipboard.writeText(waText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      showToast('Sélectionnez le texte manuellement pour le copier.', 'error');
-    }
+      const payload = { ...form, anneeScolaire: anneeEffective, enseignantId: form.enseignantId || null };
+      if (editing) {
+        await apiClient.put(`/schedule/${editing.id}`, payload);
+        setCreneaux(cr => cr.map(c => c.id === editing.id ? { ...c, ...payload } : c));
+        toast('Créneau mis à jour.', 'success');
+      } else {
+        const created = await apiClient.post('/schedule', payload);
+        setCreneaux(cr => [...cr, created]);
+        toast('Créneau ajouté.', 'success');
+      }
+      setShowModal(false);
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
   };
 
-  const handleOpenWhatsApp = () => {
-    const phone = waPhone.replace(/\D/g, '');
-    const url = phone
-      ? `https://wa.me/${phone}?text=${encodeURIComponent(waText)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const handleDelete = (id: string) => setConfirmDeleteId(id);
+
+  const doDelete = async () => {
+    if (!confirmDeleteId) return;
+    try {
+      await apiClient.delete(`/schedule/${confirmDeleteId}`);
+      setCreneaux(cr => cr.filter(c => c.id !== confirmDeleteId));
+      toast('Créneau supprimé.', 'info');
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
+    finally { setConfirmDeleteId(null); }
+  };
+
+  // ── Cahier ─────────────────────────────────────────────────────────────────
+  const openCahier = (entry?: CahierEntry) => {
+    const cl = classes.find(c => c.id === cahierClasseId);
+    if (entry) {
+      setEditingCahier(entry);
+      setCahierForm({ date: entry.date, classeId: entry.classeId, matiere: entry.matiere, contenu: entry.contenu, devoirs: entry.devoirs, auteur: entry.auteur });
+    } else {
+      setEditingCahier(null);
+      setCahierForm({ date: isoToday(), classeId: cahierClasseId, matiere: (cl ? (MATIERES[cl.niveau] || []) : [])[0] || '', contenu: '', devoirs: '', auteur: user.name || '' });
+    }
+    setShowCahierModal(true);
+  };
+
+  const saveCahierEntry = () => {
+    if (!cahierForm.matiere || !cahierForm.contenu) { toast('Remplissez la matière et le contenu.', 'error'); return; }
+    const updated = editingCahier
+      ? cahier.map(e => e.id === editingCahier.id ? { ...cahierForm, id: editingCahier.id } : e)
+      : [...cahier, { ...cahierForm, id: genId() }];
+    setCahier(updated);
+    saveCahier(updated);
+    setShowCahierModal(false);
+    toast(editingCahier ? 'Entrée mise à jour.' : 'Entrée ajoutée.', 'success');
+  };
+
+  const deleteCahierEntry = (id: string) => {
+    const updated = cahier.filter(e => e.id !== id);
+    setCahier(updated);
+    saveCahier(updated);
+  };
+
+  // ── WhatsApp ───────────────────────────────────────────────────────────────
+  const openWA = () => {
+    const cl = classes.find(c => c.id === selectedClasseId);
+    const byDay: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+    creneaux.forEach(c => { byDay[c.jour] = [...(byDay[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut)); });
+    const body = JOURS.map((j, i) => {
+      const list = byDay[i] || [];
+      if (!list.length) return null;
+      const lines = list.map(c => `  • ${c.heureDebut}–${c.heureFin} : ${c.matiere}${c.enseignant ? ` (${empNom(c.enseignant)})` : ''}`).join('\n');
+      return `*${j}*\n${lines}`;
+    }).filter(Boolean).join('\n\n');
+    setWaTxt(`🏫 *LE TOIT DES ANGES*\n📚 Emploi du Temps — ${cl?.nom || ''}\n\n${body || '— Aucun créneau —'}\n\n_Année ${anneeEffective}_`);
+    setWaPhone(''); setCopied(false); setShowWA(true);
   };
 
   const handlePrint = () => {
-    const html = buildPrintHtml(edtNiveau, edtWeek, creneauxNiveau);
-    const win  = window.open('', '_blank', 'noopener');
-    if (!win) { showToast('Autorisez les popups pour imprimer.', 'error'); return; }
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 400);
+    const cl = classes.find(c => c.id === selectedClasseId);
+    const byDay: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+    creneaux.forEach(c => { byDay[c.jour] = [...(byDay[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut)); });
+    const cols = JOURS.map(j => `<th>${j}</th>`).join('');
+    const cells = [0,1,2,3,4].map(i => {
+      const list = byDay[i] || [];
+      if (!list.length) return '<td style="color:#ccc;text-align:center">—</td>';
+      return `<td>${list.map(c => `<div class="cr"><strong>${c.matiere}</strong><span>${c.heureDebut}–${c.heureFin}${c.enseignant ? ' · ' + empNom(c.enseignant) : ''}</span></div>`).join('')}</td>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>EDT ${cl?.nom}</title><style>body{font-family:Arial,sans-serif;font-size:10pt;margin:15mm}h1{font-size:14pt;text-align:center}table{width:100%;border-collapse:collapse;margin-top:14px}th{background:#e2e8f0;padding:8px;text-align:center;border:1px solid #cbd5e1}td{padding:5px 6px;border:1px solid #e2e8f0;vertical-align:top}.cr{margin-bottom:5px;padding:3px 5px;background:#f0fdf4;border-left:3px solid #16a34a}.cr strong{display:block;font-size:9pt}.cr span{color:#64748b;font-size:8pt}</style></head><body><h1>🏫 Le Toit des Anges</h1><p style="text-align:center">Emploi du Temps — ${cl?.nom} — ${anneeEffective}</p><table><tr>${cols}</tr><tr>${cells}</tr></table></body></html>`;
+    const w = window.open('', '_blank', 'noopener');
+    if (!w) { toast('Autorisez les popups.', 'error'); return; }
+    w.document.write(html); w.document.close();
+    setTimeout(() => w.print(), 400);
   };
 
-  // ── Cahier helpers ─────────────────────────────────────────────────────────
+  // ── Jours de la semaine affichée ───────────────────────────────────────────
+  const weekDates = useMemo(() =>
+    Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)),
+  [weekStart]);
 
-  const weekDays = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(cahierWeek, i)), [cahierWeek]);
+  // ── Config période scolaire ────────────────────────────────────────────────
+  const openConfigModal = () => {
+    setConfigForm({
+      dateDebut: planningConfig?.dateDebut || '',
+      dateFin:   planningConfig?.dateFin   || '',
+      joursRepos: normalizeJoursRepos(planningConfig?.joursRepos),
+      newJourRepos: '',
+      newTypeRepos: 'CONGE',
+    });
+    setShowConfigModal(true);
+  };
 
-  const entriesByDay = useMemo(() => {
-    const map: Record<string, CahierEntry[]> = {};
-    weekDays.forEach(d => { map[d] = []; });
-    cahierData
-      .filter(e => e.niveau === cahierNiveau && weekDays.includes(e.date))
-      .forEach(e => { map[e.date] = [...(map[e.date] || []), e]; });
-    return map;
-  }, [cahierData, cahierNiveau, weekDays]);
+  const saveConfig = async () => {
+    if (!configForm.dateDebut || !configForm.dateFin) { toast('Date début et date fin sont requises.', 'error'); return; }
+    setSavingConfig(true);
+    try {
+      const cfg = await apiClient.post('/planning/config', {
+        anneeScolaire: anneeEffective,
+        dateDebut: configForm.dateDebut,
+        dateFin:   configForm.dateFin,
+        joursRepos: configForm.joursRepos,
+      });
+      setPlanningConfig(cfg);
+      setShowConfigModal(false);
+      toast('Période scolaire enregistrée.', 'success');
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
+    finally { setSavingConfig(false); }
+  };
 
-  const handleOpenEntryForm = (date: string, entry?: CahierEntry) => {
-    if (entry) {
-      setEditingEntry(entry);
-      setEntryForm({ date: entry.date, niveau: entry.niveau, matiere: entry.matiere, contenu: entry.contenu, devoirs: entry.devoirs, auteur: entry.auteur });
-    } else {
-      setEditingEntry(null);
-      setEntryForm({ date, niveau: cahierNiveau, matiere: MATIERES_PAR_NIVEAU[cahierNiveau][0] ?? '', contenu: '', devoirs: '', auteur: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || 'Enseignant(e)' });
+  // ── Exceptions ─────────────────────────────────────────────────────────────
+  const openExceptionModal = (creneau: Creneau, date: string, existing?: PlanningException) => {
+    if (!existing && findRepos(planningConfig?.joursRepos, date)?.type === 'FERIE') {
+      toast('Impossible de planifier un cours un jour férié.', 'error');
+      return;
     }
-    setShowEntryForm(true);
+    setExceptionTarget({ creneau, date, existing });
+    setExceptionForm({
+      typeException:      existing?.typeException      || 'ANNULE',
+      matiereOverride:    existing?.matiereOverride    || '',
+      heureDebutOverride: existing?.heureDebutOverride || creneau.heureDebut,
+      heureFinOverride:   existing?.heureFinOverride   || creneau.heureFin,
+      note:               existing?.note               || '',
+    });
+    setShowExceptionModal(true);
   };
 
-  const handleSaveEntry = () => {
-    if (!entryForm.matiere || !entryForm.contenu) { showToast('Remplissez la matière et le contenu.', 'error'); return; }
-    const updated = editingEntry
-      ? cahierData.map(e => e.id === editingEntry.id ? { ...entryForm, id: editingEntry.id } : e)
-      : [...cahierData, { ...entryForm, id: genId() }];
-    setCahierData(updated);
-    saveCahier(updated);
-    setShowEntryForm(false);
-    showToast(editingEntry ? 'Entrée mise à jour.' : 'Entrée ajoutée au cahier.', 'success');
+  const saveException = async () => {
+    if (!exceptionTarget) return;
+    setSavingException(true);
+    try {
+      const payload = {
+        creneauId:          exceptionTarget.creneau.id,
+        dateException:      exceptionTarget.date,
+        typeException:      exceptionForm.typeException,
+        matiereOverride:    exceptionForm.typeException === 'MODIFIE' ? exceptionForm.matiereOverride || null : null,
+        heureDebutOverride: exceptionForm.typeException === 'MODIFIE' ? exceptionForm.heureDebutOverride || null : null,
+        heureFinOverride:   exceptionForm.typeException === 'MODIFIE' ? exceptionForm.heureFinOverride || null : null,
+        note:               exceptionForm.note || null,
+      };
+      const created = await apiClient.post('/planning/exceptions', payload);
+      setExceptions(prev => {
+        const filtered = prev.filter(e => !(e.creneauId === exceptionTarget.creneau.id && e.dateException === exceptionTarget.date));
+        return [...filtered, created];
+      });
+      setShowExceptionModal(false);
+      toast('Exception enregistrée.', 'success');
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
+    finally { setSavingException(false); }
   };
 
-  const handleDeleteEntry = (id: string) => {
-    const updated = cahierData.filter(e => e.id !== id);
-    setCahierData(updated);
-    saveCahier(updated);
-    showToast('Entrée supprimée.', 'info');
+  const copyWeekToNext = async () => {
+    if (!selectedClasseId) return;
+    if (exceptions.length === 0) {
+      toast('Le planning de la semaine suivante est déjà identique (aucune modification à dupliquer).', 'info');
+      return;
+    }
+    setCopyingWeek(true);
+    let copied = 0;
+    let skipped = 0;
+    try {
+      for (const ex of exceptions) {
+        const nextDate = toISO(addDays(new Date(ex.dateException + 'T00:00:00'), 7));
+        if (findRepos(planningConfig?.joursRepos, nextDate)?.type === 'FERIE') { skipped++; continue; }
+        try {
+          await apiClient.post('/planning/exceptions', {
+            creneauId:          ex.creneauId,
+            dateException:      nextDate,
+            typeException:      ex.typeException,
+            matiereOverride:    ex.matiereOverride    || null,
+            heureDebutOverride: ex.heureDebutOverride || null,
+            heureFinOverride:   ex.heureFinOverride   || null,
+            note:               ex.note               || null,
+          });
+          copied++;
+        } catch { skipped++; }
+      }
+      toast(
+        copied > 0
+          ? `${copied} modification${copied > 1 ? 's' : ''} dupliquée${copied > 1 ? 's' : ''} vers la semaine suivante.${skipped > 0 ? ` (${skipped} ignorée${skipped > 1 ? 's' : ''} — jour férié)` : ''}`
+          : 'Aucune modification dupliquée (tous les jours cibles sont fériés).',
+        copied > 0 ? 'success' : 'info',
+      );
+      if (copied > 0) setWeekStart(w => addDays(w, 7));
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
+    finally { setCopyingWeek(false); }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const deleteException = async (id: string) => {
+    try {
+      await apiClient.delete(`/planning/exceptions/${id}`);
+      setExceptions(prev => prev.filter(e => e.id !== id));
+      setShowExceptionModal(false);
+      toast('Exception supprimée.', 'info');
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
+  };
 
-  const niveauInfo = getNiveauInfo(edtNiveau);
+  // ── Classe sélectionnée ────────────────────────────────────────────────────
+  const selectedClasse = classes.find(c => c.id === selectedClasseId);
+  const matieres = selectedClasse ? (MATIERES[selectedClasse.niveau] || []) : [];
 
+  if (loading) {
+    return (
+      <div className="py-32 flex flex-col items-center gap-4 text-slate-400">
+        <RefreshCw size={32} className="animate-spin" />
+        <p className="text-[10px] font-black uppercase tracking-widest">Chargement...</p>
+      </div>
+    );
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="pb-20 space-y-6">
 
-      {/* ── Modal WhatsApp ──────────────────────────────────────────────────── */}
-      {showWAModal && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          onClick={e => { if (e.target === e.currentTarget) setShowWAModal(false); }}
-        >
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 bg-green-100 rounded-lg">
-                  <MessageCircle size={18} className="text-green-600" />
-                </span>
-                <h3 className="font-bold text-slate-800">Envoyer l'emploi du temps</h3>
-              </div>
-              <button onClick={() => setShowWAModal(false)} className="p-1 rounded-lg hover:bg-slate-100">
-                <X size={16} className="text-slate-500" />
-              </button>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-slate-500 mb-1.5">Aperçu du message :</p>
-              <textarea
-                readOnly
-                value={waText}
-                rows={11}
-                className="w-full text-xs font-mono bg-green-50 border border-green-200 rounded-xl p-3 resize-none text-slate-700"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-500 block mb-1">
-                Numéro du destinataire <span className="font-normal text-slate-400">(optionnel)</span>
-              </label>
-              <input
-                value={waPhone}
-                onChange={e => setWaPhone(e.target.value)}
-                placeholder="+221 77 000 00 00"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">
-                Laissez vide pour choisir le contact directement dans WhatsApp
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleCopyToClipboard}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all
-                  ${copied ? 'border-green-300 bg-green-50 text-green-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? 'Copié !' : 'Copier le texte'}
-              </button>
-              <button
-                onClick={handleOpenWhatsApp}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
-              >
-                <Send size={14} /> Ouvrir WhatsApp
-              </button>
-            </div>
+      {/* ── En-tête ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-4">
+            <CalendarDays className="text-indigo-600" size={32} />
+            Emploi du Temps
+          </h2>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Planification des cours · {anneeEffective}</p>
+            {isDirecteur && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest">
+                <GraduationCap size={10} /> Gestion complète
+              </span>
+            )}
+            {isTeacher && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-widest">
+                Mode consultation
+              </span>
+            )}
+            {isAnneeCloturee && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[9px] font-black uppercase tracking-widest">
+                <Archive size={10}/> Année clôturée — lecture seule
+              </span>
+            )}
+            {!isAnneeCloturee && isReadOnly && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[9px] font-black uppercase tracking-widest">
+                <Lock size={10}/> Année passée — lecture seule
+              </span>
+            )}
           </div>
         </div>
-      )}
 
-      {/* En-tête */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-          <span className="p-2 bg-teal-600 rounded-xl text-white"><CalendarDays size={22} /></span>
-          Emploi du Temps &amp; Cahier de Texte
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">Planification des cours et journal pédagogique</p>
+        {/* Stats rapides prof */}
+        {isTeacher && tab === 'mon-planning' && (
+          <div className="flex items-center gap-3 flex-wrap">
+            {myStats.enCours && (
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl">
+                <Zap size={14} className="text-emerald-500" />
+                <span className="text-[10px] font-black uppercase tracking-widest">En cours : {myStats.enCours.matiere}</span>
+              </div>
+            )}
+            {myStats.prochain && !myStats.enCours && (
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-2xl">
+                <Clock size={14} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Prochain : {myStats.prochain.heureDebut} · {myStats.prochain.matiere}</span>
+              </div>
+            )}
+            <div className="px-4 py-2.5 bg-white border border-slate-100 rounded-2xl text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              {myStats.total} cours / semaine
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 p-1 bg-white border border-slate-100 rounded-2xl shadow-sm w-fit flex-wrap">
         {([
-          ['edt',    'Emploi du Temps', CalendarDays],
-          ['cahier', 'Cahier de Texte', BookOpen],
-        ] as const).map(([id, label, Icon]) => (
+          ['grille',       'Grille type',    School],
+          ['calendrier',   'Calendrier',     Calendar],
+          ['mon-planning', 'Mon Planning',   CalendarDays],
+          ['cahier',       'Cahier de Texte',BookOpen],
+        ] as [Tab, string, any][]).map(([key, label, Icon]) => (
           <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all
-              ${activeTab === id ? 'bg-white text-slate-800 shadow' : 'text-slate-500 hover:text-slate-700'}`}
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${tab === key ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}
           >
-            <Icon size={15} />{label}
+            <Icon size={12} /> {label}
           </button>
         ))}
       </div>
 
-      {/* ── ONGLET EMPLOI DU TEMPS ───────────────────────────────────────────── */}
-      {activeTab === 'edt' && (
-        <div className="space-y-5">
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB — GRILLE PAR CLASSE
+      ══════════════════════════════════════════════════════════════════════ */}
+      {tab === 'grille' && (
+        <div className="space-y-4 animate-in fade-in duration-300">
 
-          {/* Sélecteur de niveau */}
-          <div className="flex flex-wrap gap-2">
-            {NIVEAUX.map(n => (
-              <button
-                key={n.value}
-                onClick={() => { setEdtNiveau(n.value); setShowForm(false); setForm(emptyForm(n.value)); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all
-                  ${edtNiveau === n.value
-                    ? 'bg-teal-600 text-white shadow'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-              >
-                {n.label}
+          {/* Bannière période scolaire */}
+          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-indigo-50 rounded-xl flex items-center justify-center">
+                <Calendar size={14} className="text-indigo-600" />
+              </div>
+              {planningConfig ? (
+                <div>
+                  <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Période scolaire</p>
+                  <p className="text-[9px] font-bold text-indigo-600">
+                    {formatDateFr(planningConfig.dateDebut)} → {formatDateFr(planningConfig.dateFin)}
+                    {planningConfig.joursRepos.length > 0 && (() => {
+                      const norm = normalizeJoursRepos(planningConfig.joursRepos);
+                      const nC = norm.filter(j => j.type === 'CONGE').length;
+                      const nF = norm.filter(j => j.type === 'FERIE').length;
+                      return (
+                        <span className="ml-2 flex items-center gap-2 flex-wrap">
+                          {nC > 0 && <span className="flex items-center gap-1 text-amber-500"><Umbrella size={10} /> {nC} congé{nC > 1 ? 's' : ''}</span>}
+                          {nF > 0 && <span className="flex items-center gap-1 text-rose-500"><Star size={10} /> {nF} férié{nF > 1 ? 's' : ''}</span>}
+                        </span>
+                      );
+                    })()}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-amber-500">
+                  <AlertCircle size={14} />
+                  <p className="text-[10px] font-black uppercase tracking-widest">Période scolaire non configurée</p>
+                </div>
+              )}
+            </div>
+            {canEdit && (
+              <button onClick={openConfigModal} className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all">
+                <Settings size={12} /> Configurer
               </button>
-            ))}
+            )}
           </div>
 
-          {/* Navigation semaine + boutons d'action */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-
-            {/* Navigation semaine */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setEdtWeek(addDays(edtWeek, -7)); setShowForm(false); }}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50"
-                title="Semaine précédente"
-              >
-                <ChevronLeft size={16} className="text-slate-600" />
-              </button>
-
-              <div className="text-center min-w-[210px]">
-                <p className={`text-sm font-bold leading-tight ${isPastWeek ? 'text-slate-500' : 'text-slate-800'}`}>
-                  {isPastWeek && (
-                    <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mr-1.5">
-                      Archive
-                    </span>
-                  )}
-                  Sem. du {formatLongWeek(edtWeek)}
-                </p>
-                {isCurrentWeek && (
-                  <p className="text-[10px] text-teal-600 font-semibold mt-0.5">Semaine en cours</p>
-                )}
-              </div>
-
-              <button
-                onClick={() => { setEdtWeek(addDays(edtWeek, 7)); setShowForm(false); }}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50"
-                title="Semaine suivante"
-              >
-                <ChevronRight size={16} className="text-slate-600" />
-              </button>
-
-              {!isCurrentWeek && (
+          {/* Contrôles */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 flex flex-wrap items-center justify-between gap-4">
+            {/* Sélecteur classe */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {classes.map(c => (
                 <button
-                  onClick={() => { setEdtWeek(todayWeek); setShowForm(false); }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200"
+                  key={c.id}
+                  onClick={() => setSelectedClasseId(c.id)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${selectedClasseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
                 >
-                  Aujourd'hui
+                  {c.nom}
                 </button>
-              )}
+              ))}
             </div>
+            {/* Navigation semaine + Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
 
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              {creneauxNiveau.length > 0 && (
-                <>
-                  <button
-                    onClick={handleOpenWAModal}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
-                    title="Envoyer aux parents / tuteurs"
-                  >
-                    <MessageCircle size={14} /> Envoyer
-                  </button>
-                  <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50"
-                    title="Imprimer l'emploi du temps"
-                  >
-                    <Printer size={14} /> Imprimer
-                  </button>
-                </>
-              )}
-              {canModify && (
-                <button
-                  onClick={() => handleOpenForm()}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700"
-                >
-                  <Plus size={15} /> Ajouter un créneau
+              {/* Navigation semaine */}
+              <div className="flex items-center gap-1 border border-slate-200 rounded-xl p-1 bg-slate-50">
+                <button onClick={() => setWeekStart(w => addDays(w, -7))}
+                  className="p-1.5 text-slate-500 rounded-lg hover:bg-white hover:shadow-sm transition-all" title="Semaine précédente">
+                  <ChevronLeft size={14} />
+                </button>
+                <button onClick={() => setWeekStart(getMondayOfWeek(new Date()))}
+                  className="px-3 py-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest rounded-lg hover:bg-white hover:shadow-sm transition-all">
+                  Auj.
+                </button>
+                <button onClick={() => setWeekStart(w => addDays(w, 7))}
+                  className="p-1.5 text-slate-500 rounded-lg hover:bg-white hover:shadow-sm transition-all" title="Semaine suivante">
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                {formatShortFr(weekStart)} – {formatShortFr(addDays(weekStart, 4))} {weekStart.getFullYear()}
+              </span>
+
+              <div className="w-px h-6 bg-slate-200 mx-1" />
+
+              {canEdit && (
+                <button onClick={() => openModal()} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100">
+                  <Plus size={12} /> Ajouter créneau
                 </button>
               )}
+              <button onClick={openWA} className="p-2.5 bg-green-50 text-green-600 border border-green-200 rounded-xl hover:bg-green-100 transition-all" title="Envoyer WhatsApp">
+                <MessageCircle size={16} />
+              </button>
+              <button onClick={handlePrint} className="p-2.5 bg-slate-50 text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all" title="Imprimer">
+                <Printer size={16} />
+              </button>
             </div>
           </div>
 
-          {/* Bannière "Copier depuis semaine précédente" */}
-          {creneauxNiveau.length === 0 && hasPrevData && canModify && (
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-blue-800">Cette semaine n'a pas encore de créneaux</p>
-                <p className="text-xs text-blue-600 mt-0.5">
-                  {(edtData[prevEdtKey] || []).length} créneaux disponibles la semaine précédente
-                </p>
+          {/* Grille visuelle */}
+          {selectedClasse && (
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-50 flex items-center gap-4">
+                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-black">
+                  {selectedClasse.nom.split(' ').pop() || 'A'}
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">{selectedClasse.nom}</h3>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{NIVEAUX_LABELS[selectedClasse.niveau] || selectedClasse.niveau} · {creneaux.length} créneaux</p>
+                </div>
+                {loadingCreneaux && <RefreshCw size={14} className="animate-spin text-indigo-400 ml-auto" />}
               </div>
-              <button
-                onClick={handleCopyFromPrevWeek}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shrink-0"
-              >
-                Copier depuis la semaine précédente
-              </button>
-            </div>
-          )}
 
-          {/* Formulaire créneau */}
-          {showForm && canModify && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="font-bold text-slate-800">
-                  {editingCreneau ? 'Modifier le créneau' : 'Nouveau créneau'} — {niveauInfo.label}
-                  <span className="ml-2 text-xs font-normal text-slate-400">
-                    Sem. {formatShortDate(edtWeek)}–{formatShortDate(addDays(edtWeek, 4))}
-                  </span>
-                </p>
-                <button onClick={() => setShowForm(false)} className="p-1 rounded-lg hover:bg-slate-100">
-                  <X size={16} className="text-slate-500" />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Jour *</label>
-                  <select
-                    value={form.jour}
-                    onChange={e => setForm(f => ({ ...f, jour: Number(e.target.value) }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {JOURS.map((j, i) => (
-                      <option key={j} value={i}>{j} — {formatShortDate(edtWeekDays[i])}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Heure début *</label>
-                  <select
-                    value={form.heureDebut}
-                    onChange={e => setForm(f => ({ ...f, heureDebut: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {CRENEAUX_HORAIRES.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Heure fin *</label>
-                  <select
-                    value={form.heureFin}
-                    onChange={e => setForm(f => ({ ...f, heureFin: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {CRENEAUX_HORAIRES.filter(h => h > form.heureDebut).map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Matière *</label>
-                  <select
-                    value={form.matiere}
-                    onChange={e => setForm(f => ({ ...f, matiere: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {MATIERES_PAR_NIVEAU[edtNiveau].map(m => <option key={m} value={m}>{m}</option>)}
-                    <option value="__other__">Autre...</option>
-                  </select>
-                  {form.matiere === '__other__' && (
-                    <input
-                      placeholder="Nom de la matière"
-                      onChange={e => setForm(f => ({ ...f, matiere: e.target.value }))}
-                      className="mt-2 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Enseignant(e)</label>
-                  <input
-                    value={form.enseignant}
-                    onChange={e => setForm(f => ({ ...f, enseignant: e.target.value }))}
-                    placeholder="Nom de l'enseignant(e)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Couleur</label>
-                  <div className="flex gap-1.5 flex-wrap pt-1">
-                    {COULEURS_MATIERES.map(c => (
-                      <button
-                        key={c.value}
-                        onClick={() => setForm(f => ({ ...f, couleur: c.value }))}
-                        className={`w-6 h-6 rounded-full ${c.bg} border-2 transition-all ${form.couleur === c.value ? 'border-slate-800 scale-110' : 'border-transparent'}`}
-                        title={c.label}
-                      />
-                    ))}
+              <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '75vh' }}>
+                <div className="flex min-w-[700px]">
+
+                  {/* Colonne heures */}
+                  <div className="w-16 shrink-0 relative" style={{ height: GRID_H + SLOT_H }}>
+                    <div className="h-[4.5rem] border-b border-slate-100" /> {/* en-tête vide */}
+                    <div className="relative" style={{ height: GRID_H }}>
+                      {TIME_RULER.map((t, i) => (
+                        <div
+                          key={t}
+                          className="absolute right-2 flex items-center"
+                          style={{ top: i * SLOT_H - 8, height: SLOT_H }}
+                        >
+                          <span className={`text-[9px] font-black ${t.endsWith(':00') ? 'text-slate-500' : 'text-slate-300'} tracking-wide`}>{t}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm hover:bg-slate-50">
-                  Annuler
-                </button>
-                <button
-                  onClick={handleSaveCreneau}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700"
-                >
-                  <Save size={14} /> Enregistrer
-                </button>
-              </div>
-            </div>
-          )}
 
-          {/* Grille EDT */}
-          {creneauxNiveau.length === 0 && !showForm ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center">
-              <CalendarDays size={40} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-500 font-medium">
-                Aucun créneau pour {niveauInfo.label} — semaine du {formatShortDate(edtWeek)}
-              </p>
-              {canModify && (
-                <p className="text-xs text-slate-400 mt-1">Cliquez sur "Ajouter un créneau" pour commencer</p>
-              )}
-            </div>
-          ) : creneauxNiveau.length > 0 && (
-            <div className={`bg-white rounded-2xl border overflow-hidden ${isPastWeek ? 'border-amber-200' : 'border-slate-200'}`}>
-              {/* En-têtes avec dates */}
-              <div className={`grid grid-cols-6 border-b ${isPastWeek ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-200'}`}>
-                <div className="p-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Horaire</div>
-                {JOURS.map((j, i) => (
-                  <div key={j} className={`p-3 text-center border-l ${isPastWeek ? 'border-amber-100' : 'border-slate-200'}`}>
-                    <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">{j}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{formatShortDate(edtWeekDays[i])}</p>
-                  </div>
-                ))}
-              </div>
+                  {/* Colonnes jours */}
+                  {JOURS.map((jour, idx) => {
+                    const isToday = idx === todayIdx;
+                    const colDateStr = toISO(weekDates[idx]);
+                    const reposInfo = findRepos(planningConfig?.joursRepos, colDateStr);
+                    const isConge = reposInfo?.type === 'CONGE';
+                    const isFerie = reposInfo?.type === 'FERIE';
+                    const isReposDay = !!reposInfo;
 
-              {/* Lignes horaires */}
-              <div className="divide-y divide-slate-100">
-                {CRENEAUX_HORAIRES.slice(0, -1).map(heure => {
-                  const hasContent = (Object.values(creneauxParJour) as Creneau[][]).some(list =>
-                    list.some(c => c.heureDebut <= heure && c.heureFin > heure)
-                  );
-                  if (!hasContent && CRENEAUX_HORAIRES.indexOf(heure) % 2 !== 0) return null;
-                  return (
-                    <div key={heure} className="grid grid-cols-6 min-h-[40px]">
-                      <div className="px-3 py-2 text-xs text-slate-400 font-mono flex items-start pt-2">{heure}</div>
-                      {[0, 1, 2, 3, 4].map(jour => {
-                        const creneau = creneauxParJour[jour]?.find(c => c.heureDebut === heure);
-                        if (!creneau) return <div key={jour} className="border-l border-slate-100 min-h-[40px]" />;
-                        const col = getCouleur(creneau.couleur);
-                        return (
-                          <div key={jour} className={`border-l border-slate-100 p-2 ${col.bg} border-l-2 ${col.border}`}>
-                            <p className={`text-xs font-bold ${col.text} leading-tight`}>{creneau.matiere}</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">{creneau.heureDebut}–{creneau.heureFin}</p>
-                            {creneau.enseignant && (
-                              <p className="text-[10px] text-slate-400 truncate">{creneau.enseignant}</p>
-                            )}
-                            {canModify && (
-                              <div className="flex gap-1 mt-1">
-                                <button onClick={() => handleOpenForm(creneau)} className="p-0.5 rounded hover:bg-white/60" title="Modifier">
-                                  <Edit3 size={10} className="text-slate-500" />
-                                </button>
-                                <button onClick={() => handleDeleteCreneau(creneau.id)} className="p-0.5 rounded hover:bg-white/60" title="Supprimer">
-                                  <Trash2 size={10} className="text-rose-400" />
-                                </button>
+                    return (
+                      <div key={jour} className="flex-1 min-w-[120px] border-l border-slate-100">
+                        {/* En-tête jour */}
+                        <div className={`h-[4.5rem] flex flex-col items-center justify-center gap-0.5 border-b border-slate-100 ${
+                          isToday ? 'bg-indigo-600' : isFerie ? 'bg-rose-100' : isConge ? 'bg-amber-50' : 'bg-slate-50'
+                        }`}>
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${
+                            isToday ? 'text-white' : isFerie ? 'text-rose-600' : isConge ? 'text-amber-600' : 'text-slate-500'
+                          }`}>{jour}</span>
+                          <span className={`text-[9px] font-bold ${isToday ? 'text-white/80' : 'text-slate-400'}`}>
+                            {formatShortFr(weekDates[idx])}
+                          </span>
+                          {isConge && !isToday && (
+                            <span className="flex items-center gap-0.5 text-[7px] font-black text-amber-500 uppercase tracking-widest mt-0.5">
+                              <Umbrella size={7} /> Congé
+                            </span>
+                          )}
+                          {isFerie && !isToday && (
+                            <span className="flex items-center gap-0.5 text-[7px] font-black text-rose-500 uppercase tracking-widest mt-0.5">
+                              <Star size={7} /> Jour férié
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Corps du jour */}
+                        <div className="relative" style={{ height: GRID_H }}>
+                          {/* Lignes horizontales */}
+                          {TIME_RULER.map((t, i) => (
+                            <div
+                              key={t}
+                              className={`absolute left-0 right-0 border-t ${t.endsWith(':00') ? 'border-slate-200' : 'border-slate-100'}`}
+                              style={{ top: i * SLOT_H }}
+                            />
+                          ))}
+
+                          {/* Fond repos/férié */}
+                          {isReposDay && !isToday && (
+                            <div className={`absolute inset-0 pointer-events-none z-10 flex items-center justify-center
+                              ${isFerie ? 'bg-rose-50/70' : 'bg-amber-50/70'}`}
+                              style={{ backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 12px, ${isFerie ? 'rgba(255,228,230,0.5)' : 'rgba(254,243,199,0.5)'} 12px, ${isFerie ? 'rgba(255,228,230,0.5)' : 'rgba(254,243,199,0.5)'} 24px)` }}>
+                              <div className={`flex flex-col items-center gap-1 opacity-40 select-none`}
+                                style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                                {isFerie
+                                  ? <><Star size={12} className="text-rose-400" /><span className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Jour Férié</span></>
+                                  : <><Umbrella size={12} className="text-amber-400" /><span className="text-[8px] font-black text-amber-400 uppercase tracking-widest">Congé</span></>
+                                }
                               </div>
+                            </div>
+                          )}
+
+                          {/* Fond aujourd'hui */}
+                          {isToday && <div className="absolute inset-0 bg-indigo-50/30 pointer-events-none" />}
+
+                          {/* Indicateur heure courante */}
+                          {isToday && currentY >= 0 && (
+                            <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: currentY }}>
+                              <div className="flex items-center gap-1">
+                                <div className="w-2 h-2 bg-rose-500 rounded-full shrink-0" />
+                                <div className="flex-1 h-px bg-rose-500" />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Créneaux */}
+                          {(creneauxParJour[idx] || []).map(c => {
+                            const col = COULEURS[c.couleur] || COULEURS.blue;
+                            const top = tY(c.heureDebut);
+                            const height = tH(c.heureDebut, c.heureFin);
+                            return (
+                              <div
+                                key={c.id}
+                                className={`absolute left-1 right-1 rounded-xl ${col.block} shadow-sm overflow-hidden group cursor-pointer transition-all hover:shadow-md hover:scale-[1.01]`}
+                                style={{ top: top + 2, height: height - 4 }}
+                                onClick={() => canEdit && openModal(c)}
+                              >
+                                <div className="p-2 h-full flex flex-col justify-between">
+                                  <div>
+                                    <p className="text-[10px] font-black text-slate-800 leading-tight truncate">{c.matiere}</p>
+                                    {c.enseignant && (
+                                      <p className="text-[9px] font-bold text-slate-500 truncate mt-0.5">{empNom(c.enseignant)}</p>
+                                    )}
+                                  </div>
+                                  <p className="text-[8px] font-bold text-slate-400">{c.heureDebut}–{c.heureFin}</p>
+                                </div>
+                                {canEdit && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); handleDelete(c.id); }}
+                                    className="absolute top-1 right-1 p-0.5 bg-white/80 rounded-lg text-rose-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-50"
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {classes.length === 0 && (
+            <div className="py-20 flex flex-col items-center gap-4 bg-white rounded-[2.5rem] border border-dashed border-slate-200 text-slate-400">
+              <School size={32} />
+              <p className="text-[10px] font-bold uppercase tracking-widest">Aucune classe créée. Commencez par créer des classes.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB — CALENDRIER (planning récurrent)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {tab === 'calendrier' && (
+        <div className="space-y-4 animate-in fade-in duration-300">
+
+          {/* Sélecteur classe + navigation semaine */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              {classes.map(c => (
+                <button key={c.id} onClick={() => setSelectedClasseId(c.id)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${selectedClasseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}>
+                  {c.nom}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setWeekStart(w => addDays(w, -7))}
+                className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-100 transition-all">
+                <ChevronLeft size={16} />
+              </button>
+              <button onClick={() => setWeekStart(getMondayOfWeek(new Date()))}
+                className="px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">
+                Aujourd'hui
+              </button>
+              <button onClick={() => setWeekStart(w => addDays(w, 7))}
+                className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-100 transition-all">
+                <ChevronRight size={16} />
+              </button>
+              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-2">
+                {formatShortFr(weekStart)} – {formatShortFr(addDays(weekStart, 4))} {weekStart.getFullYear()}
+              </span>
+              {loadingExceptions && <RefreshCw size={14} className="animate-spin text-indigo-400 ml-1" />}
+
+              {canEdit && (
+                <button
+                  onClick={copyWeekToNext}
+                  disabled={copyingWeek}
+                  title="Dupliquer les modifications de cette semaine vers la semaine suivante"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed ml-1"
+                >
+                  {copyingWeek ? <RefreshCw size={12} className="animate-spin" /> : <Copy size={12} />}
+                  Dupliquer →
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Avertissement si pas de config */}
+          {!planningConfig && (
+            <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-5 flex items-center gap-4">
+              <AlertCircle size={20} className="text-amber-500 shrink-0" />
+              <div>
+                <p className="text-sm font-black text-amber-800">Période scolaire non configurée</p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  Allez dans l'onglet <strong>Grille type</strong> → <strong>Configurer</strong> pour définir les dates de l'année scolaire.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Grille semaine */}
+          {selectedClasse && (
+            <div className="grid grid-cols-5 gap-3">
+              {weekDates.map((date, idx) => {
+                const dateStr = toISO(date);
+                const isToday = dateStr === isoToday();
+                const isInPeriod = planningConfig
+                  ? dateStr >= planningConfig.dateDebut && dateStr <= planningConfig.dateFin
+                  : false;
+                const reposInfo = findRepos(planningConfig?.joursRepos, dateStr);
+                const isRepos = !!reposInfo;
+                const isConge = reposInfo?.type === 'CONGE';
+                const isFerie = reposInfo?.type === 'FERIE';
+                const dayCreneaux = creneauxParJour[idx] || [];
+                const dayExceptions = exceptions.filter(e => e.dateException === dateStr);
+
+                return (
+                  <div key={dateStr}
+                    className={`rounded-[2rem] border overflow-hidden flex flex-col transition-all ${
+                      isToday    ? 'border-indigo-300 shadow-lg shadow-indigo-50'
+                      : isFerie  ? 'border-rose-200 shadow-sm shadow-rose-50'
+                      : isConge  ? 'border-amber-200 shadow-sm shadow-amber-50'
+                      : 'border-slate-100'
+                    } ${!isInPeriod ? 'opacity-50' : ''}`}>
+
+                    {/* En-tête du jour */}
+                    <div className={`p-4 ${
+                      isToday   ? 'bg-indigo-600'
+                      : isFerie ? 'bg-rose-50'
+                      : isConge ? 'bg-amber-50'
+                      : 'bg-slate-50'
+                    }`}>
+                      <p className={`text-[10px] font-black uppercase tracking-widest ${
+                        isToday   ? 'text-white'
+                        : isFerie ? 'text-rose-600'
+                        : isConge ? 'text-amber-600'
+                        : 'text-slate-500'
+                      }`}>
+                        {JOURS[idx]}
+                      </p>
+                      <p className={`text-base font-black mt-0.5 ${isToday ? 'text-white' : 'text-slate-800'}`}>
+                        {formatShortFr(date)}
+                      </p>
+                      {isConge && !isToday && (
+                        <p className="flex items-center gap-1 text-[8px] font-black text-amber-600 uppercase tracking-widest mt-1">
+                          <Umbrella size={9} /> Congé
+                        </p>
+                      )}
+                      {isFerie && !isToday && (
+                        <p className="flex items-center gap-1 text-[8px] font-black text-rose-600 uppercase tracking-widest mt-1">
+                          <Star size={9} /> Jour Férié
+                        </p>
+                      )}
+                      {!isInPeriod && planningConfig && (
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-1">Hors période</p>
+                      )}
+                      {!isInPeriod && !planningConfig && (
+                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-1">Non configuré</p>
+                      )}
+                    </div>
+
+                    {/* Corps : créneaux du jour */}
+                    <div className="p-3 space-y-2 flex-1">
+                      {(!isInPeriod || isRepos) ? (
+                        <div className={`flex flex-col items-center justify-center py-6 gap-2 ${isFerie ? 'text-rose-300' : isConge ? 'text-amber-300' : 'text-slate-200'}`}>
+                          {isFerie && <Star size={18} />}
+                          {isConge && <Umbrella size={18} />}
+                          <p className="text-[8px] font-black uppercase tracking-widest">
+                            {isFerie ? 'Jour Férié' : isConge ? 'En Congé' : '—'}
+                          </p>
+                        </div>
+                      ) : dayCreneaux.length === 0 ? (
+                        <p className="text-center text-[8px] font-bold text-slate-300 uppercase tracking-widest py-4">Pas de cours</p>
+                      ) : dayCreneaux.map(c => {
+                        const exception = dayExceptions.find(e => e.creneauId === c.id);
+                        const isCancelled = exception?.typeException === 'ANNULE';
+                        const isModified  = exception?.typeException === 'MODIFIE';
+                        const displayMatiere = isModified && exception?.matiereOverride ? exception.matiereOverride : c.matiere;
+                        const displayDebut   = isModified && exception?.heureDebutOverride ? exception.heureDebutOverride : c.heureDebut;
+                        const displayFin     = isModified && exception?.heureFinOverride   ? exception.heureFinOverride   : c.heureFin;
+                        const col = COULEURS[c.couleur] || COULEURS.blue;
+
+                        const isLocked = isFerie && !exception;
+                        return (
+                          <div key={c.id}
+                            onClick={() => canEdit && !isLocked && openExceptionModal(c, dateStr, exception)}
+                            title={isLocked ? 'Jour férié — cours non dispensé' : undefined}
+                            className={`rounded-xl p-2.5 border transition-all select-none
+                              ${isLocked ? 'opacity-40 cursor-not-allowed bg-rose-50/60 border-rose-100' : 'cursor-pointer hover:shadow-md'}
+                              ${isCancelled ? 'opacity-40 bg-slate-50 border-slate-200' : !isLocked ? col.block : ''}
+                              ${isModified  ? 'ring-2 ring-orange-400' : ''}
+                            `}
+                          >
+                            {isLocked && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Star size={9} className="text-rose-400" />
+                                <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Férié</span>
+                              </div>
+                            )}
+                            {isCancelled && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Ban size={9} className="text-rose-500" />
+                                <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest">Annulé</span>
+                              </div>
+                            )}
+                            {isModified && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <Edit3 size={9} className="text-orange-500" />
+                                <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Modifié</span>
+                              </div>
+                            )}
+                            <p className={`text-[9px] font-black truncate ${isCancelled || isLocked ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                              {displayMatiere}
+                            </p>
+                            <p className="text-[8px] font-bold text-slate-400 mt-0.5">
+                              {displayDebut}–{displayFin}
+                            </p>
+                            {exception?.note && (
+                              <p className="text-[8px] text-slate-400 mt-1 italic truncate">{exception.note}</p>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                  );
-                }).filter(Boolean)}
-              </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-              {/* Pied de grille — indicateur archive */}
-              {isPastWeek && (
-                <div className="p-3 bg-amber-50 border-t border-amber-100 text-center">
-                  <p className="text-xs text-amber-600 font-medium">
-                    📁 Semaine archivée — vous consultez un emploi du temps passé
-                  </p>
-                </div>
-              )}
+          {classes.length === 0 && (
+            <div className="py-20 flex flex-col items-center gap-4 bg-white rounded-[2.5rem] border border-dashed border-slate-200 text-slate-400">
+              <School size={32} />
+              <p className="text-[10px] font-bold uppercase tracking-widest">Aucune classe créée.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* ── ONGLET CAHIER DE TEXTE ─────────────────────────────────────────── */}
-      {activeTab === 'cahier' && (
-        <div className="space-y-5">
-          {/* Contrôles navigation semaine + niveau */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              {NIVEAUX.map(n => (
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB — MON PLANNING
+      ══════════════════════════════════════════════════════════════════════ */}
+      {tab === 'mon-planning' && (
+        <div className="space-y-4 animate-in fade-in duration-300">
+
+          {/* Grille personnelle */}
+          {myCreneaux.length === 0 ? (
+            <div className="py-20 flex flex-col items-center gap-4 bg-white rounded-[2.5rem] border border-dashed border-slate-200 text-slate-400">
+              <CalendarDays size={32} />
+              <p className="text-[10px] font-bold uppercase tracking-widest">Aucun cours planifié pour le moment</p>
+              <p className="text-[9px] text-slate-300 font-bold">Contactez l'administration pour la mise en place de votre planning.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {JOURS.map((jour, idx) => {
+                const list = myCreneauxParJour[idx] || [];
+                const isToday = idx === todayIdx;
+                const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+
+                return (
+                  <div key={jour} className={`bg-white rounded-[2rem] border shadow-sm overflow-hidden ${isToday ? 'border-indigo-200 shadow-indigo-50' : 'border-slate-100'}`}>
+                    {/* En-tête jour */}
+                    <div className={`p-4 flex items-center justify-between ${isToday ? 'bg-indigo-600' : 'bg-slate-50'}`}>
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${isToday ? 'text-white' : 'text-slate-500'}`}>{jour}</span>
+                      {isToday && (
+                        <span className="text-[8px] font-black bg-white/20 text-white px-2 py-0.5 rounded-full">Aujourd'hui</span>
+                      )}
+                    </div>
+
+                    {/* Cours du jour */}
+                    <div className="p-3 space-y-2">
+                      {list.length === 0 ? (
+                        <p className="text-center text-[9px] font-bold text-slate-300 uppercase tracking-widest py-4">Pas de cours</p>
+                      ) : list.map(c => {
+                        const col = COULEURS[c.couleur] || COULEURS.blue;
+                        const [sh, sm] = c.heureDebut.split(':').map(Number);
+                        const [eh, em] = c.heureFin.split(':').map(Number);
+                        const isActive = isToday && sh * 60 + sm <= nowMins && nowMins < eh * 60 + em;
+                        const isPast   = isToday && eh * 60 + em <= nowMins;
+                        return (
+                          <div
+                            key={c.id}
+                            className={`rounded-2xl p-3 border transition-all ${isActive ? 'ring-2 ring-indigo-400 shadow-lg ' + col.block : isPast ? 'opacity-50 ' + col.block : col.block}`}
+                          >
+                            {isActive && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                                <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">En cours</span>
+                              </div>
+                            )}
+                            <p className="text-xs font-black text-slate-900 truncate">{c.matiere}</p>
+                            {c.classe && (
+                              <p className="text-[9px] font-bold text-indigo-600 truncate">{c.classe.nom}</p>
+                            )}
+                            <p className="text-[9px] font-bold text-slate-400 mt-1">{c.heureDebut} – {c.heureFin}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Footer stats */}
+                    <div className="px-4 pb-3">
+                      <div className={`text-[9px] font-black uppercase tracking-widest ${isToday ? 'text-indigo-500' : 'text-slate-300'}`}>
+                        {list.length} cours
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB — CAHIER DE TEXTE
+      ══════════════════════════════════════════════════════════════════════ */}
+      {tab === 'cahier' && (
+        <div className="space-y-4 animate-in fade-in duration-300">
+
+          {/* Contrôles cahier */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              {classes.map(c => (
                 <button
-                  key={n.value}
-                  onClick={() => setCahierNiveau(n.value)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all
-                    ${cahierNiveau === n.value ? 'bg-teal-600 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  key={c.id}
+                  onClick={() => setCahierClasseId(c.id)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${cahierClasseId === c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
                 >
-                  {n.label}
+                  {c.nom}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setCahierWeek(addDays(cahierWeek, -7)); setShowEntryForm(false); }}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50"
-              >
-                <ChevronLeft size={16} className="text-slate-600" />
-              </button>
-              <div className="text-sm font-semibold text-slate-700 min-w-[180px] text-center">
-                Semaine du {new Date(cahierWeek + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </div>
-              <button
-                onClick={() => { setCahierWeek(addDays(cahierWeek, 7)); setShowEntryForm(false); }}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50"
-              >
-                <ChevronRight size={16} className="text-slate-600" />
-              </button>
-              <button
-                onClick={() => { setCahierWeek(startOfWeek(isoToday())); setShowEntryForm(false); }}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200"
-              >
-                Aujourd'hui
-              </button>
-            </div>
+            <button
+              onClick={() => openCahier()}
+              className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+            >
+              <Plus size={12} /> Nouvelle entrée
+            </button>
           </div>
 
-          {/* Formulaire entrée cahier */}
-          {showEntryForm && canModify && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="font-bold text-slate-800">
-                  {editingEntry ? "Modifier l'entrée" : 'Nouvelle entrée'} — {formatDate(entryForm.date)}
-                </p>
-                <button onClick={() => setShowEntryForm(false)} className="p-1 rounded-lg hover:bg-slate-100">
-                  <X size={16} className="text-slate-500" />
-                </button>
+          {/* Entrées du cahier filtrées par classe */}
+          {(() => {
+            const filtered = cahier.filter(e => e.classeId === cahierClasseId).sort((a, b) => b.date.localeCompare(a.date));
+            if (filtered.length === 0) {
+              return (
+                <div className="py-16 flex flex-col items-center gap-4 bg-white rounded-[2.5rem] border border-dashed border-slate-200 text-slate-400">
+                  <BookOpen size={28} />
+                  <p className="text-[10px] font-bold uppercase tracking-widest">Aucune entrée dans ce cahier</p>
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-3">
+                {filtered.map(entry => {
+                  const dt = new Date(entry.date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+                  return (
+                    <div key={entry.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 group hover:border-indigo-200 transition-all">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-3 flex-wrap">
+                            <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl uppercase tracking-widest">{entry.matiere}</span>
+                            <span className="text-[9px] font-bold text-slate-400 capitalize">{dt}</span>
+                          </div>
+                          <p className="text-sm text-slate-800 font-medium mb-2">{entry.contenu}</p>
+                          {entry.devoirs && (
+                            <div className="mt-2 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                              <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-1">Devoirs</p>
+                              <p className="text-xs text-amber-800">{entry.devoirs}</p>
+                            </div>
+                          )}
+                          <p className="text-[9px] font-bold text-slate-300 mt-3">{entry.auteur}</p>
+                        </div>
+                        {canEdit && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                            <button onClick={() => openCahier(entry)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit3 size={14} /></button>
+                            <button onClick={() => deleteCahierEntry(entry.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={14} /></button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Matière *</label>
-                  <select
-                    value={entryForm.matiere}
-                    onChange={e => setEntryForm(f => ({ ...f, matiere: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {MATIERES_PAR_NIVEAU[cahierNiveau].map(m => <option key={m} value={m}>{m}</option>)}
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ══ MODAL CRÉNEAU ══════════════════════════════════════════════════════ */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">{editing ? 'Modifier le créneau' : 'Nouveau créneau'}</h3>
+                {selectedClasse && <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mt-0.5">{selectedClasse.nom}</p>}
+              </div>
+              <button onClick={() => setShowModal(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
+            </div>
+            <div className="p-8 space-y-4">
+
+              {/* Matière */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Matière</label>
+                <select value={form.matiere} onChange={e => setForm(f => ({ ...f, matiere: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                  <option value="">— Sélectionner —</option>
+                  {matieres.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+
+              {/* Enseignant */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Enseignant</label>
+                <select value={form.enseignantId || ''} onChange={e => setForm(f => ({ ...f, enseignantId: e.target.value || '' }))}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                  <option value="">— Aucun —</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>{empNom(e)}</option>)}
+                </select>
+              </div>
+
+              {/* Jour */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Jour</label>
+                <div className="flex gap-2">
+                  {JOURS.map((j, i) => (
+                    <button key={j} type="button" onClick={() => setForm(f => ({ ...f, jour: i }))}
+                      className={`flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${form.jour === i ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}>
+                      {j.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Horaires */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Début</label>
+                  <select value={form.heureDebut} onChange={e => setForm(f => ({ ...f, heureDebut: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                    {HORAIRES.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Auteur</label>
-                  <input
-                    value={entryForm.auteur}
-                    onChange={e => setEntryForm(f => ({ ...f, auteur: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Contenu du cours *</label>
-                  <textarea
-                    rows={4}
-                    value={entryForm.contenu}
-                    onChange={e => setEntryForm(f => ({ ...f, contenu: e.target.value }))}
-                    placeholder="Décrivez les notions abordées, les activités réalisées..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-slate-500 block mb-1">Devoirs / Leçons à apprendre</label>
-                  <textarea
-                    rows={2}
-                    value={entryForm.devoirs}
-                    onChange={e => setEntryForm(f => ({ ...f, devoirs: e.target.value }))}
-                    placeholder="Indiquez les devoirs ou leçons pour la prochaine fois..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Fin</label>
+                  <select value={form.heureFin} onChange={e => setForm(f => ({ ...f, heureFin: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                    {HORAIRES.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setShowEntryForm(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm hover:bg-slate-50">Annuler</button>
-                <button
-                  onClick={handleSaveEntry}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700"
-                >
+
+              {/* Couleur */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Couleur</label>
+                <div className="flex gap-2 flex-wrap">
+                  {Object.entries(COULEURS).map(([k, v]) => (
+                    <button key={k} type="button" onClick={() => setForm(f => ({ ...f, couleur: k }))}
+                      className={`w-8 h-8 rounded-full ${v.bar} transition-all ${form.couleur === k ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : 'hover:scale-105'}`} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setShowModal(false)}
+                  className="flex-1 px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                  Annuler
+                </button>
+                <button type="button" onClick={handleSave}
+                  className="flex-1 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-200">
                   <Save size={14} /> Enregistrer
                 </button>
               </div>
             </div>
-          )}
-
-          {/* Vue semaine du cahier */}
-          <div className="grid md:grid-cols-5 gap-3">
-            {weekDays.map(date => {
-              const entries = entriesByDay[date] || [];
-              const isToday = date === isoToday();
-              return (
-                <div
-                  key={date}
-                  className={`bg-white rounded-2xl border overflow-hidden
-                    ${isToday ? 'border-teal-400 ring-1 ring-teal-400' : 'border-slate-200'}`}
-                >
-                  <div className={`p-3 border-b text-center ${isToday ? 'bg-teal-50 border-teal-200' : 'bg-slate-50 border-slate-100'}`}>
-                    <p className={`text-xs font-bold uppercase tracking-wide ${isToday ? 'text-teal-700' : 'text-slate-600'}`}>
-                      {new Date(date + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short' })}
-                    </p>
-                    <p className={`text-lg font-black ${isToday ? 'text-teal-800' : 'text-slate-800'}`}>
-                      {new Date(date + 'T00:00:00').getDate()}
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      {new Date(date + 'T00:00:00').toLocaleDateString('fr-FR', { month: 'short' })}
-                    </p>
-                  </div>
-                  <div className="p-2 space-y-2 min-h-[120px]">
-                    {entries.length === 0 && (
-                      <p className="text-xs text-slate-300 text-center pt-4">—</p>
-                    )}
-                    {entries.map(entry => (
-                      <div key={entry.id} className="bg-teal-50 border border-teal-100 rounded-xl p-2">
-                        <div className="flex items-start justify-between gap-1">
-                          <p className="text-xs font-bold text-teal-800 leading-tight">{entry.matiere}</p>
-                          {canModify && (
-                            <div className="flex gap-0.5 shrink-0">
-                              <button onClick={() => handleOpenEntryForm(date, entry)} className="p-0.5 hover:bg-teal-100 rounded">
-                                <Edit3 size={10} className="text-teal-600" />
-                              </button>
-                              <button onClick={() => handleDeleteEntry(entry.id)} className="p-0.5 hover:bg-rose-100 rounded">
-                                <Trash2 size={10} className="text-rose-400" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-slate-600 mt-1 line-clamp-3">{entry.contenu}</p>
-                        {entry.devoirs && (
-                          <p className="text-[10px] text-amber-700 mt-1">📝 {entry.devoirs}</p>
-                        )}
-                        <p className="text-[9px] text-slate-400 mt-1">{entry.auteur}</p>
-                      </div>
-                    ))}
-                    {canModify && (
-                      <button
-                        onClick={() => handleOpenEntryForm(date)}
-                        className="w-full text-center text-[10px] text-slate-300 hover:text-teal-500 py-1.5 border border-dashed border-slate-200 hover:border-teal-300 rounded-xl transition-colors"
-                      >
-                        + Ajouter
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
           </div>
+        </div>
+      )}
 
-          {/* Résumé de la semaine */}
-          <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-wrap gap-6 items-center">
-            <div>
-              <p className="text-2xl font-black text-slate-800">
-                {weekDays.reduce((n, d) => n + (entriesByDay[d]?.length ?? 0), 0)}
-              </p>
-              <p className="text-xs text-slate-500">entrées cette semaine</p>
+      {/* ══ MODAL CAHIER ══════════════════════════════════════════════════════ */}
+      {showCahierModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">{editingCahier ? 'Modifier l\'entrée' : 'Nouvelle entrée'}</h3>
+              <button onClick={() => setShowCahierModal(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
             </div>
-            <div>
-              <p className="text-2xl font-black text-amber-700">
-                {weekDays.reduce((n, d) => n + (entriesByDay[d]?.filter(e => e.devoirs).length ?? 0), 0)}
-              </p>
-              <p className="text-xs text-slate-500">avec devoirs</p>
+            <div className="p-8 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Date</label>
+                  <input type="date" value={cahierForm.date} onChange={e => setCahierForm(f => ({ ...f, date: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Matière</label>
+                  <select value={cahierForm.matiere} onChange={e => setCahierForm(f => ({ ...f, matiere: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                    <option value="">— Sélectionner —</option>
+                    {(classes.find(c => c.id === cahierForm.classeId) ? MATIERES[classes.find(c => c.id === cahierForm.classeId)!.niveau] || [] : []).map((m: string) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Contenu du cours</label>
+                <textarea value={cahierForm.contenu} onChange={e => setCahierForm(f => ({ ...f, contenu: e.target.value }))} rows={3}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 resize-none" placeholder="Décrivez ce qui a été fait en classe..." />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Devoirs / Exercices</label>
+                <textarea value={cahierForm.devoirs} onChange={e => setCahierForm(f => ({ ...f, devoirs: e.target.value }))} rows={2}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 resize-none" placeholder="Devoirs à faire pour le prochain cours..." />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowCahierModal(false)}
+                  className="flex-1 px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                  Annuler
+                </button>
+                <button type="button" onClick={saveCahierEntry}
+                  className="flex-1 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center justify-center gap-2">
+                  <Save size={14} /> Enregistrer
+                </button>
+              </div>
             </div>
-            <div className="flex-1 text-right">
-              <p className="text-xs text-slate-400">
-                {getNiveauInfo(cahierNiveau).label} · {getNiveauInfo(cahierNiveau).cycle}
-              </p>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL CONFIG PÉRIODE SCOLAIRE ═════════════════════════════════════ */}
+      {showConfigModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowConfigModal(false); }}>
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-3">
+                  <Settings size={18} className="text-indigo-500" /> Période scolaire
+                </h3>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Année {anneeEffective}</p>
+              </div>
+              <button onClick={() => setShowConfigModal(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
+            </div>
+            <div className="p-8 space-y-5">
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Date de début</label>
+                  <input type="date" value={configForm.dateDebut}
+                    onChange={e => setConfigForm(f => ({ ...f, dateDebut: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Date de fin</label>
+                  <input type="date" value={configForm.dateFin}
+                    onChange={e => setConfigForm(f => ({ ...f, dateFin: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Jours de congé / jours fériés</label>
+
+                {/* Sélecteur type */}
+                <div className="flex gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-100">
+                  <button type="button"
+                    onClick={() => setConfigForm(f => ({ ...f, newTypeRepos: 'CONGE' }))}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${configForm.newTypeRepos === 'CONGE' ? 'bg-amber-500 text-white shadow-md shadow-amber-100' : 'text-slate-400 hover:text-amber-500'}`}>
+                    <Umbrella size={10} /> Congé scolaire
+                  </button>
+                  <button type="button"
+                    onClick={() => setConfigForm(f => ({ ...f, newTypeRepos: 'FERIE' }))}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${configForm.newTypeRepos === 'FERIE' ? 'bg-rose-500 text-white shadow-md shadow-rose-100' : 'text-slate-400 hover:text-rose-500'}`}>
+                    <Star size={10} /> Jour Férié
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <input type="date" value={configForm.newJourRepos}
+                    onChange={e => setConfigForm(f => ({ ...f, newJourRepos: e.target.value }))}
+                    className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                  <button
+                    onClick={() => {
+                      if (!configForm.newJourRepos || configForm.joursRepos.some(j => j.date === configForm.newJourRepos)) return;
+                      setConfigForm(f => ({
+                        ...f,
+                        joursRepos: [...f.joursRepos, { date: f.newJourRepos, type: f.newTypeRepos }].sort((a, b) => a.date.localeCompare(b.date)),
+                        newJourRepos: '',
+                      }));
+                    }}
+                    className={`px-5 py-3 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${configForm.newTypeRepos === 'FERIE' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
+                    <Plus size={14} />
+                  </button>
+                </div>
+
+                {configForm.joursRepos.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {configForm.joursRepos.map(jr => (
+                      <span key={jr.date} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black border ${jr.type === 'FERIE' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                        {jr.type === 'FERIE' ? <Star size={9} /> : <Umbrella size={9} />}
+                        {formatDateFr(jr.date)}
+                        <button onClick={() => setConfigForm(f => ({ ...f, joursRepos: f.joursRepos.filter(x => x.date !== jr.date) }))}
+                          className={`${jr.type === 'FERIE' ? 'text-rose-400 hover:text-rose-600' : 'text-amber-400 hover:text-amber-600'} transition-colors`}>
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {configForm.joursRepos.length === 0 && (
+                  <p className="text-[9px] text-slate-300 font-bold px-2">Aucun jour ajouté</p>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowConfigModal(false)}
+                  className="flex-1 px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                  Annuler
+                </button>
+                <button onClick={saveConfig} disabled={savingConfig}
+                  className="flex-1 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-200 disabled:opacity-60">
+                  {savingConfig ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL EXCEPTION ═══════════════════════════════════════════════════ */}
+      {showExceptionModal && exceptionTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowExceptionModal(false); }}>
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">Exception</h3>
+                <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mt-0.5">
+                  {exceptionTarget.creneau.matiere} · {formatDateFr(exceptionTarget.date)}
+                </p>
+              </div>
+              <button onClick={() => setShowExceptionModal(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
+            </div>
+            <div className="p-8 space-y-5">
+
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Type d'exception</label>
+                <div className="flex gap-3">
+                  {([['ANNULE', 'Annuler ce cours', 'rose'], ['MODIFIE', 'Modifier ce cours', 'orange']] as const).map(([val, label, color]) => (
+                    <button key={val} type="button"
+                      onClick={() => setExceptionForm(f => ({ ...f, typeException: val }))}
+                      className={`flex-1 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all
+                        ${exceptionForm.typeException === val
+                          ? val === 'ANNULE' ? 'bg-rose-600 text-white border-rose-600' : 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>
+                      {val === 'ANNULE' ? <><Ban size={12} className="inline mr-1" />{label}</> : <><Edit3 size={12} className="inline mr-1" />{label}</>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {exceptionForm.typeException === 'MODIFIE' && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Nouvelle matière (optionnel)</label>
+                    <input value={exceptionForm.matiereOverride}
+                      onChange={e => setExceptionForm(f => ({ ...f, matiereOverride: e.target.value }))}
+                      placeholder={exceptionTarget.creneau.matiere}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Heure début</label>
+                      <select value={exceptionForm.heureDebutOverride}
+                        onChange={e => setExceptionForm(f => ({ ...f, heureDebutOverride: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                        {HORAIRES.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Heure fin</label>
+                      <select value={exceptionForm.heureFinOverride}
+                        onChange={e => setExceptionForm(f => ({ ...f, heureFinOverride: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                        {HORAIRES.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Note / Motif (optionnel)</label>
+                <input value={exceptionForm.note}
+                  onChange={e => setExceptionForm(f => ({ ...f, note: e.target.value }))}
+                  placeholder="Ex: Fête nationale, prof absent..."
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                {exceptionTarget.existing && (
+                  <button onClick={() => deleteException(exceptionTarget.existing!.id)}
+                    className="px-5 py-4 bg-rose-50 text-rose-600 border border-rose-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all flex items-center gap-2">
+                    <Trash2 size={12} /> Retirer
+                  </button>
+                )}
+                <button onClick={() => setShowExceptionModal(false)}
+                  className="flex-1 px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                  Annuler
+                </button>
+                <button onClick={saveException} disabled={savingException}
+                  className="flex-1 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                  {savingException ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL CONFIRMER SUPPRESSION ═══════════════════════════════════════ */}
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[600] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteId(null); }}
+        >
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Zone danger */}
+            <div className="bg-gradient-to-b from-rose-50 to-white px-8 pt-10 pb-6 flex flex-col items-center gap-4">
+              <div className="w-16 h-16 bg-rose-100 rounded-[1.5rem] flex items-center justify-center shadow-inner shadow-rose-200">
+                <Trash2 size={28} className="text-rose-500" />
+              </div>
+              <div className="text-center space-y-1">
+                <h3 className="text-xl font-black text-slate-900 tracking-tighter">Supprimer ce créneau ?</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cette action est définitive et irréversible.</p>
+              </div>
+            </div>
+            {/* Actions */}
+            <div className="px-6 pb-8 pt-2 flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 px-5 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={doDelete}
+                className="flex-1 px-5 py-4 bg-rose-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-rose-200"
+              >
+                <Trash2 size={13} /> Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL WHATSAPP ══════════════════════════════════════════════════════ */}
+      {showWA && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowWA(false); }}>
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center"><MessageCircle size={18} /></div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">Envoyer via WhatsApp</h3>
+              </div>
+              <button onClick={() => setShowWA(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
+            </div>
+            <div className="p-8 space-y-4">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Aperçu du message</label>
+                <textarea readOnly value={waTxt} rows={10}
+                  className="w-full text-xs font-mono bg-green-50 border border-green-200 rounded-2xl p-4 resize-none text-slate-700" />
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Numéro (optionnel)</label>
+                <input value={waPhone} onChange={e => setWaPhone(e.target.value)} placeholder="+221 77 000 00 00"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={async () => { try { await navigator.clipboard.writeText(waTxt); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch {} }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all ${copied ? 'border-green-300 bg-green-50 text-green-700' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
+                  {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier'}
+                </button>
+                <button
+                  onClick={() => { const ph = waPhone.replace(/\D/g,''); window.open(ph ? `https://wa.me/${ph}?text=${encodeURIComponent(waTxt)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(waTxt)}`, '_blank', 'noopener,noreferrer'); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all">
+                  <Send size={14} /> Ouvrir WhatsApp
+                </button>
+              </div>
             </div>
           </div>
         </div>

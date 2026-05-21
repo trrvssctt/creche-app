@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { useAnnee } from '../contexts/AnneeContext';
 import YearMonthPicker from './YearMonthPicker';
 import {
   StudentInvoiceData,
@@ -19,7 +20,6 @@ import {
 interface Classe { id: string; nom: string; niveau: string; nbEleves: number; capaciteMax: number; }
 interface EleveItem { id: string; nom: string; prenom: string; matricule?: string; niveau: string; classeId?: string; parent1?: any; }
 
-const ANNEE_COURANTE = `${new Date().getFullYear() - (new Date().getMonth() < 9 ? 1 : 0)}-${new Date().getFullYear() - (new Date().getMonth() < 9 ? 1 : 0) + 1}`;
 const NIVEAUX_LABELS: Record<string, string> = {
   CRECHE: 'Crèche', PS: 'Petite Section', MS: 'Moyenne Section', GS: 'Grande Section',
   CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
@@ -35,6 +35,7 @@ const FacturationMensuelle = ({
   tenantSettings?: any;
 }) => {
   const showToast = useToast();
+  const { annee: anneeScolaire, isReadOnly } = useAnnee();
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [classes, setClasses]   = useState<Classe[]>([]);
@@ -61,8 +62,8 @@ const FacturationMensuelle = ({
     setLoading(true);
     try {
       const [cls, elv, stt] = await Promise.all([
-        apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }),
-        apiClient.get('/eleves',  { params: { anneeScolaire: ANNEE_COURANTE, statut: 'INSCRIT' } }),
+        apiClient.get('/classes', { params: { anneeScolaire } }),
+        apiClient.get('/eleves',  { params: { anneeScolaire, statut: 'INSCRIT' } }),
         settings ? Promise.resolve(settings) : apiClient.get('/settings').catch(() => ({})),
       ]);
       setClasses(Array.isArray(cls) ? cls : []);
@@ -73,7 +74,7 @@ const FacturationMensuelle = ({
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line
+  }, [anneeScolaire]); // eslint-disable-line
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -249,6 +250,12 @@ const FacturationMensuelle = ({
         </button>
       </div>
 
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-amber-700 text-xs font-bold">
+          <Archive size={14} /> Année {anneeScolaire} — consultation uniquement, génération de factures désactivée
+        </div>
+      )}
+
       {/* ── Controls ─────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[200px]">
@@ -319,7 +326,7 @@ const FacturationMensuelle = ({
           )}
           <button
             onClick={handleGenerate}
-            disabled={selectedIds.size === 0 || generating || !selectedMonth}
+            disabled={selectedIds.size === 0 || generating || !selectedMonth || isReadOnly}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
           >
             {generating ? (
@@ -422,7 +429,7 @@ const FacturationMensuelle = ({
       </div>
 
       {/* ── Bottom FAB ────────────────────────────────────────────────────── */}
-      {selectedIds.size > 0 && !generating && (
+      {selectedIds.size > 0 && !generating && !isReadOnly && (
         <div className="fixed bottom-6 right-6 z-50">
           <button
             onClick={handleGenerate}

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import YearMonthPicker from './YearMonthPicker';
+import { useAnnee } from '../contexts/AnneeContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtAmt = (n: number | string) => Number(n || 0).toLocaleString('fr-FR');
@@ -178,6 +179,7 @@ const TreasuryReport: React.FC<{ payments: any[]; settings: any; dateFrom: strin
 
 // ─── Composant principal ───────────────────────────────────────────────────────
 const Payments = ({ currency, tenantSettings }: { currency: string; tenantSettings?: any }) => {
+  const { annee: anneeScolaire } = useAnnee();
   const [payments, setPayments]           = useState<any[]>([]);
   const [loading, setLoading]             = useState(true);
   const [showFilters, setShowFilters]     = useState(false);
@@ -234,7 +236,7 @@ const Payments = ({ currency, tenantSettings }: { currency: string; tenantSettin
   const fetchPayments = async () => {
     setLoading(true);
     try {
-      const data = await apiClient.get('/sales');
+      const data = await apiClient.get('/sales', { params: { anneeScolaire } });
       const all = (data as any[]).flatMap((sale: any) =>
         (sale.payments || []).map((p: any) => ({
           ...p,
@@ -257,7 +259,7 @@ const Payments = ({ currency, tenantSettings }: { currency: string; tenantSettin
     }
   };
 
-  useEffect(() => { fetchPayments(); }, []);
+  useEffect(() => { fetchPayments(); }, [anneeScolaire]); // eslint-disable-line
 
   // ── Filtres & stats ──────────────────────────────────────────────────────
   const filteredPayments = useMemo(() => payments.filter(p => {

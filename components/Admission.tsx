@@ -3,11 +3,12 @@ import {
   ClipboardList, Search, Filter, RefreshCw, Plus, Eye, CheckCircle2,
   X, AlertCircle, Loader2, ArrowRight, UserCheck, UserX,
   Clock, GraduationCap, Baby, Phone, Mail, Save,
-  Info, ChevronLeft, Edit3, MapPin, Heart, Shield,
+  Info, ChevronLeft, Edit3, MapPin, Heart, Shield, Stethoscope, Camera, Ban,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { useAnnee } from '../contexts/AnneeContext';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -39,23 +40,7 @@ const REGIMES: { value: RegimeFinancier; label: string }[] = [
   { value: 'CAS_SOCIAL_TOTAL',   label: 'Cas social (total)' },
 ];
 
-const ANNEE_COURANTE = '2026-2027';
-
-// Mapping statut scolaire → statut API Customer
-const STATUS_API_MAP: Record<StatutAdmission, string> = {
-  EN_ATTENTE: 'en_attente',
-  ADMIS:      'admis',
-  INSCRIT:    'inscrit',
-  ACTIF:      'actif',
-  SUSPENDU:   'suspendu',
-  RADIE:      'radie',
-};
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function genRef(): string {
-  return `ADM-${Date.now().toString(36).toUpperCase()}`;
-}
 
 // Résout le statut d'un dossier quelle que soit la source (statut custom, status API, isActive)
 function getStatut(d: any): StatutAdmission {
@@ -71,6 +56,48 @@ function getStatut(d: any): StatutAdmission {
   if (apiStatus === 'en_attente') return 'EN_ATTENTE';
   // Dernier recours : isActive seulement si aucun autre indice
   return 'EN_ATTENTE';
+}
+
+// Convertit un enregistrement Eleve (API /eleves) en format d'affichage Admission
+function normalizeEleve(e: any): any {
+  const p1 = e.parent1 || {};
+  const p2 = e.parent2 || {};
+  const urgence = e.contactUrgence || {};
+  const fs = e.ficheSanitaire || {};
+  // CAS_SOCIAL (legacy seed) → CAS_SOCIAL_PARTIEL
+  const regime = e.regimeFinancier === 'CAS_SOCIAL' ? 'CAS_SOCIAL_PARTIEL' : (e.regimeFinancier || 'NORMAL');
+  return {
+    ...e,
+    ...fs,
+    companyName:    `${e.prenom || ''} ${e.nom || ''}`.trim(),
+    mainContact:    `${p1.prenom || ''} ${p1.nom || ''}`.trim(),
+    phone:          p1.telephone || p1.tel || '',
+    email:          p1.email || '',
+    billingAddress: e.lieuNaissance || '',
+    regimeFinancier: regime as RegimeFinancier,
+    dateDepot:      e.dateAdmission || '',
+    // Flat parent1
+    parent1Nom:     p1.nom || '',
+    parent1Prenom:  p1.prenom || '',
+    parent1Tel:     p1.telephone || p1.tel || '',
+    parent1Whatsapp: p1.whatsapp || p1.telephone || p1.tel || '',
+    parent1Email:   p1.email || '',
+    parent1Lien:    p1.lien || 'MERE',
+    parent1TelDomicile: p1.telDomicile || '',
+    parent1TelTravail:  p1.telTravail || '',
+    parent1Adresse:     p1.adresse || '',
+    // Flat parent2
+    parent2Nom:     p2.nom || '',
+    parent2Prenom:  p2.prenom || '',
+    parent2Lien:    p2.lien || 'PERE',
+    parent2Tel:     p2.telephone || p2.tel || '',
+    parent2TelDomicile: p2.telDomicile || '',
+    parent2TelTravail:  p2.telTravail || '',
+    // Contact urgence
+    urgenceNom:  urgence.nom || '',
+    urgenceTel:  urgence.telephone || urgence.tel || '',
+    urgenceLien: urgence.lien || '',
+  };
 }
 
 function StatutBadge({ statut }: { statut: StatutAdmission }) {
@@ -110,12 +137,69 @@ const emptyDossier = () => ({
   parent1Whatsapp: '',
   parent1Email: '',
   parent1Lien: 'MERE' as 'PERE' | 'MERE' | 'TUTEUR',
+  parent1TelDomicile: '',
+  parent1TelTravail: '',
+  parent1Adresse: '',
+  // Parent 2 (conjoint)
+  parent2Nom: '',
+  parent2Prenom: '',
+  parent2Lien: 'PERE' as 'PERE' | 'MERE' | 'TUTEUR',
+  parent2Tel: '',
+  parent2TelDomicile: '',
+  parent2TelTravail: '',
   urgenceNom: '',
   urgenceTel: '',
   urgenceLien: '',
   statut: 'EN_ATTENTE' as StatutAdmission,
   dateDepot: new Date().toISOString().split('T')[0],
   notes: '',
+  // ── Fiche sanitaire ────────────────────────────────────────────────────────
+  sexe: '' as '' | 'M' | 'F',
+  // Vaccins obligatoires
+  vaccDiphterie: false,      vaccDiphterieDate: '',
+  vaccTetanos: false,        vaccTetanosDate: '',
+  vaccPolio: false,          vaccPolioDate: '',
+  vaccCoqueluche: false,     vaccCoquelucheDate: '',
+  vaccBCG: false,            vaccBCGDate: '',
+  // Vaccins recommandés
+  vaccHepB: false,           vaccHepBDate: '',
+  vaccROR: false,            vaccRORDate: '',
+  certifContrIndication: false,
+  // Traitement médical en cours
+  traitementMedical: false,
+  traitementDetail: '',
+  // Maladies antérieures
+  maladieRubeole: false,
+  maladieVaricelle: false,
+  maladieAngine: false,
+  maladieRhumatisme: false,
+  maladieScarlatine: false,
+  maladieCoqueluche: false,
+  maladieOtite: false,
+  maladieRougeole: false,
+  maladieOreillons: false,
+  // Allergies
+  allergieAsthme: false,
+  allergieMedicament: false,
+  allergieAlimentaire: false,
+  allergieAutres: '',
+  allergieConduite: '',
+  // Difficultés de santé (hospitalisations, accidents, opérations, crises...)
+  difficulteSante: '',
+  // Équipements portés
+  equipeLunettes: false,
+  equipeLentilles: false,
+  equipeProtheseAuditive: false,
+  equipeProtheseDentaire: false,
+  equipePrecisions: '',
+  // Énurésie nocturne
+  mouillerLit: '' as '' | 'OUI' | 'NON' | 'OCCASIONNELLEMENT',
+  // Médecin traitant
+  medecinNom: '',
+  medecinTel: '',
+  // Autorisations
+  autorisationPhoto: true,
+  autorisationSoins: true,
 });
 
 type DossierForm = ReturnType<typeof emptyDossier>;
@@ -135,6 +219,7 @@ function DetailRow({ label, value, className = '' }: { label: string; value?: st
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const Admission = ({ currency, user }: { currency: string; user: User }) => {
+  const { annee: ANNEE_COURANTE } = useAnnee();
   const [dossiers, setDossiers] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,28 +233,31 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [selected, setSelected] = useState<any>(null);
   const [form, setForm] = useState<DossierForm>(emptyDossier());
   const [showConfirmStatut, setShowConfirmStatut] = useState<{ dossier: any; newStatut: StatutAdmission } | null>(null);
+  const [showAnnulInscription, setShowAnnulInscription] = useState<{ dossier: any; motif: string } | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [modeInscription, setModeInscription] = useState(false);
 
   const showToast = useToast();
+  const { isReadOnly } = useAnnee();
   const currentUser = authBridge.getSession()?.user;
-  const canModify = currentUser ? authBridge.canPerform(currentUser, 'EDIT', 'customers') : false;
+  const canModify = (currentUser ? authBridge.canPerform(currentUser, 'EDIT', 'eleves') : false) && !isReadOnly;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [dossiersData, classesData] = await Promise.all([
-        apiClient.get('/customers'),
+        apiClient.get('/eleves', { params: { anneeScolaire: ANNEE_COURANTE } }),
         apiClient.get('/classes').catch(() => []),
       ]);
-      setDossiers(Array.isArray(dossiersData) ? dossiersData : (dossiersData?.rows ?? dossiersData?.customers ?? []));
+      const raw = Array.isArray(dossiersData) ? dossiersData : (dossiersData?.rows ?? dossiersData?.eleves ?? []);
+      setDossiers(raw.map(normalizeEleve));
       setClasses(Array.isArray(classesData) ? classesData : []);
     } catch { setError('Impossible de charger les dossiers.'); }
     finally { setLoading(false); }
-  }, []);
+  }, [ANNEE_COURANTE]);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   // ── Filtrage avec statut correctement résolu ───────────────────────────────
 
@@ -202,37 +290,79 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
 
   // ── Construire le payload API depuis le formulaire ─────────────────────────
 
-  const buildPayload = (f: DossierForm, existingEmail?: string) => {
-    const companyName = `${f.prenomEnfant.trim()} ${f.nomEnfant.trim()}`.trim() || 'Dossier sans nom';
-    return {
-    companyName,
-    name: companyName,
-    mainContact: `${f.parent1Prenom} ${f.parent1Nom}`.trim(),
-    email: f.parent1Email || existingEmail || `${genRef().toLowerCase()}@letoidesanges.sn`,
-    phone: f.parent1Tel,
-    billingAddress: f.lieuNaissance,
-    // Champs scolaires
-    niveau: f.niveau,
-    statut: f.statut,
-    // Encodage pour l'API Customer standard
-    status: STATUS_API_MAP[f.statut] ?? 'en_attente',
-    isActive: f.statut !== 'RADIE',
+  // Convertit une chaîne vide en null pour les colonnes DATE PostgreSQL
+  const nd = (v: string) => v || null;
+
+  const buildPayload = (f: DossierForm) => ({
+    nom:            f.nomEnfant.trim(),
+    prenom:         f.prenomEnfant.trim(),
+    dateNaissance:  nd(f.dateNaissance),
+    lieuNaissance:  f.lieuNaissance,
+    niveau:         f.niveau,
+    classeId:       f.classeId || undefined,
+    statut:         f.statut,
     regimeFinancier: f.regimeFinancier,
-    remisePct: f.remisePct,
-    cantine: f.cantine,
-    transportBus: f.transportBus,
-    dateNaissance: f.dateNaissance,
+    remisePct:      f.remisePct,
+    cantine:        f.cantine,
+    transportBus:   f.transportBus,
     besoinSpecifique: f.besoinSpecifique,
-    parent1Lien: f.parent1Lien,
-    parent1Whatsapp: f.parent1Whatsapp || f.parent1Tel,
-    urgenceNom: f.urgenceNom,
-    urgenceTel: f.urgenceTel,
-    urgenceLien: f.urgenceLien,
-    dateDepot: f.dateDepot,
-    anneeScolaire: ANNEE_COURANTE,
-    notes: f.notes,
-  };
-  };
+    dateAdmission:  nd(f.dateDepot),
+    anneeScolaire:  ANNEE_COURANTE,
+    notes:          f.notes,
+    sexe:           f.sexe || null,
+    whatsappPrincipal: f.parent1Whatsapp || f.parent1Tel || null,
+    parent1: {
+      nom:       f.parent1Nom,
+      prenom:    f.parent1Prenom,
+      telephone: f.parent1Tel,
+      whatsapp:  f.parent1Whatsapp || f.parent1Tel,
+      email:     f.parent1Email || undefined,
+      lien:      f.parent1Lien,
+      telDomicile: f.parent1TelDomicile,
+      telTravail:  f.parent1TelTravail,
+      adresse:     f.parent1Adresse,
+    },
+    ...(f.parent2Nom || f.parent2Prenom ? {
+      parent2: {
+        nom:        f.parent2Nom,
+        prenom:     f.parent2Prenom,
+        lien:       f.parent2Lien,
+        telephone:  f.parent2Tel,
+        telDomicile: f.parent2TelDomicile,
+        telTravail:  f.parent2TelTravail,
+      },
+    } : {}),
+    contactUrgence: f.urgenceNom ? {
+      nom:       f.urgenceNom,
+      prenom:    '',
+      telephone: f.urgenceTel,
+      lien:      f.urgenceLien || undefined,
+    } : undefined,
+    ficheSanitaire: {
+      vaccDiphterie: f.vaccDiphterie,           vaccDiphterieDate: nd(f.vaccDiphterieDate),
+      vaccTetanos:   f.vaccTetanos,             vaccTetanosDate:   nd(f.vaccTetanosDate),
+      vaccPolio:     f.vaccPolio,               vaccPolioDate:     nd(f.vaccPolioDate),
+      vaccCoqueluche: f.vaccCoqueluche,         vaccCoquelucheDate: nd(f.vaccCoquelucheDate),
+      vaccBCG:       f.vaccBCG,                 vaccBCGDate:       nd(f.vaccBCGDate),
+      vaccHepB:      f.vaccHepB,                vaccHepBDate:      nd(f.vaccHepBDate),
+      vaccROR:       f.vaccROR,                 vaccRORDate:       nd(f.vaccRORDate),
+      certifContrIndication: f.certifContrIndication,
+      traitementMedical: f.traitementMedical,   traitementDetail: f.traitementDetail,
+      maladieRubeole: f.maladieRubeole,         maladieVaricelle: f.maladieVaricelle,
+      maladieAngine: f.maladieAngine,           maladieRhumatisme: f.maladieRhumatisme,
+      maladieScarlatine: f.maladieScarlatine,   maladieCoqueluche: f.maladieCoqueluche,
+      maladieOtite: f.maladieOtite,             maladieRougeole: f.maladieRougeole,
+      maladieOreillons: f.maladieOreillons,
+      allergieAsthme: f.allergieAsthme,         allergieMedicament: f.allergieMedicament,
+      allergieAlimentaire: f.allergieAlimentaire, allergieAutres: f.allergieAutres,
+      allergieConduite: f.allergieConduite,     difficulteSante: f.difficulteSante,
+      equipeLunettes: f.equipeLunettes,         equipeLentilles: f.equipeLentilles,
+      equipeProtheseAuditive: f.equipeProtheseAuditive, equipeProtheseDentaire: f.equipeProtheseDentaire,
+      equipePrecisions: f.equipePrecisions,     mouillerLit: f.mouillerLit || null,
+      medecinNom: f.medecinNom,                 medecinTel: f.medecinTel,
+      autorisationPhoto: f.autorisationPhoto,   autorisationSoins: f.autorisationSoins,
+    },
+  });
 
   // ── Créer un dossier ───────────────────────────────────────────────────────
 
@@ -245,7 +375,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setActionLoading(true);
     setError(null);
     try {
-      await apiClient.post('/customers', buildPayload(form));
+      await apiClient.post('/eleves', buildPayload(form));
       showToast('Dossier d\'admission créé.', 'success');
       setModalMode(null);
       setWizardStep(1);
@@ -254,7 +384,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     finally { setActionLoading(false); }
   };
 
-  // ── Inscription directe (crée un Eleve, pas seulement un dossier) ─────────
+  // ── Inscription directe (crée le dossier Customer + l'Eleve en une passe) ──
 
   const handleCreateEleve = async () => {
     if (!canModify) return;
@@ -270,39 +400,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setError(null);
     try {
       const statutEleve: StatutAdmission = ['INSCRIT', 'ACTIF'].includes(form.statut) ? form.statut : 'INSCRIT';
-      await apiClient.post('/eleves', {
-        nom: form.nomEnfant,
-        prenom: form.prenomEnfant,
-        dateNaissance: form.dateNaissance,
-        lieuNaissance: form.lieuNaissance,
-        niveau: form.niveau,
-        classeId: form.classeId || undefined,
-        regimeFinancier: form.regimeFinancier,
-        remisePct: form.remisePct,
-        cantine: form.cantine,
-        transportBus: form.transportBus,
-        besoinSpecifique: form.besoinSpecifique,
-        statut: statutEleve,
-        dateAdmission: form.dateDepot,
-        parent1: {
-          nom: form.parent1Nom,
-          prenom: form.parent1Prenom,
-          telephone: form.parent1Tel,
-          whatsapp: form.parent1Whatsapp || form.parent1Tel,
-          email: form.parent1Email || undefined,
-          lien: form.parent1Lien,
-        },
-        contactUrgence: form.urgenceNom ? {
-          nom: form.urgenceNom,
-          prenom: '',
-          telephone: form.urgenceTel,
-          lien: form.urgenceLien || undefined,
-        } : undefined,
-        whatsappPrincipal: form.parent1Whatsapp || form.parent1Tel,
-        anneeScolaire: ANNEE_COURANTE,
-        notes: form.notes,
-      });
-      showToast('Élève inscrit avec succès.', 'success');
+      await apiClient.post('/eleves', buildPayload({ ...form, statut: statutEleve }));
+      showToast('Élève inscrit et dossier créé avec succès.', 'success');
       setModalMode(null);
       setWizardStep(1);
       setModeInscription(false);
@@ -325,7 +424,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setActionLoading(true);
     setError(null);
     try {
-      await apiClient.put(`/customers/${selected.id}`, buildPayload(form, selected.email));
+      await apiClient.put(`/eleves/${selected.id}`, buildPayload(form));
       showToast('Dossier mis à jour.', 'success');
       setModalMode(null);
       setSelected(null);
@@ -342,13 +441,34 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setActionLoading(true);
     try {
       const newStatut = showConfirmStatut.newStatut;
-      await apiClient.put(`/customers/${showConfirmStatut.dossier.id}`, {
+      await apiClient.put(`/eleves/${showConfirmStatut.dossier.id}`, {
         statut: newStatut,
-        status: STATUS_API_MAP[newStatut] ?? 'en_attente',
-        isActive: newStatut !== 'RADIE',
       });
       showToast(`Statut mis à jour : ${newStatut}`, 'success');
       setShowConfirmStatut(null);
+      setSelected(null);
+      setModalMode(null);
+      fetchData();
+    } catch (err: any) { showToast(err.message || 'Erreur', 'error'); }
+    finally { setActionLoading(false); }
+  };
+
+  // ── Annuler une inscription (INSCRIT/ACTIF → RADIE) ──────────────────────
+
+  const handleAnnulInscription = async () => {
+    if (!showAnnulInscription || !canModify) return;
+    const { dossier, motif } = showAnnulInscription;
+    if (!motif.trim()) return;
+    setActionLoading(true);
+    try {
+      const notesUpdated = [dossier.notes, `[ANNULATION ${new Date().toLocaleDateString('fr-FR')}] ${motif.trim()}`]
+        .filter(Boolean).join('\n');
+      await apiClient.put(`/eleves/${dossier.id}`, {
+        statut: 'RADIE',
+        notes: notesUpdated,
+      });
+      showToast('Inscription annulée.', 'success');
+      setShowAnnulInscription(null);
       setSelected(null);
       setModalMode(null);
       fetchData();
@@ -369,41 +489,77 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   };
 
   const openEdit = (d: any) => {
-    const fullName = (d.companyName || d.name || '').trim();
-    const parts = fullName.split(' ');
-    const prenomEnfant = parts[0] || '';
-    const nomEnfant = parts.slice(1).join(' ') || '';
-
-    const parentFull = (d.mainContact || '').trim();
-    const pParts = parentFull.split(' ');
-    const parent1Prenom = pParts[0] || '';
-    const parent1Nom = pParts.slice(1).join(' ') || '';
-
-    const emailIsGenerated = (d.email || '').includes('@letoidesanges.sn');
-
+    // d is already normalized by normalizeEleve — parent1Nom, parent1Tel, etc. are flat
     setForm({
-      nomEnfant:       nomEnfant || prenomEnfant,
-      prenomEnfant:    nomEnfant ? prenomEnfant : '',
+      nomEnfant:       d.nom || '',
+      prenomEnfant:    d.prenom || '',
       dateNaissance:   d.dateNaissance || '',
-      lieuNaissance:   d.billingAddress || '',
+      lieuNaissance:   d.lieuNaissance || d.billingAddress || '',
       niveau:          (d.niveau as NiveauScolaire) || 'PS',
+      classeId:        d.classeId || '',
       regimeFinancier: (d.regimeFinancier as RegimeFinancier) || 'NORMAL',
       remisePct:       d.remisePct || 0,
       cantine:         !!d.cantine,
-      transportBus:    !!(d.transportBus || d.transport_bus),
+      transportBus:    !!d.transportBus,
       besoinSpecifique: d.besoinSpecifique || '',
-      parent1Nom,
-      parent1Prenom,
-      parent1Tel:      d.phone || '',
-      parent1Whatsapp: d.parent1Whatsapp || d.phone || '',
-      parent1Email:    emailIsGenerated ? '' : (d.email || ''),
+      parent1Nom:      d.parent1Nom || '',
+      parent1Prenom:   d.parent1Prenom || '',
+      parent1Tel:      d.parent1Tel || '',
+      parent1Whatsapp: d.parent1Whatsapp || '',
+      parent1Email:    d.parent1Email || '',
       parent1Lien:     (d.parent1Lien || 'MERE') as 'PERE' | 'MERE' | 'TUTEUR',
       urgenceNom:      d.urgenceNom || '',
       urgenceTel:      d.urgenceTel || '',
       urgenceLien:     d.urgenceLien || '',
+      parent1TelDomicile: d.parent1TelDomicile || '',
+      parent1TelTravail:  d.parent1TelTravail || '',
+      parent1Adresse:     d.parent1Adresse || '',
+      parent2Nom:      d.parent2Nom || '',
+      parent2Prenom:   d.parent2Prenom || '',
+      parent2Lien:     (d.parent2Lien || 'PERE') as 'PERE' | 'MERE' | 'TUTEUR',
+      parent2Tel:      d.parent2Tel || '',
+      parent2TelDomicile: d.parent2TelDomicile || '',
+      parent2TelTravail:  d.parent2TelTravail || '',
       statut:          getStatut(d),
-      dateDepot:       d.dateDepot || (d.createdAt || d.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+      dateDepot:       d.dateAdmission || d.dateDepot || (d.createdAt || d.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
       notes:           d.notes || '',
+      // Fiche sanitaire
+      sexe: (d.sexe || '') as '' | 'M' | 'F',
+      vaccDiphterie: !!d.vaccDiphterie, vaccDiphterieDate: d.vaccDiphterieDate || '',
+      vaccTetanos:   !!d.vaccTetanos,   vaccTetanosDate:   d.vaccTetanosDate || '',
+      vaccPolio:     !!d.vaccPolio,     vaccPolioDate:     d.vaccPolioDate || '',
+      vaccCoqueluche:!!d.vaccCoqueluche,vaccCoquelucheDate:d.vaccCoquelucheDate || '',
+      vaccBCG:       !!d.vaccBCG,       vaccBCGDate:       d.vaccBCGDate || '',
+      vaccHepB:      !!d.vaccHepB,      vaccHepBDate:      d.vaccHepBDate || '',
+      vaccROR:       !!d.vaccROR,       vaccRORDate:       d.vaccRORDate || '',
+      certifContrIndication: !!d.certifContrIndication,
+      traitementMedical: !!d.traitementMedical,
+      traitementDetail:   d.traitementDetail || '',
+      maladieRubeole:     !!d.maladieRubeole,
+      maladieVaricelle:   !!d.maladieVaricelle,
+      maladieAngine:      !!d.maladieAngine,
+      maladieRhumatisme:  !!d.maladieRhumatisme,
+      maladieScarlatine:  !!d.maladieScarlatine,
+      maladieCoqueluche:  !!d.maladieCoqueluche,
+      maladieOtite:       !!d.maladieOtite,
+      maladieRougeole:    !!d.maladieRougeole,
+      maladieOreillons:   !!d.maladieOreillons,
+      allergieAsthme:      !!d.allergieAsthme,
+      allergieMedicament:  !!d.allergieMedicament,
+      allergieAlimentaire: !!d.allergieAlimentaire,
+      allergieAutres:      d.allergieAutres || '',
+      allergieConduite:    d.allergieConduite || '',
+      difficulteSante:     d.difficulteSante || '',
+      equipeLunettes:         !!d.equipeLunettes,
+      equipeLentilles:        !!d.equipeLentilles,
+      equipeProtheseAuditive: !!d.equipeProtheseAuditive,
+      equipeProtheseDentaire: !!d.equipeProtheseDentaire,
+      equipePrecisions:       d.equipePrecisions || '',
+      mouillerLit: (d.mouillerLit || '') as '' | 'OUI' | 'NON' | 'OCCASIONNELLEMENT',
+      medecinNom: d.medecinNom || '',
+      medecinTel: d.medecinTel || '',
+      autorisationPhoto: d.autorisationPhoto !== false,
+      autorisationSoins: d.autorisationSoins !== false,
     });
     setSelected(d);
     setError(null);
@@ -648,21 +804,22 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 {[
                   { n: 1, label: 'Identité',   icon: Baby },
                   { n: 2, label: 'Scolarité',  icon: GraduationCap },
-                  { n: 3, label: 'Parent',     icon: Phone },
-                  { n: 4, label: 'Validation', icon: CheckCircle2 },
+                  { n: 3, label: 'Santé',      icon: Stethoscope },
+                  { n: 4, label: 'Parents',    icon: Phone },
+                  { n: 5, label: 'Validation', icon: CheckCircle2 },
                 ].map((s, i) => {
                   const Icon = s.icon;
                   const done = wizardStep > s.n;
                   const active = wizardStep === s.n;
                   return (
                     <React.Fragment key={s.n}>
-                      <div className={`flex flex-col items-center gap-1 px-3 pb-3 border-b-2 transition-all flex-1 ${active ? 'border-indigo-400' : done ? 'border-emerald-400' : 'border-transparent'}`}>
+                      <div className={`flex flex-col items-center gap-1 px-2 pb-3 border-b-2 transition-all flex-1 ${active ? 'border-indigo-400' : done ? 'border-emerald-400' : 'border-transparent'}`}>
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black transition-all ${active ? 'bg-indigo-500 text-white' : done ? 'bg-emerald-500 text-white' : 'bg-white/10 text-slate-400'}`}>
                           {done ? <CheckCircle2 size={14}/> : <Icon size={14}/>}
                         </div>
                         <span className={`text-[8px] font-black uppercase tracking-widest ${active ? 'text-white' : done ? 'text-emerald-300' : 'text-slate-500'}`}>{s.label}</span>
                       </div>
-                      {i < 3 && <div className={`w-4 h-0.5 mb-4 shrink-0 transition-all ${wizardStep > s.n ? 'bg-emerald-400' : 'bg-white/10'}`} />}
+                      {i < 4 && <div className={`w-3 h-0.5 mb-4 shrink-0 transition-all ${wizardStep > s.n ? 'bg-emerald-400' : 'bg-white/10'}`} />}
                     </React.Fragment>
                   );
                 })}
@@ -703,6 +860,17 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Lieu de naissance</label>
                       <input type="text" value={form.lieuNaissance} onChange={e => setForm({...form, lieuNaissance: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Dakar" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Sexe</label>
+                      <div className="flex gap-2">
+                        {[{ v: 'M', l: 'Garçon' }, { v: 'F', l: 'Fille' }].map(s => (
+                          <button key={s.v} type="button" onClick={() => setForm({...form, sexe: s.v as 'M' | 'F'})}
+                            className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${form.sexe === s.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-indigo-400'}`}>
+                            {s.l}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Date de dépôt du dossier</label>
@@ -805,8 +973,210 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 </div>
               )}
 
-              {/* ── Étape 3 : Parent / Tuteur ── */}
+              {/* ── Étape 3 : Fiche Sanitaire ── */}
               {wizardStep === 3 && (
+                <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Stethoscope size={13} className="text-rose-500"/> Fiche sanitaire de liaison
+                  </p>
+
+                  {/* Vaccinations */}
+                  <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Vaccinations — Vaccins obligatoires</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {[
+                        { key: 'vaccDiphterie', dateKey: 'vaccDiphterieDate', label: 'Diphtérie / Tétanos / Polio' },
+                        { key: 'vaccPolio',     dateKey: 'vaccPolioDate',     label: 'Poliomyélite' },
+                        { key: 'vaccCoqueluche',dateKey: 'vaccCoquelucheDate',label: 'Coqueluche (ou DT Polio / Tétracoq)' },
+                        { key: 'vaccBCG',       dateKey: 'vaccBCGDate',       label: 'BCG' },
+                      ].map(v => (
+                        <div key={v.key} className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer w-56 shrink-0">
+                            <input type="checkbox" checked={(form as any)[v.key]} onChange={e => setForm({...form, [v.key]: e.target.checked} as any)} className="w-4 h-4 accent-indigo-600" />
+                            <span className="text-xs font-bold text-slate-700">{v.label}</span>
+                          </label>
+                          {(form as any)[v.key] && (
+                            <input type="date" value={(form as any)[v.dateKey]} onChange={e => setForm({...form, [v.dateKey]: e.target.value} as any)}
+                              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" placeholder="Date du rappel" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-3 mb-2">Vaccins recommandés</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {[
+                        { key: 'vaccHepB', dateKey: 'vaccHepBDate', label: 'Hépatite B' },
+                        { key: 'vaccROR',  dateKey: 'vaccRORDate',  label: 'Rubéole / Oreillons / Rougeole (ROR)' },
+                      ].map(v => (
+                        <div key={v.key} className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer w-56 shrink-0">
+                            <input type="checkbox" checked={(form as any)[v.key]} onChange={e => setForm({...form, [v.key]: e.target.checked} as any)} className="w-4 h-4 accent-emerald-600" />
+                            <span className="text-xs font-bold text-slate-700">{v.label}</span>
+                          </label>
+                          {(form as any)[v.key] && (
+                            <input type="date" value={(form as any)[v.dateKey]} onChange={e => setForm({...form, [v.dateKey]: e.target.value} as any)}
+                              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <input type="checkbox" checked={form.certifContrIndication} onChange={e => setForm({...form, certifContrIndication: e.target.checked})} className="w-4 h-4 accent-amber-600" />
+                      <span className="text-[10px] font-bold text-amber-700">Certificat médical de contre-indication joint (si vaccin manquant)</span>
+                    </label>
+                  </div>
+
+                  {/* Traitement médical */}
+                  <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Traitement médical en cours</p>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={form.traitementMedical} onChange={e => setForm({...form, traitementMedical: e.target.checked})} className="w-4 h-4 accent-rose-600" />
+                      <span className="text-xs font-bold text-slate-700">L'enfant suit un traitement médical</span>
+                    </label>
+                    {form.traitementMedical && (
+                      <textarea value={form.traitementDetail} onChange={e => setForm({...form, traitementDetail: e.target.value})}
+                        className="w-full bg-white border border-rose-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-rose-500/10 min-h-[60px]"
+                        placeholder="Préciser le traitement (joindre ordonnance récente + médicaments dans emballage d'origine au nom de l'enfant)…" />
+                    )}
+                  </div>
+
+                  {/* Maladies antérieures */}
+                  <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Maladies antérieures</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        { key: 'maladieRubeole',    label: 'Rubéole' },
+                        { key: 'maladieVaricelle',  label: 'Varicelle' },
+                        { key: 'maladieAngine',     label: 'Angine' },
+                        { key: 'maladieRhumatisme', label: 'Rhumatisme articulaire aigu' },
+                        { key: 'maladieScarlatine', label: 'Scarlatine' },
+                        { key: 'maladieCoqueluche', label: 'Coqueluche' },
+                        { key: 'maladieOtite',      label: 'Otite' },
+                        { key: 'maladieRougeole',   label: 'Rougeole' },
+                        { key: 'maladieOreillons',  label: 'Oreillons' },
+                      ].map(m => (
+                        <label key={m.key} className="flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-xl border border-slate-100 hover:border-indigo-300 transition-all">
+                          <input type="checkbox" checked={(form as any)[m.key]} onChange={e => setForm({...form, [m.key]: e.target.checked} as any)} className="w-4 h-4 accent-indigo-600" />
+                          <span className="text-[11px] font-bold text-slate-700">{m.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Allergies */}
+                  <div className="bg-rose-50 border border-rose-100 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest">Allergies</p>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        { key: 'allergieAsthme',      label: 'Asthme' },
+                        { key: 'allergieMedicament',  label: 'Médicamenteuses' },
+                        { key: 'allergieAlimentaire', label: 'Alimentaires' },
+                      ].map(a => (
+                        <label key={a.key} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border-2 transition-all ${(form as any)[a.key] ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200 hover:border-rose-400'}`}>
+                          <input type="checkbox" checked={(form as any)[a.key]} onChange={e => setForm({...form, [a.key]: e.target.checked} as any)} className="w-4 h-4 accent-white" />
+                          <span className="text-[10px] font-black uppercase">{a.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Autres allergies (préciser la cause)</label>
+                      <input type="text" value={form.allergieAutres} onChange={e => setForm({...form, allergieAutres: e.target.value})}
+                        className="w-full bg-white border border-rose-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-rose-500/20"
+                        placeholder="Ex : acariens, latex, pollen…" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Conduite à tenir en cas de crise</label>
+                      <textarea value={form.allergieConduite} onChange={e => setForm({...form, allergieConduite: e.target.value})}
+                        className="w-full bg-white border border-rose-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-rose-500/20 min-h-[60px]"
+                        placeholder="Protocole, médicament d'urgence, automédication autorisée…" />
+                    </div>
+                  </div>
+
+                  {/* Difficultés de santé */}
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">
+                      Difficultés de santé — maladies graves, accidents, crises convulsives, hospitalisations, opérations, rééducation (préciser dates et précautions)
+                    </label>
+                    <textarea value={form.difficulteSante} onChange={e => setForm({...form, difficulteSante: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 min-h-[80px]"
+                      placeholder="Ex : hospitalisation pour appendicite (01/2024), crises fébriles (précautions : …)…" />
+                  </div>
+
+                  {/* Équipements portés */}
+                  <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Équipements portés</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { key: 'equipeLunettes',         label: 'Lunettes' },
+                        { key: 'equipeLentilles',        label: 'Lentilles de contact' },
+                        { key: 'equipeProtheseAuditive', label: 'Prothèse auditive' },
+                        { key: 'equipeProtheseDentaire', label: 'Prothèse dentaire' },
+                      ].map(e => (
+                        <label key={e.key} className="flex items-center gap-2 cursor-pointer px-3 py-2 bg-white rounded-xl border border-slate-100 hover:border-indigo-300 transition-all">
+                          <input type="checkbox" checked={(form as any)[e.key]} onChange={ev => setForm({...form, [e.key]: ev.target.checked} as any)} className="w-4 h-4 accent-indigo-600" />
+                          <span className="text-[11px] font-bold text-slate-700">{e.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {(form.equipeLunettes || form.equipeLentilles || form.equipeProtheseAuditive || form.equipeProtheseDentaire) && (
+                      <input type="text" value={form.equipePrecisions} onChange={e => setForm({...form, equipePrecisions: e.target.value})}
+                        className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        placeholder="Précisions (marque, degré correction, type d'aide…)" />
+                    )}
+                  </div>
+
+                  {/* Énurésie nocturne */}
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">L'enfant mouille-t-il son lit la nuit ?</label>
+                    <div className="flex gap-2">
+                      {[{ v: 'OUI', l: 'Oui' }, { v: 'NON', l: 'Non' }, { v: 'OCCASIONNELLEMENT', l: 'Occasionnellement' }].map(opt => (
+                        <button key={opt.v} type="button" onClick={() => setForm({...form, mouillerLit: opt.v as any})}
+                          className={`px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${form.mouillerLit === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-indigo-400'}`}>
+                          {opt.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Médecin traitant */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Médecin traitant (facultatif)</label>
+                      <input type="text" value={form.medecinNom} onChange={e => setForm({...form, medecinNom: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10"
+                        placeholder="Nom du médecin" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Téléphone du médecin</label>
+                      <input type="tel" value={form.medecinTel} onChange={e => setForm({...form, medecinTel: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10"
+                        placeholder="+221 77 xxx xxxx" />
+                    </div>
+                  </div>
+
+                  {/* Autorisations */}
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                      <Camera size={13}/> Autorisations parentales
+                    </p>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={form.autorisationSoins} onChange={e => setForm({...form, autorisationSoins: e.target.checked})} className="w-4 h-4 accent-indigo-600" />
+                      <span className="text-xs font-bold text-slate-700">
+                        J'autorise le responsable de l'établissement à prendre toutes mesures nécessaires (traitement médical, hospitalisation, intervention chirurgicale) en cas d'urgence et à faire sortir mon enfant de l'hôpital après hospitalisation.
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={form.autorisationPhoto} onChange={e => setForm({...form, autorisationPhoto: e.target.checked})} className="w-4 h-4 accent-indigo-600" />
+                      <span className="text-xs font-bold text-slate-700">
+                        J'autorise la prise de photographies / vidéos de mon enfant dans le cadre des activités de l'établissement.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Étape 4 : Parent / Tuteur ── */}
+              {wizardStep === 4 && (
                 <div className="space-y-5 animate-in slide-in-from-right-4 duration-300">
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
@@ -851,10 +1221,72 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     </div>
                   </div>
 
+                  {/* Téléphones complémentaires parent 1 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. domicile</label>
+                      <input type="tel" value={form.parent1TelDomicile} onChange={e => setForm({...form, parent1TelDomicile: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 33 xxx xxxx" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. travail</label>
+                      <input type="tel" value={form.parent1TelTravail} onChange={e => setForm({...form, parent1TelTravail: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 33 xxx xxxx" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Adresse</label>
+                      <input type="text" value={form.parent1Adresse} onChange={e => setForm({...form, parent1Adresse: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Rue, quartier, ville…" />
+                    </div>
+                  </div>
+
+                  {/* Parent 2 */}
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <Phone size={13} className="text-indigo-400"/> Second parent / Conjoint(e)
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Prénom</label>
+                        <input type="text" value={form.parent2Prenom} onChange={e => setForm({...form, parent2Prenom: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Prénom" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom</label>
+                        <input type="text" value={form.parent2Nom} onChange={e => setForm({...form, parent2Nom: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Nom" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Lien</label>
+                        <select value={form.parent2Lien} onChange={e => setForm({...form, parent2Lien: e.target.value as any})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none">
+                          <option value="PERE">Père</option>
+                          <option value="MERE">Mère</option>
+                          <option value="TUTEUR">Tuteur légal</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. portable</label>
+                        <input type="tel" value={form.parent2Tel} onChange={e => setForm({...form, parent2Tel: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 77 xxx xxxx" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. domicile</label>
+                        <input type="tel" value={form.parent2TelDomicile} onChange={e => setForm({...form, parent2TelDomicile: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 33 xxx xxxx" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. travail</label>
+                        <input type="tel" value={form.parent2TelTravail} onChange={e => setForm({...form, parent2TelTravail: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 33 xxx xxxx" />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Contact urgence */}
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
-                      <Shield size={13} className="text-rose-500"/> Contact d'urgence
+                      <Shield size={13} className="text-rose-500"/> Contact d'urgence (autre que parents)
                     </p>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -877,8 +1309,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 </div>
               )}
 
-              {/* ── Étape 4 : Validation & Notes ── */}
-              {wizardStep === 4 && (
+              {/* ── Étape 5 : Validation & Notes ── */}
+              {wizardStep === 5 && (
                 <div className="space-y-5 animate-in slide-in-from-right-4 duration-300">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <CheckCircle2 size={13} className="text-indigo-500"/> Récapitulatif &amp; notes
@@ -950,6 +1382,39 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     </div>
                   </div>
 
+                  {/* Résumé fiche sanitaire */}
+                  <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 space-y-2">
+                    <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest flex items-center gap-1"><Stethoscope size={11}/> Santé</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="flex gap-1 flex-wrap">
+                        {[
+                          { k: 'vaccDiphterie', l: 'Diph.' }, { k: 'vaccPolio', l: 'Polio' },
+                          { k: 'vaccCoqueluche', l: 'Coq.' }, { k: 'vaccBCG', l: 'BCG' },
+                          { k: 'vaccHepB', l: 'HepB' }, { k: 'vaccROR', l: 'ROR' },
+                        ].map(v => (
+                          <span key={v.k} className={`px-1.5 py-0.5 rounded text-[8px] font-black ${(form as any)[v.k] ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-400'}`}>{v.l}</span>
+                        ))}
+                      </div>
+                      <div className="space-y-0.5">
+                        {form.traitementMedical && <p className="text-[10px] font-black text-amber-700">⚠ Traitement médical</p>}
+                        {form.allergieAsthme && <p className="text-[10px] font-black text-rose-700">⚠ Asthme</p>}
+                        {form.allergieMedicament && <p className="text-[10px] font-black text-rose-700">⚠ Allergie médicamenteuse</p>}
+                        {form.allergieAlimentaire && <p className="text-[10px] font-black text-rose-700">⚠ Allergie alimentaire</p>}
+                        {!form.traitementMedical && !form.allergieAsthme && !form.allergieMedicament && !form.allergieAlimentaire && (
+                          <p className="text-[10px] font-bold text-slate-400">Aucune allergie ni traitement</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-3 pt-1">
+                      <p className={`text-[9px] font-black ${form.autorisationSoins ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {form.autorisationSoins ? '✓' : '✗'} Autorisation soins
+                      </p>
+                      <p className={`text-[9px] font-black ${form.autorisationPhoto ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {form.autorisationPhoto ? '✓' : '✗'} Autorisation photo
+                      </p>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-1 block">Notes internes</label>
                     <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}
@@ -968,14 +1433,14 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   <ChevronLeft size={16}/> Retour
                 </button>
               )}
-              {wizardStep < 4 ? (
+              {wizardStep < 5 ? (
                 <button type="button" onClick={() => {
                   setError(null);
                   if (wizardStep === 1 && (!form.prenomEnfant || !form.nomEnfant)) {
                     setError('Prénom et nom de l\'enfant sont obligatoires.');
                     return;
                   }
-                  if (wizardStep === 3 && !form.parent1Tel) {
+                  if (wizardStep === 4 && !form.parent1Tel) {
                     setError('Le téléphone du parent est obligatoire.');
                     return;
                   }
@@ -1002,7 +1467,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       {/* ══ MODAL VUE DÉTAILLÉE DU DOSSIER ════════════════════════════════════ */}
       {modalMode === 'VIEW' && selected && (() => {
         const statut = getStatut(selected);
-        const peutEditer = statut !== 'ACTIF' && statut !== 'RADIE';
+        const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE';
+        const peutAnnuler = canModify && (statut === 'INSCRIT' || statut === 'ACTIF');
         const nomEnfant = selected.companyName || selected.name || '—';
         const niveau = selected.niveau as NiveauScolaire | undefined;
         const parentFull = selected.mainContact || '';
@@ -1031,6 +1497,12 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <Edit3 size={14}/> Modifier
                     </button>
                   )}
+                  {peutAnnuler && (
+                    <button onClick={() => setShowAnnulInscription({ dossier: selected, motif: '' })}
+                      className="px-4 py-2 bg-rose-500/80 hover:bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2">
+                      <Ban size={14}/> Annuler l'inscription
+                    </button>
+                  )}
                   <button onClick={() => setModalMode(null)}
                     className="p-3 bg-white/5 hover:bg-white/15 rounded-2xl transition-all"><X size={22} /></button>
                 </div>
@@ -1046,6 +1518,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   </h4>
                   <div className="bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <DetailRow label="Nom & Prénom" value={nomEnfant} />
+                    <DetailRow label="Sexe" value={selected.sexe === 'M' ? 'Garçon' : selected.sexe === 'F' ? 'Fille' : null} />
                     <DetailRow
                       label="Date de naissance"
                       value={selected.dateNaissance ? new Date(selected.dateNaissance).toLocaleDateString('fr-FR') : null}
@@ -1090,6 +1563,118 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   </div>
                 </section>
 
+                {/* ── Fiche Sanitaire ── */}
+                <section>
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Stethoscope size={12} className="text-rose-500"/> Fiche sanitaire
+                  </h4>
+                  <div className="space-y-3">
+                    {/* Vaccinations */}
+                    <div className="bg-slate-50 rounded-2xl p-4">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Vaccinations</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          { key: 'vaccDiphterie', dateKey: 'vaccDiphterieDate', label: 'Diphtérie/Tétanos/Polio' },
+                          { key: 'vaccPolio',      dateKey: 'vaccPolioDate',     label: 'Poliomyélite' },
+                          { key: 'vaccCoqueluche', dateKey: 'vaccCoquelucheDate',label: 'Coqueluche' },
+                          { key: 'vaccBCG',        dateKey: 'vaccBCGDate',       label: 'BCG' },
+                          { key: 'vaccHepB',       dateKey: 'vaccHepBDate',      label: 'Hépatite B' },
+                          { key: 'vaccROR',        dateKey: 'vaccRORDate',       label: 'ROR' },
+                        ].map(v => (
+                          <div key={v.key} className="space-y-0.5">
+                            <p className="text-[8px] font-black text-slate-400 uppercase">{v.label}</p>
+                            {(selected as any)[v.key]
+                              ? <p className="text-[11px] font-bold text-emerald-700">✓ {(selected as any)[v.dateKey] ? new Date((selected as any)[v.dateKey]).toLocaleDateString('fr-FR') : 'Vacciné'}</p>
+                              : <p className="text-[11px] font-bold text-slate-400">Non renseigné</p>
+                            }
+                          </div>
+                        ))}
+                      </div>
+                      {selected.certifContrIndication && (
+                        <p className="mt-2 text-[10px] font-black text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl">Certificat médical de contre-indication joint</p>
+                      )}
+                    </div>
+
+                    {/* Traitement médical */}
+                    {selected.traitementMedical && (
+                      <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4">
+                        <p className="text-[8px] font-black text-rose-600 uppercase tracking-widest mb-1">Traitement médical en cours</p>
+                        <p className="text-sm font-bold text-slate-800">{selected.traitementDetail || 'Oui (détails non précisés)'}</p>
+                      </div>
+                    )}
+
+                    {/* Maladies antérieures */}
+                    {['maladieRubeole','maladieVaricelle','maladieAngine','maladieRhumatisme','maladieScarlatine','maladieCoqueluche','maladieOtite','maladieRougeole','maladieOreillons'].some(k => (selected as any)[k]) && (
+                      <div className="bg-slate-50 rounded-2xl p-4">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Maladies antérieures</p>
+                        <div className="flex flex-wrap gap-1">
+                          {[
+                            { key: 'maladieRubeole', label: 'Rubéole' }, { key: 'maladieVaricelle', label: 'Varicelle' },
+                            { key: 'maladieAngine', label: 'Angine' }, { key: 'maladieRhumatisme', label: 'Rhumatisme articulaire aigu' },
+                            { key: 'maladieScarlatine', label: 'Scarlatine' }, { key: 'maladieCoqueluche', label: 'Coqueluche' },
+                            { key: 'maladieOtite', label: 'Otite' }, { key: 'maladieRougeole', label: 'Rougeole' },
+                            { key: 'maladieOreillons', label: 'Oreillons' },
+                          ].filter(m => (selected as any)[m.key]).map(m => (
+                            <span key={m.key} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px] font-black border border-indigo-200">{m.label}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Allergies */}
+                    {(selected.allergieAsthme || selected.allergieMedicament || selected.allergieAlimentaire || selected.allergieAutres) && (
+                      <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 space-y-2">
+                        <p className="text-[8px] font-black text-rose-600 uppercase tracking-widest">Allergies</p>
+                        <div className="flex flex-wrap gap-1">
+                          {selected.allergieAsthme && <span className="px-2 py-0.5 bg-rose-600 text-white rounded text-[9px] font-black">Asthme</span>}
+                          {selected.allergieMedicament && <span className="px-2 py-0.5 bg-rose-600 text-white rounded text-[9px] font-black">Médicamenteuses</span>}
+                          {selected.allergieAlimentaire && <span className="px-2 py-0.5 bg-rose-600 text-white rounded text-[9px] font-black">Alimentaires</span>}
+                        </div>
+                        {selected.allergieAutres && <DetailRow label="Autres allergies" value={selected.allergieAutres} />}
+                        {selected.allergieConduite && <DetailRow label="Conduite à tenir" value={selected.allergieConduite} />}
+                      </div>
+                    )}
+
+                    {/* Difficultés de santé */}
+                    {selected.difficulteSante && (
+                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                        <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1">Difficultés de santé</p>
+                        <p className="text-sm font-bold text-slate-800">{selected.difficulteSante}</p>
+                      </div>
+                    )}
+
+                    {/* Équipements + Énurésie */}
+                    <div className="bg-slate-50 rounded-2xl p-4 grid grid-cols-2 gap-3">
+                      {(selected.equipeLunettes || selected.equipeLentilles || selected.equipeProtheseAuditive || selected.equipeProtheseDentaire) && (
+                        <div className="col-span-2 space-y-1">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Équipements portés</p>
+                          <div className="flex flex-wrap gap-1">
+                            {selected.equipeLunettes && <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[9px] font-black">Lunettes</span>}
+                            {selected.equipeLentilles && <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[9px] font-black">Lentilles</span>}
+                            {selected.equipeProtheseAuditive && <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[9px] font-black">Prothèse auditive</span>}
+                            {selected.equipeProtheseDentaire && <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[9px] font-black">Prothèse dentaire</span>}
+                          </div>
+                          {selected.equipePrecisions && <p className="text-xs text-slate-600 font-bold">{selected.equipePrecisions}</p>}
+                        </div>
+                      )}
+                      {selected.mouillerLit && <DetailRow label="Énurésie nocturne" value={selected.mouillerLit === 'OCCASIONNELLEMENT' ? 'Occasionnellement' : selected.mouillerLit === 'OUI' ? 'Oui' : 'Non'} />}
+                      <DetailRow label="Médecin traitant" value={selected.medecinNom || null} />
+                      {selected.medecinTel && <DetailRow label="Tél. médecin" value={selected.medecinTel} />}
+                    </div>
+
+                    {/* Autorisations */}
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-1">
+                      <p className="text-[8px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1"><Camera size={11}/> Autorisations</p>
+                      <p className={`text-[11px] font-black ${selected.autorisationSoins !== false ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {selected.autorisationSoins !== false ? '✓' : '✗'} Soins / hospitalisation d'urgence
+                      </p>
+                      <p className={`text-[11px] font-black ${selected.autorisationPhoto !== false ? 'text-emerald-700' : 'text-rose-600'}`}>
+                        {selected.autorisationPhoto !== false ? '✓' : '✗'} Photographies / vidéos
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
                 {/* ── Parent / Tuteur ── */}
                 <section>
                   <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -1099,11 +1684,24 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     <DetailRow label="Nom & Prénom" value={parentFull || null} />
                     <DetailRow label="Lien"
                       value={selected.parent1Lien === 'MERE' ? 'Mère' : selected.parent1Lien === 'PERE' ? 'Père' : selected.parent1Lien === 'TUTEUR' ? 'Tuteur légal' : null} />
-                    <DetailRow label="Téléphone" value={selected.phone} />
+                    <DetailRow label="Tél. portable" value={selected.phone} />
+                    <DetailRow label="Tél. domicile" value={selected.parent1TelDomicile} />
+                    <DetailRow label="Tél. travail" value={selected.parent1TelTravail} />
                     <DetailRow label="WhatsApp" value={selected.parent1Whatsapp || selected.phone} />
                     <DetailRow label="Email"
                       value={selected.email && !selected.email.includes('@letoidesanges.sn') ? selected.email : null} />
+                    <DetailRow label="Adresse" value={selected.parent1Adresse} />
                   </div>
+                  {(selected.parent2Nom || selected.parent2Prenom) && (
+                    <div className="mt-3 bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      <DetailRow label="Nom & Prénom (parent 2)" value={`${selected.parent2Prenom || ''} ${selected.parent2Nom || ''}`.trim() || null} />
+                      <DetailRow label="Lien"
+                        value={selected.parent2Lien === 'MERE' ? 'Mère' : selected.parent2Lien === 'PERE' ? 'Père' : selected.parent2Lien === 'TUTEUR' ? 'Tuteur légal' : null} />
+                      <DetailRow label="Tél. portable" value={selected.parent2Tel} />
+                      <DetailRow label="Tél. domicile" value={selected.parent2TelDomicile} />
+                      <DetailRow label="Tél. travail" value={selected.parent2TelTravail} />
+                    </div>
+                  )}
                 </section>
 
                 {/* ── Contact urgence ── */}
@@ -1132,31 +1730,50 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   </section>
                 )}
 
-                {/* ── Changement de statut ── */}
-                {canModify && (
-                  <section>
-                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Changer le statut</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {STATUTS_ADMISSION.filter(s => s.value !== statut).map(s => (
-                        <button key={s.value}
-                          onClick={() => setShowConfirmStatut({ dossier: selected, newStatut: s.value })}
-                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all hover:scale-105 ${s.color}`}>
-                          → {s.label}
-                        </button>
-                      ))}
-                    </div>
-                    {(statut === 'INSCRIT' || statut === 'ACTIF') && (
-                      <p className="mt-2 text-[10px] text-violet-600 font-bold flex items-center gap-2">
-                        <CheckCircle2 size={12}/> Ce dossier est inscrit — les modifications ne sont plus disponibles.
-                      </p>
-                    )}
-                  </section>
-                )}
               </div>
             </div>
           </div>
         );
       })()}
+
+      {/* ══ MODAL ANNULATION INSCRIPTION ══════════════════════════════════════ */}
+      {showAnnulInscription && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-10 animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-rose-50 text-rose-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+              <Ban size={40}/>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-1 text-center">Annuler l'inscription</h3>
+            <p className="text-xs text-slate-400 font-medium text-center mb-6">
+              <span className="font-black text-slate-700">{showAnnulInscription.dossier.companyName || showAnnulInscription.dossier.name}</span> sera passé au statut <span className="font-black text-rose-600">Radié</span>. Cette action est irréversible.
+            </p>
+            <div className="mb-6">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-2 block">
+                Motif de l'annulation <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={showAnnulInscription.motif}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setShowAnnulInscription((s: typeof showAnnulInscription) => s ? { ...s, motif: e.target.value } : s)}
+                rows={3}
+                placeholder="Ex : Départ de la famille, non-paiement, autre établissement…"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-300 resize-none"
+              />
+            </div>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleAnnulInscription}
+                disabled={actionLoading || !showAnnulInscription.motif.trim()}
+                className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed">
+                {actionLoading ? <Loader2 className="animate-spin" size={16}/> : <Ban size={16}/>} Confirmer l'annulation
+              </button>
+              <button onClick={() => setShowAnnulInscription(null)}
+                className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors text-center">
+                Retour
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ CONFIRM CHANGEMENT STATUT ══════════════════════════════════════════ */}
       {showConfirmStatut && (

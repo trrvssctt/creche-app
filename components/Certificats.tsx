@@ -8,6 +8,7 @@ import {
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { useAnnee } from '../contexts/AnneeContext';
 import { User, NiveauScolaire } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,8 +31,6 @@ interface EmissionEntry {
 const NOM_ECOLE = 'Le Toit des Anges';
 const ADRESSE_ECOLE = '469 Cité Cheikh Omar TALL, Ouakam, Dakar';
 const TEL_ECOLE = '+221 77 XXX XX XX';
-const ANNEE_SCOLAIRE = '2025-2026';
-
 const NIVEAUX_LABELS: Record<string, string> = {
   CRECHE: 'Crèche',
   PS: 'Petite Section (PS)',
@@ -100,7 +99,7 @@ function buildLienParent(e: any): string {
 
 // ─── Composant document imprimable ────────────────────────────────────────────
 
-function CertificatScolarite({ eleve, reference }: { eleve: any; reference: string }) {
+function CertificatScolarite({ eleve, reference, anneeScolaire }: { eleve: any; reference: string; anneeScolaire: string }) {
   const niveau = NIVEAUX_LABELS[eleve.niveau || eleve.niveauScolaire || ''] || '';
   const parent = buildParent(eleve);
   const lien = buildLienParent(eleve);
@@ -148,7 +147,7 @@ function CertificatScolarite({ eleve, reference }: { eleve: any; reference: stri
   );
 }
 
-function CertificatRadiation({ eleve, reference, motif }: { eleve: any; reference: string; motif: string }) {
+function CertificatRadiation({ eleve, reference, motif, anneeScolaire }: { eleve: any; reference: string; motif: string; anneeScolaire: string }) {
   const niveau = NIVEAUX_LABELS[eleve.niveau || eleve.niveauScolaire || ''] || '';
   return (
     <div className="font-serif text-slate-800 text-[13px] leading-relaxed space-y-6">
@@ -232,7 +231,7 @@ function AutorisationSortie({ eleve, reference, destination, dateActivite }: { e
   );
 }
 
-function FicheSanitaire({ eleve, reference }: { eleve: any; reference: string }) {
+function FicheSanitaire({ eleve, reference, anneeScolaire }: { eleve: any; reference: string; anneeScolaire: string }) {
   const niveau = NIVEAUX_LABELS[eleve.niveau || eleve.niveauScolaire || ''] || '';
   const parent = buildParent(eleve);
   const urgenceNom = eleve.urgenceNom || '___________________';
@@ -311,6 +310,7 @@ function FicheSanitaire({ eleve, reference }: { eleve: any; reference: string })
 
 const Certificats: React.FC<{ user: User }> = ({ user }) => {
   const showToast = useToast();
+  const { annee: anneeScolaire } = useAnnee();
   const printRef = useRef<HTMLDivElement>(null);
   const canGenerate = authBridge.canPerform(user, 'EDIT', 'customers');
 
@@ -378,7 +378,7 @@ const Certificats: React.FC<{ user: User }> = ({ user }) => {
   }), [emissions]);
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6">
       {/* Styles impression */}
       <style>{`
         @media print {
@@ -575,10 +575,10 @@ const Certificats: React.FC<{ user: User }> = ({ user }) => {
                   </div>
                   {/* Zone imprimable */}
                   <div id="cert-print" ref={printRef} className="p-8">
-                    {selectedDoc === 'SCOLARITE' && <CertificatScolarite eleve={selectedEleve} reference={reference} />}
-                    {selectedDoc === 'RADIATION' && <CertificatRadiation eleve={selectedEleve} reference={reference} motif={motif} />}
+                    {selectedDoc === 'SCOLARITE' && <CertificatScolarite eleve={selectedEleve} reference={reference} anneeScolaire={anneeScolaire} />}
+                    {selectedDoc === 'RADIATION' && <CertificatRadiation eleve={selectedEleve} reference={reference} motif={motif} anneeScolaire={anneeScolaire} />}
                     {selectedDoc === 'SORTIE'    && <AutorisationSortie eleve={selectedEleve} reference={reference} destination={destination} dateActivite={dateActivite ? new Date(dateActivite).toLocaleDateString('fr-FR') : ''} />}
-                    {selectedDoc === 'SANITAIRE' && <FicheSanitaire eleve={selectedEleve} reference={reference} />}
+                    {selectedDoc === 'SANITAIRE' && <FicheSanitaire eleve={selectedEleve} reference={reference} anneeScolaire={anneeScolaire} />}
                   </div>
                 </div>
 

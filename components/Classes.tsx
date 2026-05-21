@@ -5,60 +5,38 @@ import {
   RefreshCw, ChevronRight, Baby, Phone, BookOpen,
   UserCheck, UserX, Search, Plus, Edit3, Trash2,
   Filter, Calendar, User as UserIcon, MoreVertical,
-  ArrowRight, ShieldCheck, Info, Save
+  ArrowRight, ShieldCheck, Info, Save, X
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
 import { User, Eleve, NiveauScolaire, StatutAdmission } from '../types';
 import { POSTES_CRECHE } from './rh/EmployeeList';
+import { useAnnee } from '../contexts/AnneeContext';
+import { useNiveaux, NiveauDef } from '../contexts/NiveauxContext';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const POSTES_PAR_NIVEAU: Record<NiveauScolaire, string[]> = {
-  CRECHE: ['ENSEIGNANTE_CRECHE', 'AIDE_EDUCATRICE', 'NOURRICE'],
-  PS:     ['ENSEIGNANTE_PS',  'AIDE_EDUCATRICE'],
-  MS:     ['ENSEIGNANTE_MS',  'AIDE_EDUCATRICE'],
-  GS:     ['ENSEIGNANTE_GS',  'AIDE_EDUCATRICE'],
-  CP:     ['ENSEIGNANTE_CP',  'AIDE_EDUCATRICE'],
-  CE1:    ['ENSEIGNANTE_CE1', 'AIDE_EDUCATRICE'],
-  CE2:    ['ENSEIGNANTE_CE2', 'AIDE_EDUCATRICE'],
-  CM1:    ['ENSEIGNANTE_CM1', 'AIDE_EDUCATRICE'],
-  CM2:    ['ENSEIGNANTE_CM2', 'AIDE_EDUCATRICE'],
-};
+const MATIERES_DEFAUT = ['Cours', 'Travaux Pratiques', 'Projet', 'Évaluation'];
 
-const NIVEAUX_DEF: {
-  value: NiveauScolaire;
-  label: string;
-  cycle: string;
-  accentBg: string;
-  accentText: string;
-  accentBorder: string;
-}[] = [
-  { value: 'CRECHE', label: 'Crèche',         cycle: 'Crèche',       accentBg: 'bg-pink-50',    accentText: 'text-pink-700',    accentBorder: 'border-pink-200' },
-  { value: 'PS',     label: 'Petite Section',  cycle: 'Maternelle',   accentBg: 'bg-violet-50',  accentText: 'text-violet-700',  accentBorder: 'border-violet-200' },
-  { value: 'MS',     label: 'Moyenne Section', cycle: 'Maternelle',   accentBg: 'bg-indigo-50',  accentText: 'text-indigo-700',  accentBorder: 'border-indigo-200' },
-  { value: 'GS',     label: 'Grande Section',  cycle: 'Maternelle',   accentBg: 'bg-blue-50',    accentText: 'text-blue-700',    accentBorder: 'border-blue-200' },
-  { value: 'CP',     label: 'CP',              cycle: 'Élémentaire',  accentBg: 'bg-cyan-50',    accentText: 'text-cyan-700',    accentBorder: 'border-cyan-200' },
-  { value: 'CE1',    label: 'CE1',             cycle: 'Élémentaire',  accentBg: 'bg-teal-50',    accentText: 'text-teal-700',    accentBorder: 'border-teal-200' },
-  { value: 'CE2',    label: 'CE2',             cycle: 'Élémentaire',  accentBg: 'bg-emerald-50', accentText: 'text-emerald-700', accentBorder: 'border-emerald-200' },
-  { value: 'CM1',    label: 'CM1',             cycle: 'Élémentaire',  accentBg: 'bg-amber-50',   accentText: 'text-amber-700',   accentBorder: 'border-amber-200' },
-  { value: 'CM2',    label: 'CM2',             cycle: 'Élémentaire',  accentBg: 'bg-orange-50',  accentText: 'text-orange-700',  accentBorder: 'border-orange-200' },
-];
-
-const CYCLES = ['Crèche', 'Maternelle', 'Élémentaire'] as const;
-const ANNEE_COURANTE = '2025-2026';
+// ANNEE_COURANTE provient du contexte useAnnee() dans le composant
 
 const STATUTS_INSCRITS: StatutAdmission[] = ['INSCRIT', 'ACTIF'];
 const STATUTS_CANDIDATURES: StatutAdmission[] = ['EN_ATTENTE', 'ADMIS'];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface EnseignantMatiere {
+  enseignantId: string;
+  matiere: string;
+}
+
 interface Classe {
   id: string;
   nom: string;
   niveau: NiveauScolaire;
   enseignantId?: string;
-  enseignant?: { nom: string; prenom: string };
+  enseignant?: { nom: string; prenom: string; firstName?: string; lastName?: string };
+  enseignantsMatiere?: EnseignantMatiere[];
   capaciteMax: number;
   anneeScolaire: string;
   description?: string;
@@ -100,7 +78,10 @@ interface ClassesProps {
 
 const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const addToast = useToast();
-  const isAdmin = user.role === 'ADMIN';
+  const { annee: ANNEE_COURANTE, isReadOnly } = useAnnee();
+  const { niveaux: NIVEAUX_DEF } = useNiveaux();
+  const CYCLES = Array.from(new Set(NIVEAUX_DEF.map(n => n.cycle)));
+  const isAdmin = user.role === 'ADMIN' && !isReadOnly;
 
   // ── État ───────────────────────────────────────────────────────────────────
   const [eleves, setEleves] = useState<Eleve[]>([]);
@@ -120,6 +101,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const [showClasseModal, setShowClasseModal] = useState(false);
   const [editingClasse, setEditingClasse] = useState<Partial<Classe> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [newMatiereEntry, setNewMatiereEntry] = useState<EnseignantMatiere>({ enseignantId: '', matiere: '' });
 
   const fetchAll = async () => {
     setLoading(true);
@@ -167,6 +149,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
       }
       setShowClasseModal(false);
       setEditingClasse(null);
+      setNewMatiereEntry({ enseignantId: '', matiere: '' });
       fetchAll();
     } catch (err: any) {
       addToast(err.message || 'Erreur lors de la sauvegarde', 'error');
@@ -240,6 +223,16 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   return (
     <div className="pb-20">
 
+      {/* Bannière lecture seule */}
+      {isReadOnly && (
+        <div className="flex items-center gap-3 p-4 mb-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800">
+          <span className="text-[15px]">🔒</span>
+          <p className="text-[11px] font-bold">
+            <strong>Mode lecture seule — {ANNEE_COURANTE}.</strong> Cette année est terminée, aucune classe ne peut être créée ou modifiée.
+          </p>
+        </div>
+      )}
+
       {/* ── VUE DÉTAIL NIVEAU ─────────────────────────────────────────────── */}
       {selectedNiveau && detailDef && (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -291,8 +284,11 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
                     <p className="text-xl font-black text-slate-800">{c.nbEleves || 0} <span className="text-[10px] text-slate-300 font-bold">/ {c.capaciteMax}</span></p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Enseignant</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Prof. Principal</p>
                     <p className="text-[10px] font-bold text-slate-600">{c.enseignant ? `${c.enseignant.firstName || c.enseignant.prenom || ''} ${c.enseignant.lastName || c.enseignant.nom || ''}`.trim() : 'Non affecté'}</p>
+                    {(c.enseignantsMatiere || []).length > 0 && (
+                      <p className="text-[8px] font-black text-indigo-500 mt-0.5">+{c.enseignantsMatiere!.length} intervenant{c.enseignantsMatiere!.length > 1 ? 's' : ''}</p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-4 h-1.5 bg-slate-50 rounded-full overflow-hidden">
@@ -469,7 +465,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
               <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                 <th className="px-8 py-5 text-left">Classe / Nom</th>
                 <th className="px-8 py-5 text-left">Niveau</th>
-                <th className="px-8 py-5 text-left">Enseignant</th>
+                <th className="px-8 py-5 text-left">Équipe Pédagogique</th>
                 <th className="px-8 py-5 text-left">Effectif</th>
                 <th className="px-8 py-5 text-right">Actions</th>
               </tr>
@@ -493,9 +489,16 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
                        </span>
                     </td>
                     <td className="px-8 py-5">
-                       <div className="flex items-center gap-2">
-                          <UserIcon size={14} className="text-slate-300" />
-                          <span className="text-[11px] font-bold text-slate-600">{c.enseignant ? `${c.enseignant.firstName || c.enseignant.prenom || ''} ${c.enseignant.lastName || c.enseignant.nom || ''}`.trim() : 'Non assigné'}</span>
+                       <div className="flex flex-col gap-0.5">
+                         <div className="flex items-center gap-2">
+                           <UserIcon size={14} className="text-slate-300" />
+                           <span className="text-[11px] font-bold text-slate-600">{c.enseignant ? `${c.enseignant.firstName || c.enseignant.prenom || ''} ${c.enseignant.lastName || c.enseignant.nom || ''}`.trim() : 'Non assigné'}</span>
+                         </div>
+                         {(c.enseignantsMatiere || []).length > 0 && (
+                           <span className="text-[9px] font-black text-indigo-500 ml-6">
+                             +{c.enseignantsMatiere!.length} intervenant{c.enseignantsMatiere!.length > 1 ? 's' : ''}
+                           </span>
+                         )}
                        </div>
                     </td>
                     <td className="px-8 py-5">
@@ -591,19 +594,12 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
 
               {(() => {
                 const niveauModal = editingClasse?.niveau as NiveauScolaire | undefined;
-                const postesValides = niveauModal ? (POSTES_PAR_NIVEAU[niveauModal] ?? []) : [];
-                const enseignantsDispo = employees.filter(emp => {
-                  const hasActiveContract = contracts.some(
-                    c => String(c.employeeId) === String(emp.id) && c.status === 'ACTIVE'
-                  );
-                  const posteOk = postesValides.length === 0 || postesValides.includes(emp.position);
-                  return hasActiveContract && posteOk;
-                });
-                const posteLabels = postesValides.map(
-                  pv => POSTES_CRECHE.find(p => p.value === pv)?.label ?? pv
-                ).join(', ');
+                const allActiveEmployees = employees.filter(emp =>
+                  contracts.some(c => String(c.employeeId) === String(emp.id) && c.status === 'ACTIVE')
+                );
+                const enseignantsDispo = allActiveEmployees;
+                const posteLabels = '';
 
-                // Construire un index : enseignantId → classes déjà affectées (hors classe en cours d'édition)
                 const autresClasses = classes.filter(c => c.id !== editingClasse?.id);
                 const affectationsParEnseignant: Record<string, string[]> = {};
                 for (const c of autresClasses) {
@@ -617,57 +613,142 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
                 const affectationsSelected = selectedEmp ? (affectationsParEnseignant[selectedEmp.id] ?? []) : [];
 
                 return (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between px-2">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Enseignant Responsable</label>
-                      {niveauModal && (
-                        <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">
-                          {enseignantsDispo.length} disponible{enseignantsDispo.length !== 1 ? 's' : ''}
-                        </span>
+                  <>
+                    {/* ── Professeur Principal ── */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Professeur Principal</label>
+                        {niveauModal && (
+                          <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">
+                            {enseignantsDispo.length} disponible{enseignantsDispo.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {niveauModal && posteLabels && (
+                        <p className="text-[9px] text-slate-400 font-bold px-2">Postes compatibles : {posteLabels}</p>
+                      )}
+                      <select
+                        value={editingClasse?.enseignantId || ''}
+                        onChange={e => setEditingClasse({ ...editingClasse, enseignantId: e.target.value || undefined })}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10"
+                      >
+                        <option value="">— Aucun professeur principal —</option>
+                        {enseignantsDispo.map(emp => {
+                          const poste = POSTES_CRECHE.find(p => p.value === emp.position);
+                          const nom = `${emp.prenom || emp.firstName || ''} ${emp.nom || emp.lastName || ''}`.trim();
+                          const autresAffect = affectationsParEnseignant[emp.id];
+                          const suffixe = autresAffect?.length ? ` (aussi dans : ${autresAffect.join(', ')})` : '';
+                          return (
+                            <option key={emp.id} value={emp.id}>
+                              {nom}{poste ? ` · ${poste.label}` : ''}{suffixe}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {affectationsSelected.length > 0 && (
+                        <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest px-2">
+                          ℹ Déjà responsable de : {affectationsSelected.join(', ')}
+                        </p>
+                      )}
+                      {niveauModal && enseignantsDispo.length === 0 && (
+                        <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest px-2">
+                          ⚠ Aucun enseignant avec un contrat actif pour ce niveau
+                        </p>
                       )}
                     </div>
-                    {niveauModal && posteLabels && (
-                      <p className="text-[9px] text-slate-400 font-bold px-2">Postes compatibles : {posteLabels}</p>
-                    )}
-                    <select
-                      value={editingClasse?.enseignantId || ''}
-                      onChange={e => setEditingClasse({ ...editingClasse, enseignantId: e.target.value || undefined })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10"
-                    >
-                      <option value="">— Aucun enseignant —</option>
-                      {enseignantsDispo.map(emp => {
-                        const poste = POSTES_CRECHE.find(p => p.value === emp.position);
-                        const nom = `${emp.prenom || emp.firstName || ''} ${emp.nom || emp.lastName || ''}`.trim();
-                        const autresAffect = affectationsParEnseignant[emp.id];
-                        const suffixe = autresAffect?.length
-                          ? ` (aussi dans : ${autresAffect.join(', ')})`
-                          : '';
-                        return (
-                          <option key={emp.id} value={emp.id}>
-                            {nom}{poste ? ` · ${poste.label}` : ''}{suffixe}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {/* Info multi-classes pour l'enseignant sélectionné */}
-                    {affectationsSelected.length > 0 && (
-                      <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest px-2">
-                        ℹ Déjà responsable de : {affectationsSelected.join(', ')}
-                      </p>
-                    )}
-                    {niveauModal && enseignantsDispo.length === 0 && (
-                      <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest px-2">
-                        ⚠ Aucun enseignant avec un contrat actif pour ce niveau
-                      </p>
-                    )}
-                  </div>
+
+                    {/* ── Autres intervenants par matière ── */}
+                    <div className="space-y-3 pt-2 border-t border-slate-50">
+                      <div className="flex items-center gap-2 px-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Autres Intervenants</label>
+                        <span className="text-[8px] text-slate-300 font-bold">— anglais, EPS, musique…</span>
+                      </div>
+
+                      {(editingClasse?.enseignantsMatiere || []).length > 0 && (
+                        <div className="space-y-2">
+                          {(editingClasse!.enseignantsMatiere || []).map((em, idx) => {
+                            const emp = employees.find(e => String(e.id) === String(em.enseignantId));
+                            const empNom = emp
+                              ? `${emp.prenom || emp.firstName || ''} ${emp.nom || emp.lastName || ''}`.trim()
+                              : 'Inconnu';
+                            return (
+                              <div key={idx} className="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-lg">
+                                    {em.matiere}
+                                  </span>
+                                  <span className="text-[11px] font-bold text-slate-700">{empNom}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingClasse({
+                                    ...editingClasse,
+                                    enseignantsMatiere: (editingClasse!.enseignantsMatiere || []).filter((_, i) => i !== idx)
+                                  })}
+                                  className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {niveauModal && (
+                        <div className="flex gap-2 items-end">
+                          <div className="flex-1 space-y-1">
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest px-1">Matière</p>
+                            <select
+                              value={newMatiereEntry.matiere}
+                              onChange={e => setNewMatiereEntry(p => ({ ...p, matiere: e.target.value }))}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-3 text-[11px] font-black outline-none focus:ring-2 focus:ring-indigo-500/10"
+                            >
+                              <option value="">— Matière —</option>
+                              {MATIERES_DEFAUT.map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest px-1">Enseignant</p>
+                            <select
+                              value={newMatiereEntry.enseignantId}
+                              onChange={e => setNewMatiereEntry(p => ({ ...p, enseignantId: e.target.value }))}
+                              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-3 text-[11px] font-black outline-none focus:ring-2 focus:ring-indigo-500/10"
+                            >
+                              <option value="">— Enseignant —</option>
+                              {allActiveEmployees.map(emp => {
+                                const nom = `${emp.prenom || emp.firstName || ''} ${emp.nom || emp.lastName || ''}`.trim();
+                                return <option key={emp.id} value={emp.id}>{nom}</option>;
+                              })}
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!newMatiereEntry.matiere || !newMatiereEntry.enseignantId}
+                            onClick={() => {
+                              setEditingClasse({
+                                ...editingClasse,
+                                enseignantsMatiere: [...(editingClasse?.enseignantsMatiere || []), { ...newMatiereEntry }]
+                              });
+                              setNewMatiereEntry({ enseignantId: '', matiere: '' });
+                            }}
+                            className="p-3 bg-indigo-600 text-white rounded-xl disabled:opacity-30 hover:bg-slate-900 transition-all shrink-0 self-end"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 );
               })()}
 
               <div className="flex gap-3 pt-6">
                 <button
                   type="button"
-                  onClick={() => { setShowClasseModal(false); setEditingClasse(null); }}
+                  onClick={() => { setShowClasseModal(false); setEditingClasse(null); setNewMatiereEntry({ enseignantId: '', matiere: '' }); }}
                   className="flex-1 px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
                 >
                   Annuler

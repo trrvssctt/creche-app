@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { authBridge } from '../services/authBridge';
+import { useAnnee } from '../contexts/AnneeContext';
 import { User, StockItem, Customer } from '../types';
 import YearMonthPicker from './YearMonthPicker';
 import DocumentPreview from './DocumentPreview';
@@ -20,6 +21,7 @@ import { useToast } from './ToastProvider';
 import { buildExportHandlers, ExportColumn } from '../services/exportUtils';
 
 const Sales = ({ currency, user, tenantSettings }: { currency: string, user: User, tenantSettings?: any }) => {
+  const { annee: anneeScolaire, isReadOnly } = useAnnee();
   const [sales, setSales] = useState<any[]>([]);
   const [stocks, setStocks] = useState<StockItem[]>([]);
   const [services, setServices] = useState<any[]>([]);
@@ -125,11 +127,12 @@ const Sales = ({ currency, user, tenantSettings }: { currency: string, user: Use
   const fetchData = async () => {
     setLoading(true);
     try {
+      const params = { anneeScolaire };
       const [salesData, stocksData, srvData, customersData, campaigns] = await Promise.all([
-        apiClient.get('/sales'),
+        apiClient.get('/sales', { params }),
         apiClient.get('/stock'),
         apiClient.get('/services'),
-        apiClient.get('/customers'),
+        apiClient.get('/customers', { params }),
         apiClient.get('/stock/campaigns')
       ]);
       setSales(salesData || []);
@@ -144,7 +147,7 @@ const Sales = ({ currency, user, tenantSettings }: { currency: string, user: Use
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [anneeScolaire]); // eslint-disable-line
 
   const getRates = (sale: any) => {
     const total = parseFloat(sale.totalTtc);
@@ -400,6 +403,12 @@ const Sales = ({ currency, user, tenantSettings }: { currency: string, user: Use
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20 relative">
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 flex items-center gap-2 text-amber-700 text-xs font-bold">
+          <Lock size={14} /> Année {anneeScolaire} — consultation uniquement, aucune facture ne peut être créée ou modifiée
+        </div>
+      )}
+
       {activeInventory && (
         <div className="absolute inset-0 z-50 bg-slate-50/60 backdrop-blur-sm flex items-center justify-center p-6 rounded-[3rem]">
            <div className="bg-white p-12 rounded-[4rem] shadow-2xl border-4 border-indigo-600 max-w-lg text-center space-y-8 animate-in zoom-in-95 duration-500">
@@ -498,9 +507,9 @@ const Sales = ({ currency, user, tenantSettings }: { currency: string, user: Use
           </div>
 
           <button
-            onClick={() => { if (activeInventory) return; setEditModeId(null); setSaleForm({ customerId: '', paymentMethod: 'CASH', amountPaid: 0, paymentReference: '', paymentProofImage: '', chequeNumber: '', bankName: '', chequeDate: new Date().toISOString().split('T')[0], chequeOrder: '', items: [] }); setShowCreateModal(true); }}
-            disabled={!!activeInventory}
-            className={`px-4 md:px-10 py-3 md:py-5 rounded-[1.5rem] font-black transition-all shadow-xl flex items-center gap-3 text-xs uppercase tracking-widest active:scale-95 ${activeInventory ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white hover:bg-indigo-600'}`}
+            onClick={() => { if (activeInventory || isReadOnly) return; setEditModeId(null); setSaleForm({ customerId: '', paymentMethod: 'CASH', amountPaid: 0, paymentReference: '', paymentProofImage: '', chequeNumber: '', bankName: '', chequeDate: new Date().toISOString().split('T')[0], chequeOrder: '', items: [] }); setShowCreateModal(true); }}
+            disabled={!!activeInventory || isReadOnly}
+            className={`px-4 md:px-10 py-3 md:py-5 rounded-[1.5rem] font-black transition-all shadow-xl flex items-center gap-3 text-xs uppercase tracking-widest active:scale-95 ${(activeInventory || isReadOnly) ? 'bg-slate-100 text-slate-300' : 'bg-slate-900 text-white hover:bg-indigo-600'}`}
           >
             <Plus size={18} /> NOUVELLE FACTURE
           </button>

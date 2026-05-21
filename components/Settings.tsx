@@ -1,16 +1,21 @@
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Settings as SettingsIcon, Globe, Image as ImageIcon,
   ShieldCheck, Save, Check, FileText, ShieldAlert,
   Lock, Palette, LayoutDashboard, CreditCard, Sparkles,
   CheckCircle2, Building2, Stamp, RefreshCw, Upload,
-  Loader2, Pipette, GraduationCap, Calendar, MessageSquare
+  Loader2, Pipette, GraduationCap, Calendar, MessageSquare,
+  CalendarDays, PlayCircle, XCircle, AlertTriangle, ChevronRight,
+  Flag, Archive, Plus, Trash2, Edit3, Layers, X
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { apiClient } from '../services/api';
 import { uploadFile } from '../services/uploadService';
 import { authBridge } from '../services/authBridge';
+import { useAnnee } from '../contexts/AnneeContext';
+import { useNiveaux, NIVEAUX_PALETTES, TEMPLATES, NiveauDef } from '../contexts/NiveauxContext';
 
 const SCHOOL_CONFIG_KEY = 'tda_school_config';
 
@@ -64,7 +69,12 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'branding' | 'scolaire' | 'fiscal' | 'profile'>('general');
+  const { anneeActiveToday, setAnnee, refreshAnneeRef, anneesCloturees, setCloturees } = useAnnee();
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'branding' | 'scolaire' | 'fiscal' | 'profile' | 'campagnes' | 'structure'>('general');
+  const { niveaux, addNiveau, updateNiveau, deleteNiveau, loadTemplate, resetToDefault } = useNiveaux();
+  const [editingNiveau, setEditingNiveau] = useState<Partial<NiveauDef> | null>(null);
+  const [showNiveauModal, setShowNiveauModal] = useState(false);
+  const [showTemplateConfirm, setShowTemplateConfirm] = useState<string | null>(null);
   const [localTenant, setLocalTenant] = useState<any>(null);
   const [buttonColor, setButtonColor] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -90,6 +100,29 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
   const [pwSaving, setPwSaving] = useState(false);
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
+
+  // Campagnes d'années scolaires
+  const [anneeDB, setAnneeDB] = useState<string | null>(null);
+  const [showCloturerModal, setShowCloturerModal] = useState(false);
+  const [showNouvelleModal, setShowNouvelleModal] = useState(false);
+  const [nouvelleAnneeInput, setNouvelleAnneeInput] = useState('');
+  const [campagneLoading, setCampagneLoading] = useState(false);
+  const [campagneSuccess, setCampagneSuccess] = useState<string | null>(null);
+  const [campagneError, setCampagneError] = useState<string | null>(null);
+
+  // ── Reconduction d'année ────────────────────────────────────────────────────
+  const [showReconductionModal, setShowReconductionModal] = useState(false);
+  const [reconductionFetching, setReconductionFetching] = useState(false);
+  const [reconductionLoading, setReconductionLoading] = useState(false);
+  const [reconductionStep, setReconductionStep] = useState<'select' | 'done'>('select');
+  const [reconductionError, setReconductionError] = useState<string | null>(null);
+  const [reconductionClasses, setReconductionClasses] = useState<any[]>([]);
+  const [reconductionServices, setReconductionServices] = useState<any[]>([]);
+  const [classeSel, setClasseSel] = useState<Record<string, boolean>>({});
+  const [serviceSel, setServiceSel] = useState<Record<string, boolean>>({});
+  const [classeEdits, setClasseEdits] = useState<Record<string, { nom: string; capaciteMax: number }>>({});
+  const [serviceEdits, setServiceEdits] = useState<Record<string, { name: string; price: number; fraisInscription: number }>>({});
+  const [reconductionResult, setReconductionResult] = useState<{ classes: number; services: number } | null>(null);
 
   const generateStrongPassword = () => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
@@ -148,6 +181,13 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
           buttonColor: data.buttonColor || data.button_color || ''
         });
         setButtonColor(data.buttonColor || data.button_color || '');
+        if (data.anneeActive) {
+          setAnneeDB(data.anneeActive);
+          refreshAnneeRef(data.anneeActive);
+        }
+        if (Array.isArray(data.anneesCloturees)) {
+          setCloturees(data.anneesCloturees);
+        }
       } catch (e) {
         console.error('Fetch Settings Error:', e);
       } finally {
@@ -293,6 +333,131 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
     }));
   };
 
+  const anneeRefDisplayed = anneeDB || anneeActiveToday;
+  const suggestNextAnnee = (current: string): string => {
+    const m = /^(\d{4})-(\d{4})$/.exec(current);
+    if (!m) return '';
+    return `${Number(m[2])}-${Number(m[2]) + 1}`;
+  };
+
+  const handleCloturerAnnee = async () => {
+    setCampagneLoading(true);
+    setCampagneError(null);
+    try {
+      await apiClient.post('/settings/annee/cloturer', { anneeLibelle: anneeRefDisplayed });
+      setCampagneSuccess(`Année scolaire ${anneeRefDisplayed} clôturée avec succès.`);
+      setCloturees([...anneesCloturees, anneeRefDisplayed]);
+      setShowCloturerModal(false);
+      setTimeout(() => setCampagneSuccess(null), 5000);
+    } catch (e: any) {
+      setCampagneError(e?.message || 'Erreur lors de la clôture.');
+    } finally {
+      setCampagneLoading(false);
+    }
+  };
+
+  const handleDemarrerNouvelleAnnee = async () => {
+    const annee = nouvelleAnneeInput.trim();
+    if (!/^\d{4}-\d{4}$/.test(annee)) {
+      setCampagneError('Format invalide. Exemple: 2026-2027');
+      return;
+    }
+    setCampagneLoading(true);
+    setCampagneError(null);
+    try {
+      const result = await apiClient.post('/settings/annee/nouvelle', { anneeLibelle: annee });
+      setAnneeDB(annee);
+      refreshAnneeRef(annee);
+      setAnnee(annee);
+      setCampagneSuccess(`Nouvelle année scolaire ${annee} démarrée avec succès.`);
+      setShowNouvelleModal(false);
+      setNouvelleAnneeInput('');
+      setTimeout(() => setCampagneSuccess(null), 5000);
+    } catch (e: any) {
+      setCampagneError(e?.message || 'Erreur lors du démarrage de l\'année.');
+    } finally {
+      setCampagneLoading(false);
+    }
+  };
+
+  const getPreviousAnnee = (annee: string): string => {
+    const m = /^(\d{4})-(\d{4})$/.exec(annee);
+    if (!m) return '';
+    return `${Number(m[1]) - 1}-${Number(m[2]) - 1}`;
+  };
+
+  const openReconductionModal = async () => {
+    const prevAnnee = getPreviousAnnee(anneeRefDisplayed);
+    setReconductionStep('select');
+    setReconductionError(null);
+    setReconductionResult(null);
+    setReconductionFetching(true);
+    setShowReconductionModal(true);
+    try {
+      const [classesData, servicesData] = await Promise.all([
+        apiClient.get('/classes', { params: { anneeScolaire: prevAnnee } }).catch(() => []),
+        apiClient.get('/services', { params: { anneeScolaire: prevAnnee } }).catch(() => []),
+      ]);
+      const classes = Array.isArray(classesData) ? classesData : (classesData?.rows ?? []);
+      const services = Array.isArray(servicesData) ? servicesData : (servicesData?.rows ?? []);
+      setReconductionClasses(classes);
+      setReconductionServices(services);
+      setClasseSel(Object.fromEntries(classes.map((c: any) => [c.id, true])));
+      setServiceSel(Object.fromEntries(services.map((s: any) => [s.id, true])));
+      setClasseEdits(Object.fromEntries(classes.map((c: any) => [c.id, { nom: c.nom, capaciteMax: c.capaciteMax || 30 }])));
+      setServiceEdits(Object.fromEntries(services.map((s: any) => [s.id, { name: s.name, price: s.price || 0, fraisInscription: s.fraisInscription || 0 }])));
+    } catch {
+      setReconductionError('Erreur lors du chargement des données.');
+    } finally {
+      setReconductionFetching(false);
+    }
+  };
+
+  const handleConfirmReconduction = async () => {
+    setReconductionLoading(true);
+    setReconductionError(null);
+    let classesOk = 0;
+    let servicesOk = 0;
+    try {
+      for (const c of reconductionClasses.filter(c => classeSel[c.id])) {
+        const ed = classeEdits[c.id] || { nom: c.nom, capaciteMax: c.capaciteMax || 30 };
+        await apiClient.post('/classes', {
+          nom: ed.nom || c.nom,
+          niveau: c.niveau,
+          capaciteMax: ed.capaciteMax || 30,
+          description: c.description || null,
+          anneeScolaire: anneeRefDisplayed,
+        });
+        classesOk++;
+      }
+      for (const s of reconductionServices.filter(s => serviceSel[s.id])) {
+        const ed = serviceEdits[s.id] || { name: s.name, price: s.price || 0, fraisInscription: s.fraisInscription || 0 };
+        await apiClient.post('/services', {
+          name: ed.name || s.name,
+          description: s.description || '',
+          price: ed.price,
+          isActive: true,
+          imageUrl: s.imageUrl || '',
+          typeOffre: s.typeOffre || 'MENSUALITE',
+          niveauxCibles: s.niveauxCibles || [],
+          dureeMois: s.dureeMois ?? 10,
+          inclutCantine: s.inclutCantine ?? false,
+          fraisInscription: ed.fraisInscription,
+          estRecurrent: s.estRecurrent ?? true,
+          periodicite: s.periodicite || 'MENSUEL',
+          anneeScolaire: anneeRefDisplayed,
+        });
+        servicesOk++;
+      }
+      setReconductionResult({ classes: classesOk, services: servicesOk });
+      setReconductionStep('done');
+    } catch (err: any) {
+      setReconductionError(err?.message || 'Erreur lors de la reconduction.');
+    } finally {
+      setReconductionLoading(false);
+    }
+  };
+
   if (loading) return (
     <div className="p-40 text-center flex flex-col items-center gap-4">
       <Loader2 className="animate-spin text-indigo-600" size={48} />
@@ -322,7 +487,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
           </h2>
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Le Toit des Anges — Paramètres généraux, scolarité et sécurité</p>
         </div>
-        {activeSubTab !== 'scolaire' && (
+        {activeSubTab !== 'scolaire' && activeSubTab !== 'campagnes' && activeSubTab !== 'structure' && (
           <div className="flex justify-end flex-wrap gap-3">
             <button
               onClick={handleSave}
@@ -340,11 +505,13 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
       <div className="overflow-x-auto pb-1">
         <div className="flex flex-wrap gap-2 p-1.5 bg-white border border-slate-100 rounded-[2rem] w-fit shadow-sm min-w-0">
           {[
-            { id: 'general',   label: 'Établissement',  icon: Building2 },
-            { id: 'branding',  label: 'Design',         icon: Palette },
-            { id: 'scolaire',  label: 'Scolarité',      icon: GraduationCap },
+            { id: 'general',   label: 'Établissement',    icon: Building2 },
+            { id: 'branding',  label: 'Design',           icon: Palette },
+            { id: 'structure', label: 'Structure',        icon: Layers },
+            { id: 'scolaire',  label: 'Scolarité',        icon: GraduationCap },
+            { id: 'campagnes', label: 'Années scolaires', icon: CalendarDays },
             { id: 'fiscal',    label: 'Reçus & Finances', icon: FileText },
-            { id: 'profile',   label: 'Sécurité',       icon: Lock },
+            { id: 'profile',   label: 'Sécurité',         icon: Lock },
           ].map(tab => (
             <button
               key={tab.id}
@@ -575,6 +742,288 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
         </div>
       )}
 
+      {/* ── TAB: Structure Pédagogique ── */}
+      {activeSubTab === 'structure' && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4">
+
+          {/* Hero */}
+          <div className="flex items-center gap-4 p-6 bg-indigo-900 rounded-[2.5rem] text-white relative overflow-hidden">
+            <div className="absolute right-0 top-0 p-8 opacity-10"><Layers size={100}/></div>
+            <div className="w-14 h-14 bg-indigo-700 rounded-2xl flex items-center justify-center shrink-0">
+              <Layers size={28} className="text-white"/>
+            </div>
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-tight">Structure Pédagogique</h3>
+              <p className="text-indigo-300 text-[10px] font-bold uppercase tracking-widest mt-1">
+                Définissez les niveaux de votre établissement — crèche, collège, lycée, université…
+              </p>
+            </div>
+          </div>
+
+          {/* Modèles rapides */}
+          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
+                <Layers size={16}/> Modèles d'Établissement
+              </h4>
+              <button
+                onClick={() => setShowTemplateConfirm('__reset__')}
+                className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-600 transition-colors"
+              >
+                Réinitialiser
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 font-bold">
+              Choisissez un modèle pour préremplir la structure, puis personnalisez-la à votre guise.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {Object.entries(TEMPLATES).map(([key, tmpl]) => (
+                <button
+                  key={key}
+                  onClick={() => setShowTemplateConfirm(key)}
+                  className="flex flex-col items-center gap-2 p-5 bg-slate-50 border-2 border-slate-100 rounded-[2rem] hover:border-indigo-300 hover:bg-indigo-50 transition-all group"
+                >
+                  <span className="text-2xl">{tmpl.icon}</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 group-hover:text-indigo-700 text-center leading-tight">{tmpl.label}</span>
+                  <span className="text-[8px] font-bold text-slate-400">{tmpl.niveaux.length} niveau{tmpl.niveaux.length > 1 ? 'x' : ''}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Liste des niveaux */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">Niveaux configurés ({niveaux.length})</h4>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Ces niveaux apparaissent dans le module Classes</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingNiveau({
+                    value: '',
+                    label: '',
+                    cycle: '',
+                    accentBg: NIVEAUX_PALETTES[0].bg,
+                    accentText: NIVEAUX_PALETTES[0].text,
+                    accentBorder: NIVEAUX_PALETTES[0].border,
+                  });
+                  setShowNiveauModal(true);
+                }}
+                className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+              >
+                <Plus size={14}/> Ajouter un niveau
+              </button>
+            </div>
+
+            {niveaux.length === 0 ? (
+              <div className="p-16 text-center">
+                <Layers size={32} className="mx-auto text-slate-200 mb-3"/>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aucun niveau configuré</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Choisissez un modèle ou ajoutez un niveau manuellement</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {/* Groupé par cycle */}
+                {Array.from(new Set(niveaux.map(n => n.cycle))).map(cycle => (
+                  <div key={cycle}>
+                    <div className="px-8 py-3 bg-slate-50">
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400">{cycle}</p>
+                    </div>
+                    {niveaux.filter(n => n.cycle === cycle).map(n => (
+                      <div key={n.value} className="flex items-center gap-4 px-8 py-4 hover:bg-slate-50/50 transition-all group">
+                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm ${n.accentBg} ${n.accentText} border ${n.accentBorder} shrink-0`}>
+                          {n.value.substring(0, 2)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <span className="font-black text-slate-900 text-sm">{n.label}</span>
+                            <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${n.accentBg} ${n.accentText} ${n.accentBorder}`}>
+                              {n.value}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-bold mt-0.5">Cycle : {n.cycle}</p>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => { setEditingNiveau({ ...n }); setShowNiveauModal(true); }}
+                            className="p-2.5 bg-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          >
+                            <Edit3 size={14}/>
+                          </button>
+                          <button
+                            onClick={() => deleteNiveau(n.value)}
+                            className="p-2.5 bg-slate-100 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                          >
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="p-5 bg-amber-50 border border-amber-100 rounded-[2rem] flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5"/>
+            <p className="text-[10px] font-bold text-amber-800 leading-relaxed">
+              Modifier la structure n'affecte pas les classes et élèves déjà enregistrés. Les classes physiques existantes
+              gardent leur niveau — seule l'affichage dans le module Classes change.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: Niveau ── */}
+      {showNiveauModal && editingNiveau && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowNiveauModal(false); setEditingNiveau(null); }}/>
+          <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900">
+                  {niveaux.find(n => n.value === editingNiveau.value) ? 'Modifier le niveau' : 'Nouveau niveau'}
+                </h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                  Structure pédagogique de l'établissement
+                </p>
+              </div>
+              <button onClick={() => { setShowNiveauModal(false); setEditingNiveau(null); }} className="p-2 text-slate-400 hover:text-slate-700 rounded-xl">
+                <X size={18}/>
+              </button>
+            </div>
+            <div className="p-8 space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Code (identifiant)</label>
+                  <input
+                    type="text"
+                    value={editingNiveau.value || ''}
+                    onChange={e => setEditingNiveau(p => ({ ...p, value: e.target.value.toUpperCase().replace(/\s/g, '_') }))}
+                    disabled={!!niveaux.find(n => n.value === editingNiveau.value)}
+                    placeholder="Ex: L1, TERM, PS"
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-50 disabled:cursor-not-allowed font-mono"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Libellé affiché</label>
+                  <input
+                    type="text"
+                    value={editingNiveau.label || ''}
+                    onChange={e => setEditingNiveau(p => ({ ...p, label: e.target.value }))}
+                    placeholder="Ex: Licence 1"
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Cycle / Groupe</label>
+                <input
+                  type="text"
+                  value={editingNiveau.cycle || ''}
+                  onChange={e => setEditingNiveau(p => ({ ...p, cycle: e.target.value }))}
+                  placeholder="Ex: Licence, Lycée, Maternelle…"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10"
+                  list="cycles-datalist"
+                />
+                <datalist id="cycles-datalist">
+                  {Array.from(new Set(niveaux.map(n => n.cycle))).map(c => <option key={c} value={c}/>)}
+                </datalist>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Couleur</label>
+                <div className="flex flex-wrap gap-2">
+                  {NIVEAUX_PALETTES.map((p, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setEditingNiveau(prev => ({ ...prev, accentBg: p.bg, accentText: p.text, accentBorder: p.border }))}
+                      className={`w-8 h-8 rounded-xl border-2 transition-all hover:scale-110 ${editingNiveau.accentBg === p.bg ? 'border-slate-800 scale-110' : 'border-transparent'}`}
+                      style={{ backgroundColor: p.preview }}
+                    />
+                  ))}
+                </div>
+                {editingNiveau.label && (
+                  <div className={`mt-2 inline-flex items-center px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${editingNiveau.accentBg} ${editingNiveau.accentText} ${editingNiveau.accentBorder}`}>
+                    {editingNiveau.label || 'Aperçu'}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { setShowNiveauModal(false); setEditingNiveau(null); }}
+                  className="flex-1 py-3.5 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    if (!editingNiveau.value || !editingNiveau.label || !editingNiveau.cycle) return;
+                    const existing = niveaux.find(n => n.value === editingNiveau.value);
+                    if (existing) {
+                      updateNiveau(editingNiveau.value, editingNiveau as NiveauDef);
+                    } else {
+                      addNiveau(editingNiveau as NiveauDef);
+                    }
+                    setShowNiveauModal(false);
+                    setEditingNiveau(null);
+                  }}
+                  disabled={!editingNiveau.value || !editingNiveau.label || !editingNiveau.cycle}
+                  className="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  <Save size={14}/> Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── MODAL: Confirmer chargement template ── */}
+      {showTemplateConfirm && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowTemplateConfirm(null)}/>
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl space-y-5">
+            <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto">
+              <AlertTriangle size={28} className="text-amber-600"/>
+            </div>
+            <div className="text-center">
+              <p className="text-base font-black text-slate-900 uppercase">Remplacer la structure ?</p>
+              <p className="text-[10px] text-slate-500 font-bold mt-2 leading-relaxed">
+                {showTemplateConfirm === '__reset__'
+                  ? 'Réinitialiser vers les niveaux Crèche & École primaire par défaut ?'
+                  : `Charger le modèle "${TEMPLATES[showTemplateConfirm]?.label}" ? Les niveaux actuels seront remplacés.`
+                }
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowTemplateConfirm(null)}
+                className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => {
+                  if (showTemplateConfirm === '__reset__') {
+                    resetToDefault();
+                  } else {
+                    loadTemplate(showTemplateConfirm);
+                  }
+                  setShowTemplateConfirm(null);
+                }}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all"
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* ── TAB: Scolarité (NOUVEAU) ── */}
       {activeSubTab === 'scolaire' && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4">
@@ -718,13 +1167,13 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
                   <GraduationCap size={16}/> Frais d'Inscription par Niveau (FCFA)
                 </h4>
                 <div className="space-y-2">
-                  {Object.keys(NIVEAUX_LABELS).map(niveau => (
-                    <div key={niveau} className="flex items-center gap-3">
-                      <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest w-36 shrink-0">{NIVEAUX_LABELS[niveau]}</span>
+                  {niveaux.map(n => (
+                    <div key={n.value} className="flex items-center gap-3">
+                      <span className={`text-[10px] font-black uppercase tracking-widest w-36 shrink-0 px-2 py-1 rounded-lg border ${n.accentBg} ${n.accentText} ${n.accentBorder}`}>{n.label}</span>
                       <input
                         type="number" min={0}
-                        value={schoolConfig.fraisInscription[niveau] ?? 85000}
-                        onChange={e => updateFraisInscription(niveau, parseInt(e.target.value) || 0)}
+                        value={schoolConfig.fraisInscription[n.value] ?? 85000}
+                        onChange={e => updateFraisInscription(n.value, parseInt(e.target.value) || 0)}
                         className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-black focus:ring-4 focus:ring-indigo-500/10 outline-none text-right"
                       />
                       <span className="text-[10px] font-black text-slate-400 uppercase shrink-0">FCFA</span>
@@ -736,6 +1185,546 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── TAB: Années Scolaires (Campagnes) ── */}
+      {activeSubTab === 'campagnes' && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4">
+
+          {/* Hero */}
+          <div className="flex items-center gap-4 p-6 bg-indigo-900 rounded-[2.5rem] text-white relative overflow-hidden">
+            <div className="absolute right-0 top-0 p-8 opacity-10"><CalendarDays size={100}/></div>
+            <div className="w-14 h-14 bg-indigo-700 rounded-2xl flex items-center justify-center shrink-0">
+              <CalendarDays size={28} className="text-white"/>
+            </div>
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-tight">Gestion des Campagnes</h3>
+              <p className="text-indigo-300 text-[10px] font-bold uppercase tracking-widest mt-1">
+                Clôturer l'année en cours · Démarrer une nouvelle année scolaire
+              </p>
+            </div>
+          </div>
+
+          {/* Feedback */}
+          {campagneSuccess && (
+            <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0"/>
+              <p className="text-sm font-bold text-emerald-700">{campagneSuccess}</p>
+            </div>
+          )}
+          {campagneError && (
+            <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+              <XCircle size={18} className="text-red-500 shrink-0"/>
+              <p className="text-sm font-bold text-red-600">{campagneError}</p>
+              <button onClick={() => setCampagneError(null)} className="ml-auto text-red-400 hover:text-red-600"><XCircle size={14}/></button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* Année active */}
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+              <h4 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
+                <Flag size={16}/> Année Scolaire Active
+              </h4>
+              <div className="flex items-center gap-5 p-6 bg-indigo-50 border border-indigo-100 rounded-3xl">
+                <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <GraduationCap size={28} className="text-white"/>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Année en cours</p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="text-3xl font-black text-indigo-900 tracking-tighter">{anneeRefDisplayed}</p>
+                    {anneesCloturees.includes(anneeRefDisplayed) && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[8px] font-black uppercase tracking-widest">
+                        <Archive size={10}/> Clôturée
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest mt-1">
+                    {anneeDB ? 'Définie en base de données' : 'Calculée selon la date du jour'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
+                Cette année est la référence pour toute l'application. Les années antérieures sont en lecture seule.
+                Les classes, élèves et tarifs des services doivent être reconfigurés à chaque nouvelle année.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-4">
+
+              {/* Clôturer */}
+              <div className="bg-white p-7 rounded-[2.5rem] border border-amber-100 shadow-sm">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
+                    <Archive size={22} className="text-amber-600"/>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-slate-900 uppercase">Clôturer l'Année en Cours</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                      Marque {anneeRefDisplayed} comme terminée (audit)
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-relaxed mb-5">
+                  Enregistre la clôture officielle dans le journal d'audit. L'année reste consultable en lecture seule.
+                  Cette action ne supprime aucune donnée.
+                </p>
+                {anneesCloturees.includes(anneeRefDisplayed) ? (
+                  <div className="w-full py-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-not-allowed">
+                    <Archive size={14}/> {anneeRefDisplayed} déjà clôturée
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setCampagneError(null); setShowCloturerModal(true); }}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                  >
+                    <Archive size={14}/> Clôturer {anneeRefDisplayed}
+                  </button>
+                )}
+              </div>
+
+              {/* Nouvelle année */}
+              <div className="bg-white p-7 rounded-[2.5rem] border border-emerald-100 shadow-sm">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
+                    <PlayCircle size={22} className="text-emerald-600"/>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-slate-900 uppercase">Démarrer une Nouvelle Année</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                      Bascule l'application sur la nouvelle campagne
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-relaxed mb-5">
+                  Toute l'application passera sur la nouvelle année. Vous devrez reconfigurer les classes, les services
+                  et les tarifs — rien n'est reporté automatiquement.
+                </p>
+                <button
+                  onClick={() => {
+                    setCampagneError(null);
+                    setNouvelleAnneeInput(suggestNextAnnee(anneeRefDisplayed));
+                    setShowNouvelleModal(true);
+                  }}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                >
+                  <PlayCircle size={14}/> Démarrer {suggestNextAnnee(anneeRefDisplayed)}
+                </button>
+              </div>
+
+              {/* Reconduire la configuration */}
+              <div className="bg-white p-7 rounded-[2.5rem] border border-indigo-100 shadow-sm">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center shrink-0">
+                    <RefreshCw size={22} className="text-indigo-600"/>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-slate-900 uppercase">Reconduire la Configuration</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                      Copier depuis {getPreviousAnnee(anneeRefDisplayed)} → {anneeRefDisplayed}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 leading-relaxed mb-5">
+                  Importez classes et offres de scolarité depuis l'année précédente. Modifiez noms,
+                  capacités et prix directement avant de confirmer.
+                </p>
+                <button
+                  onClick={openReconductionModal}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                >
+                  <RefreshCw size={14}/> Reconduire depuis {getPreviousAnnee(anneeRefDisplayed)}
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Info card */}
+          <div className="p-6 bg-slate-50 border border-slate-200 rounded-[2rem] flex items-start gap-4">
+            <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5"/>
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Ce qui se passe lors d'un changement d'année</p>
+              <ul className="text-[10px] text-slate-500 font-bold space-y-1 list-disc list-inside leading-relaxed">
+                <li>Utilisez <span className="text-slate-700">Reconduire la Configuration</span> pour copier classes et tarifs depuis l'année précédente</li>
+                <li>Les prix et noms peuvent être <span className="text-slate-700">modifiés directement</span> avant de confirmer</li>
+                <li>Les élèves existants restent visibles — utilisez la <span className="text-slate-700">réinscription</span> pour les affecter à la nouvelle année</li>
+                <li>Toutes les données des années passées restent <span className="text-slate-700">consultables en lecture seule</span></li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── MODAL: Clôturer l'année ── */}
+      {showCloturerModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCloturerModal(false)}/>
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
+                <Archive size={28} className="text-amber-600"/>
+              </div>
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900">Clôturer l'année</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Action irréversible</p>
+              </div>
+            </div>
+            <div className="p-5 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5"/>
+              <p className="text-xs font-bold text-amber-800">
+                Vous allez clôturer officiellement l'année scolaire <strong>{anneeRefDisplayed}</strong>.
+                Cette action sera enregistrée dans le journal d'audit.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCloturerModal(false)}
+                className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleCloturerAnnee}
+                disabled={campagneLoading}
+                className="flex-1 py-4 bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <Archive size={14}/>}
+                Confirmer la clôture
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── MODAL: Démarrer nouvelle année ── */}
+      {showNouvelleModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowNouvelleModal(false)}/>
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
+                <PlayCircle size={28} className="text-emerald-600"/>
+              </div>
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900">Nouvelle année scolaire</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Toute l'application bascule</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Libellé de la nouvelle année</label>
+              <input
+                type="text"
+                value={nouvelleAnneeInput}
+                onChange={e => { setNouvelleAnneeInput(e.target.value); setCampagneError(null); }}
+                placeholder="Ex: 2026-2027"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-xl font-black text-center tracking-widest focus:ring-4 focus:ring-emerald-500/20 outline-none"
+              />
+              {nouvelleAnneeInput && !/^\d{4}-\d{4}$/.test(nouvelleAnneeInput) && (
+                <p className="text-[10px] text-red-500 font-bold px-2">Format requis: YYYY-YYYY</p>
+              )}
+            </div>
+            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Ce qui va se passer</p>
+              {[
+                'L\'année active passe à ' + (nouvelleAnneeInput || '…'),
+                'Tous les utilisateurs voient la nouvelle année',
+                'Les années passées restent en lecture seule',
+                'Classes et services doivent être reconfigurés',
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <ChevronRight size={12} className="text-emerald-500 shrink-0"/>
+                  <p className="text-[10px] font-bold text-slate-600">{item}</p>
+                </div>
+              ))}
+            </div>
+            {campagneError && (
+              <p className="text-xs text-red-500 font-bold px-2">{campagneError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowNouvelleModal(false); setCampagneError(null); }}
+                className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDemarrerNouvelleAnnee}
+                disabled={campagneLoading || !/^\d{4}-\d{4}$/.test(nouvelleAnneeInput)}
+                className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <PlayCircle size={14}/>}
+                Démarrer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── MODAL: Reconduction d'année ── */}
+      {showReconductionModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !reconductionLoading && setShowReconductionModal(false)}/>
+          <div className="relative bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl flex flex-col max-h-[88vh]">
+
+            {/* Header */}
+            <div className="p-8 pb-5 shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center shrink-0">
+                  <RefreshCw size={26} className="text-indigo-600"/>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black uppercase text-slate-900">Reconduire la Configuration</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                    {getPreviousAnnee(anneeRefDisplayed)} &rarr; {anneeRefDisplayed}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="px-8 flex-1 overflow-y-auto space-y-6 pb-2">
+
+              {reconductionStep === 'done' ? (
+                /* ── Résultat ── */
+                <div className="flex flex-col items-center py-10 gap-6">
+                  <div className="w-20 h-20 bg-emerald-50 rounded-3xl flex items-center justify-center">
+                    <CheckCircle2 size={40} className="text-emerald-600"/>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-xl font-black text-slate-900 uppercase tracking-tighter">Reconduction terminée !</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{anneeRefDisplayed}</p>
+                  </div>
+                  <div className="w-full space-y-3">
+                    {!!reconductionResult?.classes && (
+                      <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                        <GraduationCap size={18} className="text-indigo-600 shrink-0"/>
+                        <p className="text-sm font-black text-indigo-700">
+                          {reconductionResult.classes} classe{reconductionResult.classes > 1 ? 's' : ''} créée{reconductionResult.classes > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    )}
+                    {!!reconductionResult?.services && (
+                      <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                        <CreditCard size={18} className="text-emerald-600 shrink-0"/>
+                        <p className="text-sm font-black text-emerald-700">
+                          {reconductionResult.services} offre{reconductionResult.services > 1 ? 's' : ''} de scolarité créée{reconductionResult.services > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl w-full space-y-2">
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Prochaines étapes</p>
+                    {['Allez dans Classes pour affecter les enseignants', 'Utilisez la Réinscription pour rattacher les élèves'].map((tip, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <ChevronRight size={12} className="text-emerald-500 shrink-0 mt-0.5"/>
+                        <p className="text-[10px] font-bold text-slate-600">{tip}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : reconductionFetching ? (
+                /* ── Chargement ── */
+                <div className="flex flex-col items-center py-16 gap-4">
+                  <Loader2 size={36} className="animate-spin text-indigo-600"/>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Chargement des données {getPreviousAnnee(anneeRefDisplayed)}...
+                  </p>
+                </div>
+              ) : reconductionClasses.length === 0 && reconductionServices.length === 0 ? (
+                /* ── Vide ── */
+                <div className="flex flex-col items-center py-16 gap-4">
+                  <AlertTriangle size={36} className="text-amber-400"/>
+                  <p className="text-sm font-black text-slate-700">Aucune donnée pour {getPreviousAnnee(anneeRefDisplayed)}</p>
+                  <p className="text-[10px] text-slate-400 font-bold text-center max-w-xs leading-relaxed">
+                    Il n'y a pas encore de classes ni d'offres enregistrées pour l'année précédente.
+                    Créez-les manuellement dans les modules Classes et Offres de Scolarité.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {reconductionError && (
+                    <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                      <XCircle size={16} className="text-red-500 shrink-0"/>
+                      <p className="text-xs font-bold text-red-600">{reconductionError}</p>
+                    </div>
+                  )}
+
+                  {/* ── Classes ── */}
+                  {reconductionClasses.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
+                          <GraduationCap size={14}/> Classes ({reconductionClasses.length})
+                        </p>
+                        <button
+                          onClick={() => {
+                            const allSel = reconductionClasses.every(c => classeSel[c.id]);
+                            setClasseSel(Object.fromEntries(reconductionClasses.map(c => [c.id, !allSel])));
+                          }}
+                          className="text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-700 transition-colors"
+                        >
+                          {reconductionClasses.every(c => classeSel[c.id]) ? 'Tout désélectionner' : 'Tout sélectionner'}
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {reconductionClasses.map(c => {
+                          const sel = !!classeSel[c.id];
+                          const ed = classeEdits[c.id] || { nom: c.nom, capaciteMax: c.capaciteMax || 30 };
+                          return (
+                            <div key={c.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${sel ? 'border-indigo-100 bg-indigo-50/40' : 'border-slate-100 bg-slate-50 opacity-40'}`}>
+                              <button
+                                onClick={() => setClasseSel(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
+                                className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${sel ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'}`}
+                              >
+                                {sel && <Check size={10} className="text-white stroke-[3]"/>}
+                              </button>
+                              <input
+                                value={ed.nom}
+                                onChange={e => setClasseEdits(prev => ({ ...prev, [c.id]: { ...ed, nom: e.target.value } }))}
+                                disabled={!sel}
+                                className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                              />
+                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 px-2 py-1 bg-slate-100 rounded-lg shrink-0">{c.niveau}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[9px] text-slate-400 font-bold">Cap.</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={ed.capaciteMax}
+                                  onChange={e => setClasseEdits(prev => ({ ...prev, [c.id]: { ...ed, capaciteMax: Number(e.target.value) } }))}
+                                  disabled={!sel}
+                                  className="w-14 bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-black text-slate-800 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Services / Offres ── */}
+                  {reconductionServices.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-2">
+                          <CreditCard size={14}/> Offres de Scolarité ({reconductionServices.length})
+                        </p>
+                        <button
+                          onClick={() => {
+                            const allSel = reconductionServices.every(s => serviceSel[s.id]);
+                            setServiceSel(Object.fromEntries(reconductionServices.map(s => [s.id, !allSel])));
+                          }}
+                          className="text-[9px] font-black uppercase tracking-widest text-emerald-400 hover:text-emerald-700 transition-colors"
+                        >
+                          {reconductionServices.every(s => serviceSel[s.id]) ? 'Tout désélectionner' : 'Tout sélectionner'}
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {reconductionServices.map(s => {
+                          const sel = !!serviceSel[s.id];
+                          const ed = serviceEdits[s.id] || { name: s.name, price: s.price || 0, fraisInscription: s.fraisInscription || 0 };
+                          return (
+                            <div key={s.id} className={`flex items-start gap-3 p-3 rounded-2xl border transition-all ${sel ? 'border-emerald-100 bg-emerald-50/40' : 'border-slate-100 bg-slate-50 opacity-40'}`}>
+                              <button
+                                onClick={() => setServiceSel(prev => ({ ...prev, [s.id]: !prev[s.id] }))}
+                                className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 mt-1 transition-all ${sel ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 bg-white'}`}
+                              >
+                                {sel && <Check size={10} className="text-white stroke-[3]"/>}
+                              </button>
+                              <div className="flex-1 space-y-2 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    value={ed.name}
+                                    onChange={e => setServiceEdits(prev => ({ ...prev, [s.id]: { ...ed, name: e.target.value } }))}
+                                    disabled={!sel}
+                                    className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 px-2 py-1 bg-slate-100 rounded-lg whitespace-nowrap shrink-0">
+                                    {s.typeOffre || 'MENSUALITE'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-4 flex-wrap">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-slate-400 font-bold whitespace-nowrap">Prix</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={ed.price}
+                                      onChange={e => setServiceEdits(prev => ({ ...prev, [s.id]: { ...ed, price: Number(e.target.value) } }))}
+                                      disabled={!sel}
+                                      className="w-28 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs font-black text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                    <span className="text-[9px] text-slate-400 font-bold">FCFA</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-slate-400 font-bold whitespace-nowrap">Frais inscr.</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={ed.fraisInscription}
+                                      onChange={e => setServiceEdits(prev => ({ ...prev, [s.id]: { ...ed, fraisInscription: Number(e.target.value) } }))}
+                                      disabled={!sel}
+                                      className="w-28 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs font-black text-slate-800 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    />
+                                    <span className="text-[9px] text-slate-400 font-bold">FCFA</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-8 pt-5 border-t border-slate-100 shrink-0">
+              {reconductionStep === 'done' ? (
+                <button
+                  onClick={() => setShowReconductionModal(false)}
+                  className="w-full py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
+                >
+                  Fermer
+                </button>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowReconductionModal(false)}
+                    disabled={reconductionLoading}
+                    className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-60"
+                  >
+                    Annuler
+                  </button>
+                  {!reconductionFetching && (reconductionClasses.length > 0 || reconductionServices.length > 0) && (
+                    <button
+                      onClick={handleConfirmReconduction}
+                      disabled={reconductionLoading || (!Object.values(classeSel).some(Boolean) && !Object.values(serviceSel).some(Boolean))}
+                      className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {reconductionLoading
+                        ? <><Loader2 size={14} className="animate-spin"/> Reconduction en cours...</>
+                        : <><RefreshCw size={14}/> Confirmer la reconduction</>
+                      }
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* ── TAB: Reçus & Finances ── */}
