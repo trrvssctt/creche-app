@@ -1,15 +1,44 @@
-import { Bulletin, Eleve } from '../models/index.js';
+import { Bulletin, Eleve, Classe } from '../models/index.js';
 import { Op } from 'sequelize';
 
 export class BulletinController {
   static async list(req, res) {
     try {
       const { eleveId, trimestre, anneeScolaire, niveau } = req.query;
-      const where = { tenantId: req.user.tenantId };
+      const tenantId = req.user.tenantId;
+      const where = { tenantId };
       if (eleveId)       where.eleveId = eleveId;
       if (trimestre)     where.trimestre = trimestre;
       if (anneeScolaire) where.anneeScolaire = anneeScolaire;
       if (niveau)        where.niveau = niveau;
+
+      // Enseignant/Maîtresse : limiter aux bulletins des élèves de leurs classes
+      const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [req.user.role];
+      const isTeacher = userRoles.some(r => r === 'ENSEIGNANT' || r === 'MAITRESSE');
+      if (isTeacher) {
+        if (!req.user.employeeId) {
+          return res.status(403).json({ error: 'NoEmployee', message: 'Aucun employé lié à ce compte enseignant.' });
+        }
+        const classes = await Classe.findAll({
+          where: { tenantId, enseignantId: req.user.employeeId },
+          attributes: ['id'],
+        });
+        const classeIds = classes.map(c => c.id);
+        if (classeIds.length === 0) return res.json([]);
+
+        const elevesInClasses = await Eleve.findAll({
+          where: { tenantId, classeId: { [Op.in]: classeIds } },
+          attributes: ['id'],
+        });
+        const eleveIds = elevesInClasses.map(e => e.id);
+        if (eleveIds.length === 0) return res.json([]);
+
+        where.eleveId = eleveId
+          ? (eleveIds.includes(eleveId) ? eleveId : null)
+          : { [Op.in]: eleveIds };
+
+        if (where.eleveId === null) return res.json([]);
+      }
 
       const bulletins = await Bulletin.findAll({
         where,

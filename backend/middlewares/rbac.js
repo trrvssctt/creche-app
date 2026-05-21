@@ -45,11 +45,18 @@ export const checkPermission = (allowedRoles) => {
 export const checkRole = checkPermission;
 
 export const ROLES = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  ADMIN: 'ADMIN',
+  SUPER_ADMIN:   'SUPER_ADMIN',
+  ADMIN:         'ADMIN',
+  DIRECTEUR:     'DIRECTEUR',
+  ENSEIGNANT:    'ENSEIGNANT',
+  MAITRESSE:     'MAITRESSE',
+  ASSISTANTE:    'ASSISTANTE',
+  COMPTABLE:     'COMPTABLE',
+  INFIRMIERE:    'INFIRMIERE',
+  CHAUFFEUR:     'CHAUFFEUR',
   STOCK_MANAGER: 'STOCK_MANAGER',
-  ACCOUNTANT: 'ACCOUNTANT',
-  HR_MANAGER: 'HR_MANAGER',
-  SALES: 'SALES',
-  EMPLOYEE: 'EMPLOYEE'
+  ACCOUNTANT:    'ACCOUNTANT',
+  HR_MANAGER:    'HR_MANAGER',
+  SALES:         'SALES',
+  EMPLOYEE:      'EMPLOYEE',
 };

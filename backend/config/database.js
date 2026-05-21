@@ -550,6 +550,60 @@ export const connectDB = async () => {
       console.warn('⚠️ Note table bulletins:', bulletinsErr.message);
     }
 
+    // Tables emploi du temps (creneaux_horaires + planning)
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS creneaux_horaires (
+          id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id      UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          classe_id      UUID         NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          enseignant_id  UUID         REFERENCES employees(id) ON DELETE SET NULL,
+          jour           INTEGER      NOT NULL CHECK (jour BETWEEN 0 AND 4),
+          heure_debut    VARCHAR(5)   NOT NULL,
+          heure_fin      VARCHAR(5)   NOT NULL,
+          matiere        VARCHAR(100) NOT NULL,
+          couleur        VARCHAR(20)  NOT NULL DEFAULT 'blue',
+          annee_scolaire VARCHAR(10)  NOT NULL,
+          created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_creneaux_tenant_classe ON creneaux_horaires (tenant_id, classe_id);
+        CREATE INDEX IF NOT EXISTS idx_creneaux_enseignant    ON creneaux_horaires (enseignant_id);
+
+        CREATE TABLE IF NOT EXISTS planning_config (
+          id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id      UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          annee_scolaire VARCHAR(10)  NOT NULL,
+          date_debut     DATE         NOT NULL,
+          date_fin       DATE         NOT NULL,
+          jours_repos    JSONB        NOT NULL DEFAULT '[]',
+          created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          UNIQUE(tenant_id, annee_scolaire)
+        );
+        CREATE INDEX IF NOT EXISTS idx_planning_config_tenant ON planning_config (tenant_id, annee_scolaire);
+
+        CREATE TABLE IF NOT EXISTS planning_exceptions (
+          id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id             UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          creneau_id            UUID         NOT NULL REFERENCES creneaux_horaires(id) ON DELETE CASCADE,
+          date_exception        DATE         NOT NULL,
+          type_exception        VARCHAR(20)  NOT NULL DEFAULT 'ANNULE',
+          matiere_override      VARCHAR(100),
+          heure_debut_override  VARCHAR(5),
+          heure_fin_override    VARCHAR(5),
+          note                  VARCHAR(255),
+          created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          UNIQUE(creneau_id, date_exception)
+        );
+        CREATE INDEX IF NOT EXISTS idx_planning_exceptions_tenant ON planning_exceptions (tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_planning_exceptions_date   ON planning_exceptions (date_exception);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Tables creneaux_horaires + planning vérifiées');
+    } catch (scheduleErr) {
+      console.warn('⚠️ Note tables schedule/planning:', scheduleErr.message);
+    }
+
     // 2. Connexion & Sync Registry IA (MySQL)
     await sequelize_db_template.authenticate();
     console.log('✅ Registry IA Connecté (MySQL)');

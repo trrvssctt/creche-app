@@ -10,13 +10,14 @@ export class CustomerController {
    */
     static async list(req, res) {
     try {
-      const { health } = req.query;
+      const { health, anneeScolaire } = req.query;
       const where = {
         tenantId: req.user.tenantId,
         status: { [Op.ne]: 'supprimer' },
       };
 
       if (health) where.healthStatus = health;
+      if (anneeScolaire) where.anneeScolaire = anneeScolaire;
 
       const customers = await Customer.findAll({
         where,
@@ -93,6 +94,7 @@ export class CustomerController {
       const tenantId = req.user.tenantId;
       const email = req.body.email;
       const phone = req.body.phone;
+      const companyName = req.body.companyName;
 
       // Unicité sur email ou téléphone uniquement (le nom de l'enfant n'est pas unique)
       const orConditions = [

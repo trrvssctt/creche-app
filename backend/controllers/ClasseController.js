@@ -9,6 +9,16 @@ export class ClasseController {
       if (anneeScolaire) where.anneeScolaire = anneeScolaire;
       if (niveau)        where.niveau = niveau;
 
+      // Enseignant/Maîtresse : uniquement les classes dont ils sont responsables
+      const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [req.user.role];
+      const isTeacher = userRoles.some(r => r === 'ENSEIGNANT' || r === 'MAITRESSE');
+      if (isTeacher) {
+        if (!req.user.employeeId) {
+          return res.status(403).json({ error: 'NoEmployee', message: 'Aucun employé lié à ce compte enseignant.' });
+        }
+        where.enseignantId = req.user.employeeId;
+      }
+
       const classes = await Classe.findAll({
         where,
         include: [
@@ -50,11 +60,12 @@ export class ClasseController {
 
   static async create(req, res) {
     try {
-      const { nom, niveau, enseignantId, capaciteMax, description } = req.body;
+      const { nom, niveau, enseignantId, enseignantsMatiere, capaciteMax, description } = req.body;
       const classe = await Classe.create({
         nom,
         niveau,
         enseignantId: enseignantId || null,
+        enseignantsMatiere: Array.isArray(enseignantsMatiere) ? enseignantsMatiere : [],
         capaciteMax: capaciteMax || 30,
         description: description || null,
         anneeScolaire: req.body.anneeScolaire,
@@ -74,7 +85,7 @@ export class ClasseController {
       });
       if (!classe) return res.status(404).json({ error: 'NotFound', message: 'Classe introuvable.' });
 
-      const { nom, niveau, enseignantId, capaciteMax, description, anneeScolaire } = req.body;
+      const { nom, niveau, enseignantId, enseignantsMatiere, capaciteMax, description, anneeScolaire } = req.body;
       await classe.update({
         ...(nom !== undefined && { nom }),
         ...(niveau !== undefined && { niveau }),
@@ -82,6 +93,9 @@ export class ClasseController {
         ...(description !== undefined && { description }),
         ...(anneeScolaire !== undefined && { anneeScolaire }),
         enseignantId: enseignantId || null,
+        ...(enseignantsMatiere !== undefined && {
+          enseignantsMatiere: Array.isArray(enseignantsMatiere) ? enseignantsMatiere : []
+        }),
       });
       return res.json(classe);
     } catch (err) {

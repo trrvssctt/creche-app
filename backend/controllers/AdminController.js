@@ -1027,4 +1027,144 @@ export class AdminController {
       return res.status(500).json({ error: 'CancelDeletionError', message: error.message });
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // SCHOOL DASHBOARD — tableau de bord scolaire (directeur)
+  // ═══════════════════════════════════════════════════════════════════
+  static async getSchoolDashboard(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      if (!tenantId) return res.status(400).json({ error: 'tenantId manquant' });
+
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const in30days     = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const annee        = req.query.annee || '2025-2026';
+
+      // ── Effectifs par classe ─────────────────────────────────────────
+      const classesRows = await sequelize.query(`
+        SELECT
+          c.id, c.nom, c.niveau, c.capacite_max,
+          e.first_name || ' ' || e.last_name AS enseignant,
+          COUNT(el.id) FILTER (WHERE el.statut IN ('INSCRIT','ACTIF')) AS nb_inscrits,
+          COUNT(el.id) FILTER (WHERE el.transport_bus = true AND el.statut IN ('INSCRIT','ACTIF')) AS nb_bus,
+          COUNT(el.id) FILTER (WHERE el.cantine = true AND el.statut IN ('INSCRIT','ACTIF')) AS nb_cantine,
+          COUNT(el.id) FILTER (WHERE el.regime_financier = 'CAS_SOCIAL') AS nb_cas_social
+        FROM classes c
+        LEFT JOIN employees e ON e.id = c.enseignant_id
+        LEFT JOIN eleves el ON el.classe_id = c.id AND el.annee_scolaire = :annee
+        WHERE c.tenant_id = :tenantId AND c.annee_scolaire = :annee
+        GROUP BY c.id, c.nom, c.niveau, c.capacite_max, e.first_name, e.last_name
+        ORDER BY
+          CASE c.niveau WHEN 'CRECHE' THEN 1 WHEN 'PS' THEN 2 WHEN 'MS' THEN 3
+            WHEN 'GS' THEN 4 WHEN 'CP' THEN 5 WHEN 'CE1' THEN 6 WHEN 'CE2' THEN 7 ELSE 8 END
+      `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Stats globales élèves ────────────────────────────────────────
+      const elevesStats = await sequelize.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE statut IN ('INSCRIT','ACTIF'))         AS total_inscrits,
+          COUNT(*) FILTER (WHERE statut = 'EN_ATTENTE')                  AS en_attente,
+          COUNT(*) FILTER (WHERE transport_bus = true AND statut IN ('INSCRIT','ACTIF')) AS avec_bus,
+          COUNT(*) FILTER (WHERE cantine = true AND statut IN ('INSCRIT','ACTIF'))       AS avec_cantine,
+          COUNT(*) FILTER (WHERE regime_financier = 'CAS_SOCIAL')       AS cas_sociaux,
+          COUNT(*) FILTER (WHERE date_admission >= :startOfMonth)        AS nouvelles_admissions
+        FROM eleves
+        WHERE tenant_id = :tenantId AND annee_scolaire = :annee
+      `, { replacements: { tenantId, annee, startOfMonth }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Finance du mois ──────────────────────────────────────────────
+      const financeStats = await sequelize.query(`
+        SELECT
+          COALESCE(SUM(s.total_ttc), 0)                          AS ca_mois,
+          COALESCE(SUM(s.amount_paid), 0)                        AS encaisse_mois,
+          COUNT(*) FILTER (WHERE s.amount_paid < s.total_ttc)    AS nb_impayes,
+          COALESCE(SUM(s.total_ttc - s.amount_paid)
+            FILTER (WHERE s.amount_paid < s.total_ttc), 0)       AS montant_impayes
+        FROM sales s
+        WHERE s.tenant_id = :tenantId
+          AND s.status != 'ANNULE'
+          AND s.created_at BETWEEN :startOfMonth AND :endOfMonth
+      `, { replacements: { tenantId, startOfMonth, endOfMonth }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Top débiteurs ────────────────────────────────────────────────
+      const topDebtors = await sequelize.query(`
+        SELECT
+          c.company_name AS nom,
+          c.whatsapp     AS whatsapp,
+          SUM(s.total_ttc - COALESCE(s.amount_paid, 0)) AS dette
+        FROM sales s
+        JOIN customers c ON c.id = s.customer_id
+        WHERE s.tenant_id = :tenantId
+          AND s.status NOT IN ('ANNULE', 'PAYE')
+          AND s.amount_paid < s.total_ttc
+        GROUP BY c.id, c.company_name, c.whatsapp
+        HAVING SUM(s.total_ttc - COALESCE(s.amount_paid, 0)) > 0
+        ORDER BY dette DESC
+        LIMIT 8
+      `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Dernières admissions ─────────────────────────────────────────
+      const recentAdmissions = await sequelize.query(`
+        SELECT e.matricule, e.prenom || ' ' || e.nom AS nom_complet,
+          e.niveau, c.nom AS classe, e.date_admission, e.statut,
+          e.regime_financier
+        FROM eleves e
+        LEFT JOIN classes c ON c.id = e.classe_id
+        WHERE e.tenant_id = :tenantId AND e.annee_scolaire = :annee
+        ORDER BY e.created_at DESC
+        LIMIT 6
+      `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Prochains événements (30 jours) ──────────────────────────────
+      const upcomingEvents = await sequelize.query(`
+        SELECT titre, type, date_debut, date_fin, description
+        FROM school_events
+        WHERE tenant_id = :tenantId AND date_debut >= :today AND date_debut <= :in30days
+        ORDER BY date_debut
+        LIMIT 6
+      `, { replacements: { tenantId, today: now.toISOString().split('T')[0], in30days: in30days.toISOString().split('T')[0] },
+        type: sequelize.QueryTypes.SELECT });
+
+      // ── Derniers paiements ───────────────────────────────────────────
+      const recentPayments = await sequelize.query(`
+        SELECT p.amount, p.method, p.status, p.created_at,
+          c.company_name AS client
+        FROM payments p
+        LEFT JOIN sales s ON s.id = p.sale_id
+        LEFT JOIN customers c ON c.id = s.customer_id
+        WHERE p.tenant_id = :tenantId AND p.sale_id IS NOT NULL
+        ORDER BY p.created_at DESC
+        LIMIT 6
+      `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Effectifs du staff ───────────────────────────────────────────
+      const staffStats = await sequelize.query(`
+        SELECT
+          COUNT(*) AS total_staff,
+          COUNT(*) FILTER (WHERE department_id IN (
+            SELECT id FROM departments WHERE tenant_id = :tenantId AND name ILIKE '%Pédagogie%'
+          )) AS enseignants,
+          COUNT(*) FILTER (WHERE position ILIKE '%Sécurité%' OR position ILIKE '%Vigile%') AS vigiles
+        FROM employees
+        WHERE tenant_id = :tenantId AND status = 'ACTIVE'
+      `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT });
+
+      return res.json({
+        classes:           classesRows,
+        elevesStats:       elevesStats[0] || {},
+        financeStats:      financeStats[0] || {},
+        topDebtors,
+        recentAdmissions,
+        upcomingEvents,
+        recentPayments,
+        staffStats:        staffStats[0] || {},
+        annee
+      });
+    } catch (error) {
+      console.error('SchoolDashboard error:', error);
+      return res.status(500).json({ error: 'SchoolDashboardError', message: error.message });
+    }
+  }
 }

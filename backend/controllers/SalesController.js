@@ -2,6 +2,7 @@
 import { Sale, SaleItem, Payment, StockItem, ProductMovement, Customer, AuditLog, Service, Invoice, InvoiceItem } from '../models/index.js';
 import { InvoiceService } from '../services/InvoiceService.js';
 import { sequelize } from '../config/database.js';
+import { Op } from 'sequelize';
 
 
 
@@ -18,8 +19,14 @@ export class SaleController {
   
   static async list(req, res) {
     try {
+      const { anneeScolaire } = req.query;
+      const where = { tenantId: req.user.tenantId };
+      if (anneeScolaire && /^\d{4}-\d{4}$/.test(anneeScolaire)) {
+        const [sy] = anneeScolaire.split('-');
+        where.saleDate = { [Op.gte]: `${sy}-09-01`, [Op.lt]: `${parseInt(sy) + 1}-09-01` };
+      }
       const sales = await Sale.findAll({
-        where: { tenantId: req.user.tenantId },
+        where,
         include: [
           { model: Customer, attributes: ['companyName', 'email', 'phone', 'billingAddress'] },
           { 

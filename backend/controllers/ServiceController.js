@@ -8,13 +8,16 @@ export class ServiceController {
    */
   static async list(req, res) {
     try {
-      const services = await Service.findAll({
-        where: { 
-          tenantId: req.user.tenantId,
-          status: 'actif'
-        },
-        order: [['name', 'ASC']]
-      });
+      const { anneeScolaire } = req.query;
+      const where = { tenantId: req.user.tenantId, status: 'actif' };
+
+      if (anneeScolaire) {
+        // Retourne les services de l'année demandée + les services globaux (sans année)
+        const { Op } = await import('sequelize');
+        where[Op.or] = [{ anneeScolaire }, { anneeScolaire: null }];
+      }
+
+      const services = await Service.findAll({ where, order: [['name', 'ASC']] });
       return res.status(200).json(services);
     } catch (error) {
       return res.status(500).json({ error: 'ListError', message: error.message });
@@ -29,6 +32,7 @@ export class ServiceController {
       const {
         name, description, price, isActive, imageUrl,
         typeOffre, niveauxCibles, dureeMois, inclutCantine, fraisInscription,
+        anneeScolaire,
       } = req.body;
       const service = await Service.create({
         tenantId: req.user.tenantId,
@@ -43,6 +47,7 @@ export class ServiceController {
         dureeMois: dureeMois ?? 10,
         inclutCantine: inclutCantine ?? false,
         fraisInscription: fraisInscription ?? 0,
+        anneeScolaire: anneeScolaire || null,
       });
 
       await AuditLog.create({

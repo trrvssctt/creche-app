@@ -188,6 +188,68 @@ export class EleveController {
     }
   }
 
+  // ── Réinscription : crée un nouveau record pour l'année suivante ────────────
+  static async reinscription(req, res) {
+    try {
+      const eleve = await Eleve.findOne({
+        where: { id: req.params.id, tenantId: req.user.tenantId },
+      });
+      if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
+
+      const { newAnneeScolaire, newNiveau, newClasseId } = req.body;
+      if (!newAnneeScolaire || !newNiveau) {
+        return res.status(400).json({ error: 'MissingFields', message: 'newAnneeScolaire et newNiveau sont requis.' });
+      }
+
+      // Vérifier qu'il n'existe pas déjà un record pour cet élève cette année
+      const existingNiveau = await Eleve.findOne({
+        where: {
+          tenantId: req.user.tenantId,
+          matricule: eleve.matricule,
+          anneeScolaire: newAnneeScolaire,
+        },
+      });
+      if (existingNiveau) {
+        return res.status(409).json({
+          error: 'AlreadyExists',
+          message: `Cet élève est déjà inscrit pour l'année ${newAnneeScolaire}.`,
+          eleve: existingNiveau,
+        });
+      }
+
+      // Vérifier la capacité de la classe cible
+      if (newClasseId) {
+        const classe = await Classe.findOne({ where: { id: newClasseId, tenantId: req.user.tenantId } });
+        if (classe) {
+          const nb = await Eleve.count({ where: { classeId: classe.id, tenantId: req.user.tenantId } });
+          if (nb >= classe.capaciteMax) {
+            return res.status(400).json({
+              error: 'ClasseFull',
+              message: `La classe "${classe.nom}" est complète (${nb}/${classe.capaciteMax}).`,
+            });
+          }
+        }
+      }
+
+      // Copier les données personnelles, changer année/niveau/classe
+      const { id: _id, createdAt: _c, updatedAt: _u, classeId: _oldClasse, ...rest } = eleve.toJSON();
+      const newEleve = await Eleve.create({
+        ...rest,
+        tenantId: req.user.tenantId,
+        anneeScolaire: newAnneeScolaire,
+        niveau: newNiveau,
+        classeId: newClasseId || null,
+        statut: 'INSCRIT',
+        dateAdmission: new Date().toISOString().slice(0, 10),
+        dateRadiation: null,
+      });
+
+      return res.status(201).json(newEleve);
+    } catch (err) {
+      return res.status(500).json({ error: 'ReinscriptionError', message: err.message });
+    }
+  }
+
   static async delete(req, res) {
     try {
       const eleve = await Eleve.findOne({
