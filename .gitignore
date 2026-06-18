@@ -55,13 +55,9 @@ backend/test-hr-module.sh
 backend/test-payslip-system.sh
 workflows.json
 
-# Screenshots
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
+# Screenshots (seulement les captures d'écran à la racine)
 Capture*
+/Capture*
 
 # Lock files (garder package-lock.json pour reproductibilité)
 # package-lock.json
