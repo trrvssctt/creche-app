@@ -1,0 +1,7 @@
+{
+  "name": "GeStockPro AI-Native ERP",
+  "description": "Système ERP haute sécurité avec RBAC granulaire, prévisions de stock IA, facturation Factur-X automatisée et paiements globaux (Stripe/Mobile Money).",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

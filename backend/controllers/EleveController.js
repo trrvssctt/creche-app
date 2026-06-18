@@ -1,0 +1,290 @@
+import { Eleve, Classe, Sale, SaleItem, Payment } from '../models/index.js';
+import { sequelize } from '../config/database.js';
+import { Op } from 'sequelize';
+import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
+
+const PREFIX_MAP = {
+  CRECHE: 'CR', PS: 'PS', MS: 'MS', GS: 'GS',
+  CP: 'CP', CE1: 'C1', CE2: 'C2', CM1: 'M1', CM2: 'M2',
+};
+
+function genMatricule(niveau) {
+  const year = new Date().getFullYear();
+  const rand = String(Date.now()).slice(-4);
+  return `${PREFIX_MAP[niveau] || 'EL'}-${year}-${rand}`;
+}
+
+export class EleveController {
+  static async list(req, res) {
+    try {
+      const { niveau, statut, anneeScolaire, search } = req.query;
+      const where = { tenantId: req.user.tenantId };
+      if (niveau)        where.niveau = niveau;
+      if (statut)        where.statut = statut;
+      if (anneeScolaire) where.anneeScolaire = anneeScolaire;
+      if (search) {
+        where[Op.or] = [
+          { nom:       { [Op.iLike]: `%${search}%` } },
+          { prenom:    { [Op.iLike]: `%${search}%` } },
+          { matricule: { [Op.iLike]: `%${search}%` } },
+        ];
+      }
+
+      // Enseignant/Maîtresse : limiter aux élèves de leurs classes (prof principal + intervenant)
+      if (isTeacher(req)) {
+        if (!req.user.employeeId) {
+          return res.status(403).json({ error: 'NoEmployee', message: 'Aucun employé lié à ce compte enseignant.' });
+        }
+        const classeIds = await getTeacherClassIds(req.user.tenantId, req.user.employeeId);
+        if (classeIds.length === 0) return res.json([]);
+        where.classeId = { [Op.in]: classeIds };
+      }
+
+      const eleves = await Eleve.findAll({
+        where,
+        order: [['nom', 'ASC'], ['prenom', 'ASC']],
+      });
+      return res.json(eleves);
+    } catch (err) {
+      return res.status(500).json({ error: 'ListError', message: err.message });
+    }
+  }
+
+  static async getById(req, res) {
+    try {
+      const eleve = await Eleve.findOne({
+        where: { id: req.params.id, tenantId: req.user.tenantId },
+      });
+      if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
+
+      // Enseignant : vérifier que l'élève est dans une de ses classes
+      if (isTeacher(req)) {
+        if (!req.user.employeeId) {
+          return res.status(403).json({ error: 'Forbidden', message: 'Aucun employé lié à ce compte enseignant.' });
+        }
+        const classeIds = await getTeacherClassIds(req.user.tenantId, req.user.employeeId);
+        if (!eleve.classeId || !classeIds.includes(String(eleve.classeId))) {
+          return res.status(403).json({ error: 'Forbidden', message: 'Accès refusé à cet élève.' });
+        }
+      }
+
+      return res.json(eleve);
+    } catch (err) {
+      return res.status(500).json({ error: 'GetError', message: err.message });
+    }
+  }
+
+  static async create(req, res) {
+    try {
+      const payload = { ...req.body, tenantId: req.user.tenantId };
+      if (!payload.matricule) {
+        payload.matricule = genMatricule(payload.niveau || 'PS');
+      }
+
+      if (payload.classeId) {
+        const classe = await Classe.findOne({ where: { id: payload.classeId, tenantId: req.user.tenantId } });
+        if (classe) {
+          const nb = await Eleve.count({ where: { classeId: classe.id, tenantId: req.user.tenantId, anneeScolaire: payload.anneeScolaire } });
+          if (nb >= classe.capaciteMax) {
+            return res.status(400).json({ error: 'ClasseFull', message: `La classe "${classe.nom}" est complète (${nb}/${classe.capaciteMax} élèves).` });
+          }
+        }
+      }
+
+      const eleve = await Eleve.create(payload);
+      return res.status(201).json(eleve);
+    } catch (err) {
+      return res.status(500).json({ error: 'CreateError', message: err.message });
+    }
+  }
+
+  static async update(req, res) {
+    try {
+      const eleve = await Eleve.findOne({
+        where: { id: req.params.id, tenantId: req.user.tenantId },
+      });
+      if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
+
+      const newClasseId = req.body.classeId;
+      if (newClasseId && newClasseId !== String(eleve.classeId)) {
+        const classe = await Classe.findOne({ where: { id: newClasseId, tenantId: req.user.tenantId } });
+        if (classe) {
+          const anneeScolaire = req.body.anneeScolaire || eleve.anneeScolaire;
+          const nb = await Eleve.count({ where: { classeId: classe.id, tenantId: req.user.tenantId, anneeScolaire } });
+          if (nb >= classe.capaciteMax) {
+            return res.status(400).json({ error: 'ClasseFull', message: `La classe "${classe.nom}" est complète (${nb}/${classe.capaciteMax} élèves).` });
+          }
+        }
+      }
+
+      await eleve.update(req.body);
+      return res.json(eleve);
+    } catch (err) {
+      return res.status(500).json({ error: 'UpdateError', message: err.message });
+    }
+  }
+
+  // ── Enregistrer le paiement des frais d'inscription ────────────────────
+  static async factureInscription(req, res) {
+    const t = await sequelize.transaction();
+    try {
+      const eleve = await Eleve.findOne({
+        where: { id: req.params.id, tenantId: req.user.tenantId },
+        transaction: t,
+      });
+      if (!eleve) { await t.rollback(); return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' }); }
+
+      const { services, methodePaiement: rawMethod } = req.body;
+      if (!Array.isArray(services) || services.length === 0) {
+        await t.rollback();
+        return res.status(400).json({ error: 'NoServices', message: 'Aucun service fourni.' });
+      }
+
+      const VALID_METHODS = ['CASH', 'ORANGE_MONEY', 'WAVE', 'MTN_MOMO', 'STRIPE', 'TRANSFER', 'CHEQUE'];
+      const methodePaiement = VALID_METHODS.includes(rawMethod) ? rawMethod : 'CASH';
+
+      const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
+
+      // Séparer frais d'inscription (payés maintenant) des services récurrents
+      const feeServices = services.filter(s => {
+        const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+        return !RECURRING.includes(type);
+      });
+      const recurringServices = services.filter(s => {
+        const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+        return RECURRING.includes(type);
+      });
+
+      if (feeServices.length === 0) {
+        await t.rollback();
+        return res.status(400).json({ error: 'NoFees', message: 'Aucun frais d\'inscription trouvé dans les services fournis.' });
+      }
+
+      const totalHt = feeServices.reduce((s, svc) => s + Number(svc.price), 0);
+      const ref = `REC-INSC-${(eleve.matricule || Date.now().toString(36)).replace(/-/g, '').toUpperCase()}`;
+
+      // Créer la vente (entièrement réglée)
+      const sale = await Sale.create({
+        tenantId: req.user.tenantId,
+        reference: ref,
+        walkinName: `${eleve.prenom} ${eleve.nom}`,
+        walkinPhone: eleve.parent1?.whatsapp || eleve.parent1?.telephone || null,
+        status: 'TERMINE',
+        totalHt,
+        totalTtc: totalHt,
+        taxAmount: 0,
+        amountPaid: totalHt,
+        saleDate: new Date(),
+      }, { transaction: t });
+
+      for (const svc of feeServices) {
+        await SaleItem.create({
+          saleId: sale.id,
+          serviceId: svc.id || null,
+          description: svc.name || 'Frais d\'inscription',
+          quantity: 1,
+          unitPrice: Number(svc.price),
+          totalPrice: Number(svc.price),
+        }, { transaction: t });
+      }
+
+      // Enregistrer le paiement
+      const payment = await Payment.create({
+        saleId: sale.id,
+        tenantId: req.user.tenantId,
+        amount: totalHt,
+        method: methodePaiement,
+        status: 'PAID',
+        paymentDate: new Date(),
+      }, { transaction: t });
+
+      await t.commit();
+
+      return res.status(201).json({
+        sale: sale.toJSON(),
+        payment: payment.toJSON(),
+        eleve: eleve.toJSON(),
+        recurringServices,
+      });
+    } catch (err) {
+      await t.rollback();
+      console.error('[EleveController.factureInscription]', err);
+      return res.status(500).json({ error: 'FactureError', message: err.message });
+    }
+  }
+
+  // ── Réinscription : crée un nouveau record pour l'année suivante ────────────
+  static async reinscription(req, res) {
+    try {
+      const eleve = await Eleve.findOne({
+        where: { id: req.params.id, tenantId: req.user.tenantId },
+      });
+      if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
+
+      const { newAnneeScolaire, newNiveau, newClasseId } = req.body;
+      if (!newAnneeScolaire || !newNiveau) {
+        return res.status(400).json({ error: 'MissingFields', message: 'newAnneeScolaire et newNiveau sont requis.' });
+      }
+
+      // Vérifier qu'il n'existe pas déjà un record pour cet élève cette année
+      const existingNiveau = await Eleve.findOne({
+        where: {
+          tenantId: req.user.tenantId,
+          matricule: eleve.matricule,
+          anneeScolaire: newAnneeScolaire,
+        },
+      });
+      if (existingNiveau) {
+        return res.status(409).json({
+          error: 'AlreadyExists',
+          message: `Cet élève est déjà inscrit pour l'année ${newAnneeScolaire}.`,
+          eleve: existingNiveau,
+        });
+      }
+
+      // Vérifier la capacité de la classe cible (pour la nouvelle année uniquement)
+      if (newClasseId) {
+        const classe = await Classe.findOne({ where: { id: newClasseId, tenantId: req.user.tenantId } });
+        if (classe) {
+          const nb = await Eleve.count({ where: { classeId: classe.id, tenantId: req.user.tenantId, anneeScolaire: newAnneeScolaire } });
+          if (nb >= classe.capaciteMax) {
+            return res.status(400).json({
+              error: 'ClasseFull',
+              message: `La classe "${classe.nom}" est complète pour ${newAnneeScolaire} (${nb}/${classe.capaciteMax}).`,
+            });
+          }
+        }
+      }
+
+      // Copier les données personnelles, changer année/niveau/classe
+      const { id: _id, createdAt: _c, updatedAt: _u, classeId: _oldClasse, ...rest } = eleve.toJSON();
+      const newEleve = await Eleve.create({
+        ...rest,
+        tenantId: req.user.tenantId,
+        anneeScolaire: newAnneeScolaire,
+        niveau: newNiveau,
+        classeId: newClasseId || null,
+        statut: 'INSCRIT',
+        dateAdmission: new Date().toISOString().slice(0, 10),
+        dateRadiation: null,
+      });
+
+      return res.status(201).json(newEleve);
+    } catch (err) {
+      return res.status(500).json({ error: 'ReinscriptionError', message: err.message });
+    }
+  }
+
+  static async delete(req, res) {
+    try {
+      const eleve = await Eleve.findOne({
+        where: { id: req.params.id, tenantId: req.user.tenantId },
+      });
+      if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
+      await eleve.destroy();
+      return res.json({ message: 'Élève supprimé.' });
+    } catch (err) {
+      return res.status(500).json({ error: 'DeleteError', message: err.message });
+    }
+  }
+}
