@@ -29,9 +29,29 @@ export class TenantController {
       } catch (e) {
         // no-op
       }
+      // Auto-population de anneeScolaireConfig depuis les données existantes (migration transparente)
+      const rawConfig = tenant.anneeScolaireConfig || {};
+      let configUpdated = false;
+      const configToReturn = { ...rawConfig };
+
+      if (tenant.anneeActive && !configToReturn[tenant.anneeActive]) {
+        configToReturn[tenant.anneeActive] = { statut: 'EN_COURS', dateCreation: null, dateDemarrage: null };
+        configUpdated = true;
+      }
+      const cloturees = Array.isArray(tenant.anneesCloturees) ? tenant.anneesCloturees : [];
+      for (const annee of cloturees) {
+        if (!configToReturn[annee]) {
+          configToReturn[annee] = { statut: 'CLOTUREE', dateCreation: null, dateCloture: null };
+          configUpdated = true;
+        }
+      }
+      if (configUpdated) {
+        await tenant.update({ anneeScolaireConfig: configToReturn });
+      }
+
       // Ajouter les infos de stockage S3
       const storageInfo = await getStorageInfo(req.user.tenantId, tenant.planId || 'BASIC');
-      return res.status(200).json({ ...tenant.toJSON(), storage: storageInfo });
+      return res.status(200).json({ ...tenant.toJSON(), anneeScolaireConfig: configToReturn, storage: storageInfo });
     } catch (error) {
       return res.status(500).json({ error: 'InternalError', message: error.message });
     }
@@ -348,8 +368,174 @@ export class TenantController {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GESTION DU CYCLE DE VIE DES ANNÉES SCOLAIRES
+  // Cycle : PREPARATION → INSCRIPTIONS_OUVERTES → EN_COURS → CLOTUREE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Helper interne : met à jour anneeScolaireConfig de façon atomique */
+  static async _patchAnneeConfig(tenant, anneeLibelle, patch) {
+    const config = { ...(tenant.anneeScolaireConfig || {}) };
+    config[anneeLibelle] = { ...(config[anneeLibelle] || {}), ...patch };
+    await tenant.update({ anneeScolaireConfig: config });
+    return config;
+  }
+
   /**
-   * Clôturer l'année scolaire en cours (audit + confirmation)
+   * Créer une nouvelle année scolaire (statut: PREPARATION)
+   * POST /settings/annees  { anneeLibelle: "2026-2027" }
+   */
+  static async creerAnnee(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { anneeLibelle } = req.body;
+
+      if (!anneeLibelle || !/^\d{4}-\d{4}$/.test(anneeLibelle)) {
+        return res.status(400).json({ error: 'InvalidAnneeFormat', message: 'Format attendu: YYYY-YYYY (ex: 2026-2027)' });
+      }
+      const [start, end] = anneeLibelle.split('-').map(Number);
+      if (end !== start + 1) {
+        return res.status(400).json({ error: 'InvalidAnneeRange', message: "L'année de fin doit être start + 1." });
+      }
+
+      const tenant = await Tenant.findByPk(tenantId);
+      if (!tenant) return res.status(404).json({ error: 'TenantNotFound' });
+
+      const config = tenant.anneeScolaireConfig || {};
+      if (config[anneeLibelle]) {
+        return res.status(409).json({ error: 'AnneeDejaExistante', message: `L'année ${anneeLibelle} existe déjà (statut: ${config[anneeLibelle].statut}).` });
+      }
+
+      const newConfig = await TenantController._patchAnneeConfig(tenant, anneeLibelle, {
+        statut: 'PREPARATION',
+        dateCreation: new Date().toISOString()
+      });
+
+      await AuditLog.create({
+        tenantId,
+        userId: req.user.id,
+        action: 'ANNEE_CREEE',
+        resource: `Année scolaire: ${anneeLibelle}`,
+        severity: 'MEDIUM',
+        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:creer:${anneeLibelle}:${Date.now()}`).digest('hex')
+      });
+
+      return res.status(201).json({
+        message: `Année scolaire ${anneeLibelle} créée en mode PREPARATION.`,
+        anneeLibelle,
+        config: newConfig[anneeLibelle]
+      });
+    } catch (error) {
+      return res.status(500).json({ error: 'CreerAnneeError', message: error.message });
+    }
+  }
+
+  /**
+   * Ouvrir les inscriptions pour une année (PREPARATION → INSCRIPTIONS_OUVERTES)
+   * PUT /settings/annees/:annee/ouvrir-inscriptions
+   */
+  static async ouvrirInscriptions(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const anneeLibelle = req.params.annee;
+
+      const tenant = await Tenant.findByPk(tenantId);
+      if (!tenant) return res.status(404).json({ error: 'TenantNotFound' });
+
+      const config = tenant.anneeScolaireConfig || {};
+      const anneeConfig = config[anneeLibelle];
+      const statutActuel = anneeConfig?.statut;
+
+      // Accepte PREPARATION ou absence (migration d'une année non encore trackée)
+      if (statutActuel && statutActuel !== 'PREPARATION') {
+        return res.status(409).json({
+          error: 'TransitionImpossible',
+          message: `Impossible d'ouvrir les inscriptions depuis le statut "${statutActuel}". Statut requis: PREPARATION.`
+        });
+      }
+
+      const newConfig = await TenantController._patchAnneeConfig(tenant, anneeLibelle, {
+        statut: 'INSCRIPTIONS_OUVERTES',
+        dateCreation: anneeConfig?.dateCreation || new Date().toISOString(),
+        dateOuvertureInscriptions: new Date().toISOString()
+      });
+
+      await AuditLog.create({
+        tenantId,
+        userId: req.user.id,
+        action: 'INSCRIPTIONS_OUVERTES',
+        resource: `Année scolaire: ${anneeLibelle}`,
+        severity: 'MEDIUM',
+        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:ouvrir-inscriptions:${anneeLibelle}:${Date.now()}`).digest('hex')
+      });
+
+      return res.status(200).json({
+        message: `Inscriptions ouvertes pour l'année ${anneeLibelle}.`,
+        anneeLibelle,
+        config: newConfig[anneeLibelle]
+      });
+    } catch (error) {
+      return res.status(500).json({ error: 'OuvrirInscriptionsError', message: error.message });
+    }
+  }
+
+  /**
+   * Démarrer officiellement une année scolaire (INSCRIPTIONS_OUVERTES → EN_COURS)
+   * Met à jour anneeActive → toute l'application bascule sur cette année
+   * PUT /settings/annees/:annee/demarrer
+   */
+  static async demarrerAnnee(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const anneeLibelle = req.params.annee;
+
+      const tenant = await Tenant.findByPk(tenantId);
+      if (!tenant) return res.status(404).json({ error: 'TenantNotFound' });
+
+      const config = tenant.anneeScolaireConfig || {};
+      const anneeConfig = config[anneeLibelle];
+      const statutActuel = anneeConfig?.statut;
+
+      if (statutActuel && statutActuel !== 'INSCRIPTIONS_OUVERTES') {
+        return res.status(409).json({
+          error: 'TransitionImpossible',
+          message: `Impossible de démarrer depuis le statut "${statutActuel}". Statut requis: INSCRIPTIONS_OUVERTES.`
+        });
+      }
+
+      const ancienneAnnee = tenant.anneeActive;
+      const newConfig = await TenantController._patchAnneeConfig(tenant, anneeLibelle, {
+        statut: 'EN_COURS',
+        dateCreation: anneeConfig?.dateCreation || new Date().toISOString(),
+        dateOuvertureInscriptions: anneeConfig?.dateOuvertureInscriptions || null,
+        dateDemarrage: new Date().toISOString()
+      });
+      await tenant.update({ anneeActive: anneeLibelle });
+
+      await AuditLog.create({
+        tenantId,
+        userId: req.user.id,
+        action: 'ANNEE_DEMARREE',
+        resource: `Année scolaire: ${anneeLibelle}`,
+        severity: 'HIGH',
+        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:demarrer:${anneeLibelle}:${Date.now()}`).digest('hex')
+      });
+
+      return res.status(200).json({
+        message: `Année scolaire ${anneeLibelle} démarrée. L'application bascule sur cette année.`,
+        anneeActive: anneeLibelle,
+        ancienneAnnee: ancienneAnnee || null,
+        config: newConfig[anneeLibelle]
+      });
+    } catch (error) {
+      return res.status(500).json({ error: 'DemarrerAnneeError', message: error.message });
+    }
+  }
+
+  /**
+   * Clôturer une année scolaire (EN_COURS → CLOTUREE)
+   * PUT /settings/annees/:annee/cloturer
+   * Conserve aussi l'ancienne route POST /settings/annee/cloturer pour compat
    */
   static async cloturerAnnee(req, res) {
     try {
@@ -357,80 +543,65 @@ export class TenantController {
       const tenant = await Tenant.findByPk(tenantId);
       if (!tenant) return res.status(404).json({ error: 'TenantNotFound' });
 
-      // Utilise anneeActive en base, ou le libellé envoyé par le frontend,
-      // ou calcule l'année courante selon la règle de septembre (≥ sept = nouvelle année).
-      const annee = tenant.anneeActive || req.body.anneeLibelle || (() => {
-        const now = new Date();
-        const m = now.getMonth() + 1;
-        const y = now.getFullYear();
-        return m >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
-      })();
+      // Support nouvelle route (params) et ancienne route (body)
+      const anneeLibelle = req.params?.annee
+        || tenant.anneeActive
+        || req.body?.anneeLibelle
+        || (() => {
+          const now = new Date();
+          const m = now.getMonth() + 1;
+          const y = now.getFullYear();
+          return m >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+        })();
 
-      // Ajouter l'année à la liste des années clôturées (si pas déjà présente)
+      const config = tenant.anneeScolaireConfig || {};
+      const anneeConfig = config[anneeLibelle];
+      const statutActuel = anneeConfig?.statut;
+
+      if (statutActuel === 'CLOTUREE') {
+        return res.status(409).json({ error: 'DejaClosee', message: `L'année ${anneeLibelle} est déjà clôturée.` });
+      }
+
+      // Mise à jour config + annees_cloturees
+      const newConfig = await TenantController._patchAnneeConfig(tenant, anneeLibelle, {
+        statut: 'CLOTUREE',
+        dateCreation: anneeConfig?.dateCreation || null,
+        dateOuvertureInscriptions: anneeConfig?.dateOuvertureInscriptions || null,
+        dateDemarrage: anneeConfig?.dateDemarrage || null,
+        dateCloture: new Date().toISOString()
+      });
       const existing = Array.isArray(tenant.anneesCloturees) ? tenant.anneesCloturees : [];
-      if (!existing.includes(annee)) {
-        await tenant.update({ anneesCloturees: [...existing, annee] });
+      if (!existing.includes(anneeLibelle)) {
+        await tenant.update({ anneesCloturees: [...existing, anneeLibelle] });
       }
 
       await AuditLog.create({
         tenantId,
         userId: req.user.id,
         action: 'ANNEE_CLOTUREE',
-        resource: `Année scolaire: ${annee}`,
+        resource: `Année scolaire: ${anneeLibelle}`,
         severity: 'HIGH',
-        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:cloturer:${annee}:${Date.now()}`).digest('hex')
+        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:cloturer:${anneeLibelle}:${Date.now()}`).digest('hex')
       });
 
-      return res.status(200).json({ message: `Année scolaire ${annee} clôturée.`, annee });
+      return res.status(200).json({
+        message: `Année scolaire ${anneeLibelle} clôturée.`,
+        annee: anneeLibelle,
+        config: newConfig[anneeLibelle]
+      });
     } catch (error) {
       return res.status(500).json({ error: 'CloturerAnneeError', message: error.message });
     }
   }
 
   /**
-   * Démarrer une nouvelle campagne d'année scolaire
-   * Met à jour anneeActive sur le tenant → toute l'application bascule sur cette année
+   * Compat : ancienne route POST /settings/annee/nouvelle
+   * Redirige vers demarrerAnnee avec body → params
    */
   static async demarrerNouvelleAnnee(req, res) {
-    try {
-      const tenantId = req.user.tenantId;
-      const { anneeLibelle } = req.body;
-
-      if (!anneeLibelle || !/^\d{4}-\d{4}$/.test(anneeLibelle)) {
-        return res.status(400).json({
-          error: 'InvalidAnneeFormat',
-          message: 'Format invalide. Attendu: YYYY-YYYY (ex: 2026-2027)'
-        });
-      }
-
-      const [start, end] = anneeLibelle.split('-').map(Number);
-      if (end !== start + 1) {
-        return res.status(400).json({ error: 'InvalidAnneeRange', message: 'L\'année de fin doit être start + 1.' });
-      }
-
-      const tenant = await Tenant.findByPk(tenantId);
-      if (!tenant) return res.status(404).json({ error: 'TenantNotFound' });
-
-      const ancienneAnnee = tenant.anneeActive;
-      await tenant.update({ anneeActive: anneeLibelle });
-
-      await AuditLog.create({
-        tenantId,
-        userId: req.user.id,
-        action: 'NOUVELLE_ANNEE_DEMARREE',
-        resource: `Année scolaire: ${anneeLibelle}`,
-        severity: 'HIGH',
-        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:nouvelle-annee:${anneeLibelle}:${Date.now()}`).digest('hex')
-      });
-
-      return res.status(200).json({
-        message: `Nouvelle année scolaire ${anneeLibelle} démarrée.`,
-        anneeActive: anneeLibelle,
-        ancienneAnnee: ancienneAnnee || null
-      });
-    } catch (error) {
-      return res.status(500).json({ error: 'DemarrerAnneeError', message: error.message });
-    }
+    req.params = req.params || {};
+    req.params.annee = req.body?.anneeLibelle;
+    return TenantController.demarrerAnnee(req, res);
   }
 
   /**

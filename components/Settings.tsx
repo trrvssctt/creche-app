@@ -69,7 +69,7 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
-  const { anneeActiveToday, setAnnee, refreshAnneeRef, anneesCloturees, setCloturees } = useAnnee();
+  const { anneeActiveToday, setAnnee, refreshAnneeRef, anneesCloturees, setCloturees, anneeScolaireConfig, setAnneeScolaireConfig, getStatutAnnee } = useAnnee();
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'branding' | 'scolaire' | 'fiscal' | 'profile' | 'campagnes' | 'structure'>('general');
   const { niveaux, addNiveau, updateNiveau, deleteNiveau, loadTemplate, resetToDefault } = useNiveaux();
   const [editingNiveau, setEditingNiveau] = useState<Partial<NiveauDef> | null>(null);
@@ -109,6 +109,12 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
   const [campagneLoading, setCampagneLoading] = useState(false);
   const [campagneSuccess, setCampagneSuccess] = useState<string | null>(null);
   const [campagneError, setCampagneError] = useState<string | null>(null);
+  // Nouveaux états — cycle de vie
+  const [showCreerModal, setShowCreerModal] = useState(false);
+  const [nouvelleAnneeCreer, setNouvelleAnneeCreer] = useState('');
+  const [showOuvrirModal, setShowOuvrirModal] = useState<string | null>(null);
+  const [showDemarrerModal, setShowDemarrerModal] = useState<string | null>(null);
+  const [showCloturerAnneeModal, setShowCloturerAnneeModal] = useState<string | null>(null);
 
   // ── Reconduction d'année ────────────────────────────────────────────────────
   const [showReconductionModal, setShowReconductionModal] = useState(false);
@@ -187,6 +193,9 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
         }
         if (Array.isArray(data.anneesCloturees)) {
           setCloturees(data.anneesCloturees);
+        }
+        if (data.anneeScolaireConfig && typeof data.anneeScolaireConfig === 'object') {
+          setAnneeScolaireConfig(data.anneeScolaireConfig);
         }
       } catch (e) {
         console.error('Fetch Settings Error:', e);
@@ -334,50 +343,89 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
   };
 
   const anneeRefDisplayed = anneeDB || anneeActiveToday;
+
+  // Synchronise le libellé de l'année scolaire dans schoolConfig dès que l'année active change
+  useEffect(() => {
+    if (anneeRefDisplayed && schoolConfig.anneeLibelle !== anneeRefDisplayed) {
+      setSchoolConfig(prev => ({ ...prev, anneeLibelle: anneeRefDisplayed }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anneeRefDisplayed]);
+
   const suggestNextAnnee = (current: string): string => {
     const m = /^(\d{4})-(\d{4})$/.exec(current);
     if (!m) return '';
     return `${Number(m[2])}-${Number(m[2]) + 1}`;
   };
 
-  const handleCloturerAnnee = async () => {
-    setCampagneLoading(true);
-    setCampagneError(null);
+  // Retourne les années connues, triées du plus récent au plus ancien
+  const anneesConnues = Object.keys(anneeScolaireConfig).sort((a, b) =>
+    parseInt(b.slice(0, 4)) - parseInt(a.slice(0, 4))
+  );
+
+  const handleCreerAnnee = async () => {
+    const annee = nouvelleAnneeCreer.trim();
+    if (!/^\d{4}-\d{4}$/.test(annee)) { setCampagneError('Format requis: YYYY-YYYY'); return; }
+    setCampagneLoading(true); setCampagneError(null);
     try {
-      await apiClient.post('/settings/annee/cloturer', { anneeLibelle: anneeRefDisplayed });
-      setCampagneSuccess(`Année scolaire ${anneeRefDisplayed} clôturée avec succès.`);
-      setCloturees([...anneesCloturees, anneeRefDisplayed]);
-      setShowCloturerModal(false);
+      const result = await apiClient.post('/settings/annees', { anneeLibelle: annee });
+      const newConfig = { ...anneeScolaireConfig, [annee]: result.config };
+      setAnneeScolaireConfig(newConfig);
+      setCampagneSuccess(`Année ${annee} créée en mode PREPARATION.`);
+      setShowCreerModal(false); setNouvelleAnneeCreer('');
       setTimeout(() => setCampagneSuccess(null), 5000);
-    } catch (e: any) {
-      setCampagneError(e?.message || 'Erreur lors de la clôture.');
-    } finally {
-      setCampagneLoading(false);
-    }
+    } catch (e: any) { setCampagneError(e?.message || 'Erreur lors de la création.'); }
+    finally { setCampagneLoading(false); }
   };
 
+  const handleOuvrirInscriptions = async (annee: string) => {
+    setCampagneLoading(true); setCampagneError(null);
+    try {
+      const result = await apiClient.put(`/settings/annees/${annee}/ouvrir-inscriptions`, {});
+      const newConfig = { ...anneeScolaireConfig, [annee]: result.config };
+      setAnneeScolaireConfig(newConfig);
+      setCampagneSuccess(`Inscriptions ouvertes pour ${annee}.`);
+      setShowOuvrirModal(null);
+      setTimeout(() => setCampagneSuccess(null), 5000);
+    } catch (e: any) { setCampagneError(e?.message || 'Erreur lors de l\'ouverture des inscriptions.'); }
+    finally { setCampagneLoading(false); }
+  };
+
+  const handleDemarrerAnnee = async (annee: string) => {
+    setCampagneLoading(true); setCampagneError(null);
+    try {
+      const result = await apiClient.put(`/settings/annees/${annee}/demarrer`, {});
+      const newConfig = { ...anneeScolaireConfig, [annee]: result.config };
+      setAnneeScolaireConfig(newConfig);
+      setAnneeDB(annee); refreshAnneeRef(annee); setAnnee(annee);
+      setCampagneSuccess(`Année scolaire ${annee} démarrée. L'application bascule sur cette année.`);
+      setShowDemarrerModal(null);
+      setTimeout(() => setCampagneSuccess(null), 5000);
+    } catch (e: any) { setCampagneError(e?.message || 'Erreur lors du démarrage.'); }
+    finally { setCampagneLoading(false); }
+  };
+
+  const handleCloturerAnneeNew = async (annee: string) => {
+    setCampagneLoading(true); setCampagneError(null);
+    try {
+      const result = await apiClient.put(`/settings/annees/${annee}/cloturer`, {});
+      const newConfig = { ...anneeScolaireConfig, [annee]: result.config };
+      setAnneeScolaireConfig(newConfig);
+      setCloturees([...anneesCloturees, annee]);
+      setCampagneSuccess(`Année scolaire ${annee} clôturée.`);
+      setShowCloturerAnneeModal(null);
+      setTimeout(() => setCampagneSuccess(null), 5000);
+    } catch (e: any) { setCampagneError(e?.message || 'Erreur lors de la clôture.'); }
+    finally { setCampagneLoading(false); }
+  };
+
+  // Compat handlers (gardés pour les anciens modals si besoin)
+  const handleCloturerAnnee = async () => handleCloturerAnneeNew(anneeRefDisplayed);
   const handleDemarrerNouvelleAnnee = async () => {
     const annee = nouvelleAnneeInput.trim();
-    if (!/^\d{4}-\d{4}$/.test(annee)) {
-      setCampagneError('Format invalide. Exemple: 2026-2027');
-      return;
-    }
-    setCampagneLoading(true);
-    setCampagneError(null);
-    try {
-      const result = await apiClient.post('/settings/annee/nouvelle', { anneeLibelle: annee });
-      setAnneeDB(annee);
-      refreshAnneeRef(annee);
-      setAnnee(annee);
-      setCampagneSuccess(`Nouvelle année scolaire ${annee} démarrée avec succès.`);
-      setShowNouvelleModal(false);
-      setNouvelleAnneeInput('');
-      setTimeout(() => setCampagneSuccess(null), 5000);
-    } catch (e: any) {
-      setCampagneError(e?.message || 'Erreur lors du démarrage de l\'année.');
-    } finally {
-      setCampagneLoading(false);
-    }
+    if (!/^\d{4}-\d{4}$/.test(annee)) { setCampagneError('Format invalide. Exemple: 2026-2027'); return; }
+    await handleDemarrerAnnee(annee);
+    setShowNouvelleModal(false); setNouvelleAnneeInput('');
   };
 
   const getPreviousAnnee = (annee: string): string => {
@@ -1057,14 +1105,11 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Libellé de l'année</label>
-                  <input
-                    type="text"
-                    value={schoolConfig.anneeLibelle}
-                    onChange={e => setSchoolConfig(p => ({...p, anneeLibelle: e.target.value}))}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black focus:ring-4 focus:ring-indigo-500/10 outline-none"
-                    placeholder="Ex: 2025-2026"
-                  />
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Année scolaire active</label>
+                  <div className="w-full bg-indigo-50 border border-indigo-100 rounded-2xl px-6 py-4 flex items-center justify-between">
+                    <span className="text-xl font-black text-indigo-900 tracking-tighter">{anneeRefDisplayed}</span>
+                    <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">Définie dans Années scolaires</span>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Date de début</label>
@@ -1187,7 +1232,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
         </div>
       )}
 
-      {/* ── TAB: Années Scolaires (Campagnes) ── */}
+      {/* ── TAB: Années Scolaires ── */}
       {activeSubTab === 'campagnes' && (
         <div className="space-y-6 animate-in slide-in-from-bottom-4">
 
@@ -1220,139 +1265,136 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            {/* Année active */}
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-              <h4 className="text-xs font-black uppercase tracking-widest text-indigo-600 flex items-center gap-2">
-                <Flag size={16}/> Année Scolaire Active
-              </h4>
-              <div className="flex items-center gap-5 p-6 bg-indigo-50 border border-indigo-100 rounded-3xl">
-                <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shrink-0">
-                  <GraduationCap size={28} className="text-white"/>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Année en cours</p>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <p className="text-3xl font-black text-indigo-900 tracking-tighter">{anneeRefDisplayed}</p>
-                    {anneesCloturees.includes(anneeRefDisplayed) && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[8px] font-black uppercase tracking-widest">
-                        <Archive size={10}/> Clôturée
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest mt-1">
-                    {anneeDB ? 'Définie en base de données' : 'Calculée selon la date du jour'}
-                  </p>
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
-                Cette année est la référence pour toute l'application. Les années antérieures sont en lecture seule.
-                Les classes, élèves et tarifs des services doivent être reconfigurés à chaque nouvelle année.
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="space-y-4">
-
-              {/* Clôturer */}
-              <div className="bg-white p-7 rounded-[2.5rem] border border-amber-100 shadow-sm">
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
-                    <Archive size={22} className="text-amber-600"/>
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-slate-900 uppercase">Clôturer l'Année en Cours</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                      Marque {anneeRefDisplayed} comme terminée (audit)
-                    </p>
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-500 leading-relaxed mb-5">
-                  Enregistre la clôture officielle dans le journal d'audit. L'année reste consultable en lecture seule.
-                  Cette action ne supprime aucune donnée.
-                </p>
-                {anneesCloturees.includes(anneeRefDisplayed) ? (
-                  <div className="w-full py-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-not-allowed">
-                    <Archive size={14}/> {anneeRefDisplayed} déjà clôturée
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setCampagneError(null); setShowCloturerModal(true); }}
-                    className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                  >
-                    <Archive size={14}/> Clôturer {anneeRefDisplayed}
-                  </button>
-                )}
-              </div>
-
-              {/* Nouvelle année */}
-              <div className="bg-white p-7 rounded-[2.5rem] border border-emerald-100 shadow-sm">
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
-                    <PlayCircle size={22} className="text-emerald-600"/>
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-slate-900 uppercase">Démarrer une Nouvelle Année</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                      Bascule l'application sur la nouvelle campagne
-                    </p>
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-500 leading-relaxed mb-5">
-                  Toute l'application passera sur la nouvelle année. Vous devrez reconfigurer les classes, les services
-                  et les tarifs — rien n'est reporté automatiquement.
-                </p>
-                <button
-                  onClick={() => {
-                    setCampagneError(null);
-                    setNouvelleAnneeInput(suggestNextAnnee(anneeRefDisplayed));
-                    setShowNouvelleModal(true);
-                  }}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                >
-                  <PlayCircle size={14}/> Démarrer {suggestNextAnnee(anneeRefDisplayed)}
-                </button>
-              </div>
-
-              {/* Reconduire la configuration */}
-              <div className="bg-white p-7 rounded-[2.5rem] border border-indigo-100 shadow-sm">
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center shrink-0">
-                    <RefreshCw size={22} className="text-indigo-600"/>
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-slate-900 uppercase">Reconduire la Configuration</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                      Copier depuis {getPreviousAnnee(anneeRefDisplayed)} → {anneeRefDisplayed}
-                    </p>
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-500 leading-relaxed mb-5">
-                  Importez classes et offres de scolarité depuis l'année précédente. Modifiez noms,
-                  capacités et prix directement avant de confirmer.
-                </p>
-                <button
-                  onClick={openReconductionModal}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                >
-                  <RefreshCw size={14}/> Reconduire depuis {getPreviousAnnee(anneeRefDisplayed)}
-                </button>
-              </div>
-
-            </div>
+          {/* Bouton créer */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => { setCampagneError(null); setNouvelleAnneeCreer(suggestNextAnnee(anneeRefDisplayed)); setShowCreerModal(true); }}
+              className="px-8 py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center gap-2 shadow-lg"
+            >
+              <Plus size={15}/> Créer une nouvelle année scolaire
+            </button>
           </div>
 
-          {/* Info card */}
+          {/* Liste des années (timeline) */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-8 py-5 border-b border-slate-50">
+              <h4 className="text-xs font-black uppercase tracking-widest text-slate-900">Années scolaires</h4>
+              <p className="text-[10px] text-slate-400 font-bold mt-1">Cycle de vie : PRÉPARATION → INSCRIPTIONS OUVERTES → EN COURS → CLÔTURÉE</p>
+            </div>
+
+            {anneesConnues.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <CalendarDays size={32} className="mx-auto text-slate-200"/>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aucune année configurée</p>
+                <p className="text-[10px] text-slate-400 font-bold">Cliquez sur "Créer une nouvelle année scolaire" pour commencer</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {anneesConnues.map(annee => {
+                  const cfg = anneeScolaireConfig[annee];
+                  const statut = cfg?.statut || 'EN_COURS';
+                  const isActive = annee === anneeRefDisplayed;
+
+                  const statutMeta: Record<string, { label: string; bg: string; text: string; border: string; dot: string }> = {
+                    PREPARATION:          { label: 'Préparation',          bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',  dot: 'bg-amber-400' },
+                    INSCRIPTIONS_OUVERTES:{ label: 'Inscriptions ouvertes',bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',   dot: 'bg-blue-500' },
+                    EN_COURS:             { label: 'En cours',             bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200',dot: 'bg-emerald-500' },
+                    CLOTUREE:             { label: 'Clôturée',             bg: 'bg-slate-100',  text: 'text-slate-500',   border: 'border-slate-200',  dot: 'bg-slate-400' },
+                  };
+                  const meta = statutMeta[statut] || statutMeta['EN_COURS'];
+
+                  const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) : null;
+
+                  return (
+                    <div key={annee} className={`flex items-center gap-4 px-8 py-5 transition-all ${isActive ? 'bg-indigo-50/30' : 'hover:bg-slate-50/60'}`}>
+                      {/* Indicateur actif */}
+                      <div className="flex flex-col items-center gap-1 shrink-0">
+                        <div className={`w-3 h-3 rounded-full ${meta.dot}`}/>
+                        {isActive && <div className="w-0.5 h-4 bg-indigo-200 rounded-full"/>}
+                      </div>
+
+                      {/* Infos année */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className={`text-xl font-black tracking-tighter ${isActive ? 'text-indigo-900' : 'text-slate-700'}`}>{annee}</span>
+                          {isActive && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[8px] font-black uppercase tracking-widest">Active</span>}
+                          <span className={`px-2.5 py-1 rounded-xl text-[8px] font-black uppercase tracking-widest border ${meta.bg} ${meta.text} ${meta.border}`}>{meta.label}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5">
+                          {fmtDate(cfg?.dateCreation) && <span className="text-[9px] text-slate-400 font-bold">Créée le {fmtDate(cfg?.dateCreation)}</span>}
+                          {fmtDate(cfg?.dateOuvertureInscriptions) && <span className="text-[9px] text-blue-400 font-bold">Inscriptions le {fmtDate(cfg?.dateOuvertureInscriptions)}</span>}
+                          {fmtDate(cfg?.dateDemarrage) && <span className="text-[9px] text-emerald-500 font-bold">Démarrage le {fmtDate(cfg?.dateDemarrage)}</span>}
+                          {fmtDate(cfg?.dateCloture) && <span className="text-[9px] text-slate-400 font-bold">Clôturée le {fmtDate(cfg?.dateCloture)}</span>}
+                        </div>
+                      </div>
+
+                      {/* Actions selon statut */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {statut === 'PREPARATION' && (
+                          <>
+                            <button
+                              onClick={() => { setCampagneError(null); setShowOuvrirModal(annee); }}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center gap-1.5"
+                            >
+                              <PlayCircle size={12}/> Ouvrir inscriptions
+                            </button>
+                            <button
+                              onClick={() => { const prev = getPreviousAnnee(annee); setReconductionStep('select'); setReconductionError(null); setReconductionResult(null); setReconductionFetching(true); setShowReconductionModal(true); apiClient.get('/classes', { params: { anneeScolaire: prev } }).catch(() => []).then(d => { const cls = Array.isArray(d) ? d : (d?.rows ?? []); setReconductionClasses(cls); setClasseSel(Object.fromEntries(cls.map((c: any) => [c.id, true]))); setClasseEdits(Object.fromEntries(cls.map((c: any) => [c.id, { nom: c.nom, capaciteMax: c.capaciteMax || 30 }]))); }).catch(() => {}).finally(() => { apiClient.get('/services', { params: { anneeScolaire: prev } }).catch(() => []).then(d => { const svs = Array.isArray(d) ? d : (d?.rows ?? []); setReconductionServices(svs); setServiceSel(Object.fromEntries(svs.map((s: any) => [s.id, true]))); setServiceEdits(Object.fromEntries(svs.map((s: any) => [s.id, { name: s.name, price: s.price || 0, fraisInscription: s.fraisInscription || 0 }]))); }).finally(() => setReconductionFetching(false)); }); }}
+                              className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-50 hover:text-indigo-700 transition-all flex items-center gap-1.5"
+                              title="Reconduire depuis l'année précédente"
+                            >
+                              <RefreshCw size={12}/> Reconduire
+                            </button>
+                          </>
+                        )}
+                        {statut === 'INSCRIPTIONS_OUVERTES' && (
+                          <>
+                            <button
+                              onClick={() => { setCampagneError(null); setShowDemarrerModal(annee); }}
+                              className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+                            >
+                              <PlayCircle size={12}/> Démarrer l'année
+                            </button>
+                            <button
+                              onClick={() => { const prev = getPreviousAnnee(annee); setReconductionStep('select'); setReconductionError(null); setReconductionResult(null); setReconductionFetching(true); setShowReconductionModal(true); apiClient.get('/classes', { params: { anneeScolaire: prev } }).catch(() => []).then(d => { const cls = Array.isArray(d) ? d : (d?.rows ?? []); setReconductionClasses(cls); setClasseSel(Object.fromEntries(cls.map((c: any) => [c.id, true]))); setClasseEdits(Object.fromEntries(cls.map((c: any) => [c.id, { nom: c.nom, capaciteMax: c.capaciteMax || 30 }]))); }).catch(() => {}).finally(() => { apiClient.get('/services', { params: { anneeScolaire: prev } }).catch(() => []).then(d => { const svs = Array.isArray(d) ? d : (d?.rows ?? []); setReconductionServices(svs); setServiceSel(Object.fromEntries(svs.map((s: any) => [s.id, true]))); setServiceEdits(Object.fromEntries(svs.map((s: any) => [s.id, { name: s.name, price: s.price || 0, fraisInscription: s.fraisInscription || 0 }]))); }).finally(() => setReconductionFetching(false)); }); }}
+                              className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-50 hover:text-indigo-700 transition-all flex items-center gap-1.5"
+                              title="Reconduire depuis l'année précédente"
+                            >
+                              <RefreshCw size={12}/> Reconduire
+                            </button>
+                          </>
+                        )}
+                        {statut === 'EN_COURS' && (
+                          <button
+                            onClick={() => { setCampagneError(null); setShowCloturerAnneeModal(annee); }}
+                            className="px-4 py-2 bg-amber-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all flex items-center gap-1.5"
+                          >
+                            <Archive size={12}/> Clôturer
+                          </button>
+                        )}
+                        {statut === 'CLOTUREE' && (
+                          <span className="px-3 py-2 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                            <Archive size={11}/> Archivée
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Info cycle de vie */}
           <div className="p-6 bg-slate-50 border border-slate-200 rounded-[2rem] flex items-start gap-4">
             <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5"/>
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Ce qui se passe lors d'un changement d'année</p>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Guide du cycle de vie</p>
               <ul className="text-[10px] text-slate-500 font-bold space-y-1 list-disc list-inside leading-relaxed">
-                <li>Utilisez <span className="text-slate-700">Reconduire la Configuration</span> pour copier classes et tarifs depuis l'année précédente</li>
-                <li>Les prix et noms peuvent être <span className="text-slate-700">modifiés directement</span> avant de confirmer</li>
-                <li>Les élèves existants restent visibles — utilisez la <span className="text-slate-700">réinscription</span> pour les affecter à la nouvelle année</li>
-                <li>Toutes les données des années passées restent <span className="text-slate-700">consultables en lecture seule</span></li>
+                <li><span className="text-amber-600">Préparation</span> : créez les classes et offres sans basculer l'application</li>
+                <li><span className="text-blue-600">Inscriptions ouvertes</span> : le module Admission accepte les dossiers pour cette année</li>
+                <li><span className="text-emerald-600">En cours</span> : toute l'application bascule sur cette année (annee_active)</li>
+                <li><span className="text-slate-500">Clôturée</span> : données consultables en lecture seule, audit enregistré</li>
               </ul>
             </div>
           </div>
@@ -1360,41 +1402,32 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
         </div>
       )}
 
-      {/* ── MODAL: Clôturer l'année ── */}
-      {showCloturerModal && createPortal(
+      {/* ── MODAL: Créer une nouvelle année ── */}
+      {showCreerModal && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCloturerModal(false)}/>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowCreerModal(false); setCampagneError(null); }}/>
           <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
-                <Archive size={28} className="text-amber-600"/>
-              </div>
+              <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center shrink-0"><Plus size={28} className="text-indigo-600"/></div>
               <div>
-                <h3 className="text-lg font-black uppercase text-slate-900">Clôturer l'année</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Action irréversible</p>
+                <h3 className="text-lg font-black uppercase text-slate-900">Nouvelle année scolaire</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Créée en mode Préparation</p>
               </div>
             </div>
-            <div className="p-5 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
-              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5"/>
-              <p className="text-xs font-bold text-amber-800">
-                Vous allez clôturer officiellement l'année scolaire <strong>{anneeRefDisplayed}</strong>.
-                Cette action sera enregistrée dans le journal d'audit.
-              </p>
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Libellé de l'année</label>
+              <input type="text" value={nouvelleAnneeCreer} onChange={e => { setNouvelleAnneeCreer(e.target.value); setCampagneError(null); }} placeholder="Ex: 2026-2027" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-xl font-black text-center tracking-widest focus:ring-4 focus:ring-indigo-500/20 outline-none"/>
+              {nouvelleAnneeCreer && !/^\d{4}-\d{4}$/.test(nouvelleAnneeCreer) && <p className="text-[10px] text-red-500 font-bold px-2">Format requis: YYYY-YYYY</p>}
             </div>
+            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+              <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5"/>
+              <p className="text-[10px] font-bold text-amber-800 leading-relaxed">L'année sera créée en mode <strong>Préparation</strong>. Vous pourrez ensuite créer les classes, puis ouvrir les inscriptions quand vous êtes prêt.</p>
+            </div>
+            {campagneError && <p className="text-xs text-red-500 font-bold px-1">{campagneError}</p>}
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowCloturerModal(false)}
-                className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleCloturerAnnee}
-                disabled={campagneLoading}
-                className="flex-1 py-4 bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <Archive size={14}/>}
-                Confirmer la clôture
+              <button onClick={() => { setShowCreerModal(false); setCampagneError(null); }} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Annuler</button>
+              <button onClick={handleCreerAnnee} disabled={campagneLoading || !/^\d{4}-\d{4}$/.test(nouvelleAnneeCreer)} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <Plus size={14}/>} Créer
               </button>
             </div>
           </div>
@@ -1402,64 +1435,85 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
         document.body
       )}
 
-      {/* ── MODAL: Démarrer nouvelle année ── */}
-      {showNouvelleModal && createPortal(
+      {/* ── MODAL: Ouvrir inscriptions ── */}
+      {showOuvrirModal && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowNouvelleModal(false)}/>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowOuvrirModal(null)}/>
           <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0">
-                <PlayCircle size={28} className="text-emerald-600"/>
-              </div>
+              <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0"><PlayCircle size={28} className="text-blue-600"/></div>
               <div>
-                <h3 className="text-lg font-black uppercase text-slate-900">Nouvelle année scolaire</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Toute l'application bascule</p>
+                <h3 className="text-lg font-black uppercase text-slate-900">Ouvrir les inscriptions</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{showOuvrirModal}</p>
               </div>
             </div>
-            <div className="space-y-3">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Libellé de la nouvelle année</label>
-              <input
-                type="text"
-                value={nouvelleAnneeInput}
-                onChange={e => { setNouvelleAnneeInput(e.target.value); setCampagneError(null); }}
-                placeholder="Ex: 2026-2027"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-xl font-black text-center tracking-widest focus:ring-4 focus:ring-emerald-500/20 outline-none"
-              />
-              {nouvelleAnneeInput && !/^\d{4}-\d{4}$/.test(nouvelleAnneeInput) && (
-                <p className="text-[10px] text-red-500 font-bold px-2">Format requis: YYYY-YYYY</p>
-              )}
-            </div>
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Ce qui va se passer</p>
-              {[
-                'L\'année active passe à ' + (nouvelleAnneeInput || '…'),
-                'Tous les utilisateurs voient la nouvelle année',
-                'Les années passées restent en lecture seule',
-                'Classes et services doivent être reconfigurés',
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <ChevronRight size={12} className="text-emerald-500 shrink-0"/>
-                  <p className="text-[10px] font-bold text-slate-600">{item}</p>
-                </div>
+            <div className="p-5 bg-blue-50 border border-blue-100 rounded-2xl space-y-2">
+              {['Le module Admission accepte les nouveaux dossiers pour cette année', 'L\'année reste en Préparation — l\'application ne bascule pas encore', 'Vous pouvez continuer à créer des classes et configurer les tarifs'].map((t, i) => (
+                <div key={i} className="flex items-start gap-2"><ChevronRight size={12} className="text-blue-500 shrink-0 mt-0.5"/><p className="text-[10px] font-bold text-blue-800">{t}</p></div>
               ))}
             </div>
-            {campagneError && (
-              <p className="text-xs text-red-500 font-bold px-2">{campagneError}</p>
-            )}
+            {campagneError && <p className="text-xs text-red-500 font-bold">{campagneError}</p>}
             <div className="flex gap-3">
-              <button
-                onClick={() => { setShowNouvelleModal(false); setCampagneError(null); }}
-                className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-              >
-                Annuler
+              <button onClick={() => setShowOuvrirModal(null)} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Annuler</button>
+              <button onClick={() => handleOuvrirInscriptions(showOuvrirModal!)} disabled={campagneLoading} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <PlayCircle size={14}/>} Confirmer
               </button>
-              <button
-                onClick={handleDemarrerNouvelleAnnee}
-                disabled={campagneLoading || !/^\d{4}-\d{4}$/.test(nouvelleAnneeInput)}
-                className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <PlayCircle size={14}/>}
-                Démarrer
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── MODAL: Démarrer l'année ── */}
+      {showDemarrerModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDemarrerModal(null)}/>
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0"><PlayCircle size={28} className="text-emerald-600"/></div>
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900">Démarrer l'année</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{showDemarrerModal} — Toute l'application bascule</p>
+              </div>
+            </div>
+            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              {[`L'année active passe à ${showDemarrerModal}`, 'Tous les utilisateurs voient la nouvelle année', 'Les années passées restent en lecture seule', 'Classes et services doivent être configurés avant de démarrer'].map((t, i) => (
+                <div key={i} className="flex items-start gap-2"><ChevronRight size={12} className="text-emerald-500 shrink-0 mt-0.5"/><p className="text-[10px] font-bold text-slate-600">{t}</p></div>
+              ))}
+            </div>
+            {campagneError && <p className="text-xs text-red-500 font-bold">{campagneError}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setShowDemarrerModal(null)} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Annuler</button>
+              <button onClick={() => handleDemarrerAnnee(showDemarrerModal!)} disabled={campagneLoading} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <PlayCircle size={14}/>} Démarrer
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── MODAL: Clôturer une année ── */}
+      {showCloturerAnneeModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCloturerAnneeModal(null)}/>
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0"><Archive size={28} className="text-amber-600"/></div>
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900">Clôturer l'année</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Action irréversible</p>
+              </div>
+            </div>
+            <div className="p-5 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5"/>
+              <p className="text-xs font-bold text-amber-800">Vous allez clôturer officiellement l'année scolaire <strong>{showCloturerAnneeModal}</strong>. Cette action sera enregistrée dans le journal d'audit. Les données resteront consultables en lecture seule.</p>
+            </div>
+            {campagneError && <p className="text-xs text-red-500 font-bold">{campagneError}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setShowCloturerAnneeModal(null)} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Annuler</button>
+              <button onClick={() => handleCloturerAnneeNew(showCloturerAnneeModal!)} disabled={campagneLoading} className="flex-1 py-4 bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <Archive size={14}/>} Confirmer la clôture
               </button>
             </div>
           </div>

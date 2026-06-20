@@ -66,24 +66,30 @@ export class ServiceController {
   }
 
   /**
-   * Mise à jour avec vérification de dépendances (Ventes)
+   * Mise à jour — seuls le prix et le nom sont verrouillés si le service est lié à des ventes.
+   * Les champs de configuration pédagogique (niveauxCibles, typeOffre, dureeMois…) sont
+   * toujours modifiables car ils n'affectent pas l'intégrité des lignes de vente existantes.
    */
   static async update(req, res) {
     try {
       const { id } = req.params;
       const tenantId = req.user.tenantId;
 
-      // 1. Vérification des ventes liées
-      const salesCount = await SaleItem.count({ where: { serviceId: id } });
-      if (salesCount > 0) {
-        return res.status(403).json({ 
-          error: 'UpdateLocked', 
-          message: 'Modification impossible : ce service est lié à une ou plusieurs ventes enregistrées.' 
-        });
-      }
-
       const service = await Service.findOne({ where: { id, tenantId, status: 'actif' } });
       if (!service) return res.status(404).json({ error: 'NotFound', message: 'Service introuvable.' });
+
+      // Bloquer uniquement si le prix ou le nom changent ET que le service a des ventes
+      const priceChanged = req.body.price  !== undefined && Number(req.body.price)  !== Number(service.price);
+      const nameChanged  = req.body.name   !== undefined && req.body.name           !== service.name;
+      if (priceChanged || nameChanged) {
+        const salesCount = await SaleItem.count({ where: { serviceId: id } });
+        if (salesCount > 0) {
+          return res.status(403).json({
+            error: 'UpdateLocked',
+            message: 'Modification du prix ou du nom impossible : ce service est lié à des ventes enregistrées. Les autres champs (niveaux, type…) peuvent être modifiés librement.',
+          });
+        }
+      }
 
       await service.update(req.body);
       return res.status(200).json(service);

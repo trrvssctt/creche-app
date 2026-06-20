@@ -309,6 +309,9 @@ export class AbonnementController {
   }
 
   // ── Générer la facture mensuelle d'un élève ──────────────────────────────
+  // Logique : chercher les EcheancePaiement enregistrées pour le mois donné.
+  // Si aucune n'existe encore (mois futur ou cron pas encore passé), calculer
+  // les montants à la volée depuis les AbonnementEleve actifs de l'élève.
   static async factureEleve(req, res) {
     try {
       const { eleveId } = req.params;
@@ -322,20 +325,90 @@ export class AbonnementController {
       const eleve = await Eleve.findOne({ where: { id: eleveId, tenantId: req.user.tenantId } });
       if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
 
-      const echeances = await EcheancePaiement.findAll({
+      // ── 1. Chercher les échéances déjà enregistrées pour ce mois ────────
+      let echeances = await EcheancePaiement.findAll({
         where: { eleveId, tenantId: req.user.tenantId, dateEcheance: { [Op.between]: [from, to] } },
         include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre'] }],
         order: [['dateEcheance', 'ASC']],
       });
 
-      const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant), 0);
-      const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant), 0);
-      const solde = totalDu - totalPaye;
+      // ── 2. Fallback niveau 2 : aucune échéance → calculer depuis abonnements actifs ──
+      if (echeances.length === 0) {
+        const abos = await AbonnementEleve.findAll({
+          where: { tenantId: req.user.tenantId, eleveId, isActive: true },
+          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'typeOffre'] }],
+        });
+
+        if (abos.length > 0) {
+          echeances = abos.map(abo => ({
+            id: null,
+            abonnementId: abo.id,
+            eleveId,
+            serviceId: abo.serviceId,
+            service:      abo.service ? abo.service.toJSON() : null,
+            montant:      abo.montant,
+            dateEcheance: from,
+            periodeLabel: periodeLabel(abo.periodicite || 'MENSUEL', from),
+            statut:  'EN_ATTENTE',
+            virtuelle: true,
+          }));
+        } else {
+          // ── 3. Fallback niveau 3 : aucun abonnement → calculer depuis les services applicables ──
+          // Couvre le cas où la synchronisation n'a pas encore été lancée.
+          const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
+          const allSvcs = await Service.findAll({
+            where: {
+              tenantId: req.user.tenantId,
+              status: 'actif',
+              typeOffre: { [Op.in]: RECURRING },
+              [Op.or]: [
+                { anneeScolaire: eleve.anneeScolaire || null },
+                { anneeScolaire: null },
+              ],
+            },
+          });
+
+          const remisePct = parseFloat(eleve.remisePct || 0);
+          const pl = periodeLabel('MENSUEL', from);
+
+          const applicable = allSvcs.filter(svc => {
+            const type    = svc.typeOffre?.toUpperCase();
+            const niveaux = Array.isArray(svc.niveauxCibles) ? svc.niveauxCibles : [];
+            if (type === 'CANTINE' && !eleve.cantine)      return false;
+            if (type === 'BUS'     && !eleve.transportBus)  return false;
+            if (niveaux.length === 0) return false;
+            return niveaux.includes(eleve.niveau);
+          });
+
+          echeances = applicable.map(svc => {
+            const prixBase = parseFloat(svc.price || 0);
+            const montant  = remisePct > 0 ? Math.round(prixBase * (1 - remisePct / 100)) : prixBase;
+            return {
+              id: null,
+              abonnementId: null,
+              eleveId,
+              serviceId:    svc.id,
+              service:      svc.toJSON(),
+              montant,
+              dateEcheance: from,
+              periodeLabel: pl,
+              statut:  'EN_ATTENTE',
+              virtuelle: true,
+            };
+          });
+        }
+      }
+
+      const serialize = e => (typeof e.toJSON === 'function' ? e.toJSON() : e);
+
+      const totalDu   = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+      const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+      const solde     = totalDu - totalPaye;
 
       return res.json({
         eleve: eleve.toJSON(),
         mois: `${String(m).padStart(2,'0')}/${y}`,
-        echeances: echeances.map(e => e.toJSON()),
+        echeances: echeances.map(serialize),
         totalDu,
         totalPaye,
         solde,

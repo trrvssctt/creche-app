@@ -447,6 +447,16 @@ export type StatutAdmission =
 
 export type Trimestre = 'T1' | 'T2' | 'T3';
 
+export type StatutAnnee = 'PREPARATION' | 'INSCRIPTIONS_OUVERTES' | 'EN_COURS' | 'CLOTUREE';
+
+export interface AnneeScolaireConfig {
+  statut: StatutAnnee;
+  dateCreation?: string | null;
+  dateOuvertureInscriptions?: string | null;
+  dateDemarrage?: string | null;
+  dateCloture?: string | null;
+}
+
 export type NiveauCompetence = 'ACQUIS' | 'EN_COURS' | 'NON_ACQUIS';
 
 export interface ContactParent {

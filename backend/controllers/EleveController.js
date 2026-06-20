@@ -1,7 +1,91 @@
-import { Eleve, Classe, Sale, SaleItem, Payment } from '../models/index.js';
+import { Eleve, Classe, Sale, SaleItem, Payment, Service, AbonnementEleve, EcheancePaiement } from '../models/index.js';
 import { sequelize } from '../config/database.js';
 import { Op } from 'sequelize';
 import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
+
+// ── Création automatique des abonnements à l'inscription ────────────────────
+// Cherche les offres (MENSUALITE/BUS/CANTINE) applicables au niveau/options de
+// l'élève et crée un AbonnementEleve + première EcheancePaiement pour chacune.
+// Idempotent : vérifie les doublons avant de créer. Ne lève jamais d'exception
+// pour ne pas bloquer la réponse de l'endpoint qui l'appelle.
+async function createAbonnementsAuto(tenantId, eleve) {
+  try {
+    const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
+
+    // Charger les offres récurrentes actives pour ce tenant + année scolaire
+    const services = await Service.findAll({
+      where: {
+        tenantId,
+        status: 'actif',
+        typeOffre: { [Op.in]: RECURRING },
+        [Op.or]: [
+          { anneeScolaire: eleve.anneeScolaire || null },
+          { anneeScolaire: null },
+        ],
+      },
+    });
+
+    // Filtrer par niveau / options de l'élève
+    const applicable = services.filter(svc => {
+      const type    = svc.typeOffre?.toUpperCase();
+      const niveaux = Array.isArray(svc.niveauxCibles) ? svc.niveauxCibles : [];
+
+      if (type === 'CANTINE' && !eleve.cantine)      return false;
+      if (type === 'BUS'     && !eleve.transportBus)  return false;
+      // niveauxCibles vide → offre générale non liée à un niveau, on l'exclut
+      // (ce cas correspond aux frais ponctuels, pas aux mensualités)
+      if (niveaux.length === 0) return false;
+      if (!niveaux.includes(eleve.niveau)) return false;
+      return true;
+    });
+
+    if (applicable.length === 0) return;
+
+    // Date de début : 1er du mois courant
+    const now      = new Date();
+    const dateDebut = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const moisLabel = new Date(dateDebut).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const periodeLabel = moisLabel.charAt(0).toUpperCase() + moisLabel.slice(1);
+
+    // Remise cas social
+    const remisePct = parseFloat(eleve.remisePct || 0);
+
+    for (const svc of applicable) {
+      // Idempotence : ne pas créer si un abonnement actif existe déjà
+      const existing = await AbonnementEleve.findOne({
+        where: { tenantId, eleveId: eleve.id, serviceId: svc.id, isActive: true },
+      });
+      if (existing) continue;
+
+      const prixBase = parseFloat(svc.price || 0);
+      const montant  = remisePct > 0 ? Math.round(prixBase * (1 - remisePct / 100)) : prixBase;
+
+      const abo = await AbonnementEleve.create({
+        tenantId,
+        eleveId:    eleve.id,
+        serviceId:  svc.id,
+        periodicite: 'MENSUEL',
+        montant,
+        dateDebut,
+        isActive: true,
+      });
+
+      await EcheancePaiement.create({
+        tenantId,
+        abonnementId: abo.id,
+        eleveId:      eleve.id,
+        serviceId:    svc.id,
+        montant,
+        dateEcheance: dateDebut,
+        periodeLabel,
+        statut: 'EN_ATTENTE',
+      });
+    }
+  } catch (err) {
+    // Ne jamais bloquer l'inscription à cause des abonnements
+    console.error('[EleveController] createAbonnementsAuto error:', err.message);
+  }
+}
 
 const PREFIX_MAP = {
   CRECHE: 'CR', PS: 'PS', MS: 'MS', GS: 'GS',
@@ -92,6 +176,12 @@ export class EleveController {
       }
 
       const eleve = await Eleve.create(payload);
+
+      // Si l'élève est inscrit/actif et affecté à une classe → créer les abonnements
+      if (['INSCRIT', 'ACTIF'].includes(eleve.statut) && eleve.classeId) {
+        await createAbonnementsAuto(req.user.tenantId, eleve);
+      }
+
       return res.status(201).json(eleve);
     } catch (err) {
       return res.status(500).json({ error: 'CreateError', message: err.message });
@@ -117,7 +207,19 @@ export class EleveController {
         }
       }
 
+      const statutAvant = eleve.statut;
       await eleve.update(req.body);
+
+      // Transition vers INSCRIT ou ACTIF : créer les abonnements s'ils n'existent pas
+      const statutApres = eleve.statut;
+      if (
+        !['INSCRIT', 'ACTIF'].includes(statutAvant) &&
+        ['INSCRIT', 'ACTIF'].includes(statutApres) &&
+        eleve.classeId
+      ) {
+        await createAbonnementsAuto(req.user.tenantId, eleve);
+      }
+
       return res.json(eleve);
     } catch (err) {
       return res.status(500).json({ error: 'UpdateError', message: err.message });
@@ -269,6 +371,11 @@ export class EleveController {
         dateRadiation: null,
       });
 
+      // Créer les abonnements pour la nouvelle année d'inscription
+      if (newEleve.classeId) {
+        await createAbonnementsAuto(req.user.tenantId, newEleve);
+      }
+
       return res.status(201).json(newEleve);
     } catch (err) {
       return res.status(500).json({ error: 'ReinscriptionError', message: err.message });
@@ -285,6 +392,49 @@ export class EleveController {
       return res.json({ message: 'Élève supprimé.' });
     } catch (err) {
       return res.status(500).json({ error: 'DeleteError', message: err.message });
+    }
+  }
+
+  // ── Synchronisation en masse des abonnements ─────────────────────────────
+  // Crée les abonnements manquants pour tous les élèves INSCRIT/ACTIF de l'année.
+  // Idempotent : les abonnements existants ne sont pas recréés.
+  // Utile pour les élèves déjà inscrits avant l'activation de cette fonctionnalité.
+  static async syncAbonnements(req, res) {
+    try {
+      const { anneeScolaire } = req.query;
+      const where = {
+        tenantId: req.user.tenantId,
+        statut:   { [Op.in]: ['INSCRIT', 'ACTIF'] },
+        classeId: { [Op.not]: null },
+      };
+      if (anneeScolaire) where.anneeScolaire = anneeScolaire;
+
+      const eleves = await Eleve.findAll({ where });
+
+      let crees = 0;
+      let sautes = 0;
+
+      for (const eleve of eleves) {
+        const avantCount = await AbonnementEleve.count({
+          where: { tenantId: req.user.tenantId, eleveId: eleve.id, isActive: true },
+        });
+        await createAbonnementsAuto(req.user.tenantId, eleve);
+        const apresCount = await AbonnementEleve.count({
+          where: { tenantId: req.user.tenantId, eleveId: eleve.id, isActive: true },
+        });
+        if (apresCount > avantCount) crees += (apresCount - avantCount);
+        else sautes += 1;
+      }
+
+      return res.json({
+        message: `Synchronisation terminée : ${crees} abonnement(s) créé(s), ${sautes} élève(s) déjà à jour.`,
+        elevesTraites: eleves.length,
+        abonnementsCrees: crees,
+        elevesSautes: sautes,
+      });
+    } catch (err) {
+      console.error('[EleveController.syncAbonnements]', err);
+      return res.status(500).json({ error: 'SyncError', message: err.message });
     }
   }
 }

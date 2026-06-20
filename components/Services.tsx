@@ -68,7 +68,11 @@ function TypeBadge({ value }: { value: string }) {
 }
 
 function NiveauxBadges({ niveaux }: { niveaux: string[] }) {
-  if (!niveaux || niveaux.length === 0) return <span className="text-slate-300 text-[9px]">Tous niveaux</span>;
+  if (!niveaux || niveaux.length === 0) return (
+    <span className="inline-flex items-center gap-1 text-amber-500 text-[9px] font-black">
+      <AlertCircle size={10}/> Aucun niveau configuré
+    </span>
+  );
   const tooMany = niveaux.length > 4;
   const shown = tooMany ? niveaux.slice(0, 4) : niveaux;
   return (
@@ -172,6 +176,25 @@ const Services = ({ currency }: { currency: string }) => {
     }));
   };
 
+  const toggleAllNiveaux = (idx: number) => {
+    const all = NIVEAUX_SCOLAIRES.map(n => n.value);
+    setFormDataList(prev => prev.map((f, i) => {
+      if (i !== idx) return f;
+      const allSelected = all.every(n => f.niveauxCibles.includes(n));
+      return { ...f, niveauxCibles: allSelected ? [] : all };
+    }));
+  };
+
+  // Quand on change le type, BUS et CANTINE sélectionnent automatiquement tous les niveaux
+  const handleTypeOffreChange = (idx: number, value: TypeOffre) => {
+    const all = NIVEAUX_SCOLAIRES.map(n => n.value);
+    setFormDataList(prev => prev.map((f, i) => i !== idx ? f : {
+      ...f,
+      typeOffre: value,
+      niveauxCibles: (value === 'BUS' || value === 'CANTINE') ? all : f.niveauxCibles,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canModify) return;
@@ -181,10 +204,22 @@ const Services = ({ currency }: { currency: string }) => {
       if (modalMode === 'CREATE') {
         const validForms = formDataList.filter(f => f.name && f.price);
         if (validForms.length === 0) { showToast("Veuillez remplir au moins une offre.", 'error'); return; }
+        const missingNiveaux = validForms.find(
+          f => ['MENSUALITE', 'BUS', 'CANTINE'].includes(f.typeOffre) && f.niveauxCibles.length === 0
+        );
+        if (missingNiveaux) {
+          showToast(`Sélectionnez au moins un niveau scolaire pour "${missingNiveaux.name}".`, 'error');
+          return;
+        }
         const created = await Promise.all(validForms.map(f => apiClient.post('/services', f)));
         setServices(prev => [...created, ...prev]);
       } else if (modalMode === 'EDIT' && selectedService) {
-        const res = await apiClient.put(`/services/${selectedService.id}`, formDataList[0]);
+        const fd = formDataList[0];
+        if (['MENSUALITE', 'BUS', 'CANTINE'].includes(fd.typeOffre) && fd.niveauxCibles.length === 0) {
+          showToast('Sélectionnez au moins un niveau scolaire pour cette offre.', 'error');
+          return;
+        }
+        const res = await apiClient.put(`/services/${selectedService.id}`, fd);
         setServices(services.map(s => s.id === res.id ? res : s));
       }
       setModalMode(null);
@@ -490,7 +525,7 @@ const Services = ({ currency }: { currency: string }) => {
                   <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Type d'offre <span className="text-rose-600">*</span></label>
-                      <select value={fd.typeOffre} onChange={e => setFormDataList(list => list.map((f, i) => i === idx ? { ...f, typeOffre: e.target.value as TypeOffre } : f))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none cursor-pointer">
+                      <select value={fd.typeOffre} onChange={e => handleTypeOffreChange(idx, e.target.value as TypeOffre)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 appearance-none cursor-pointer">
                         {TYPES_OFFRE.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
                     </div>
@@ -514,7 +549,19 @@ const Services = ({ currency }: { currency: string }) => {
 
                   {/* Niveaux ciblés */}
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Niveaux scolaires ciblés</label>
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        Niveaux scolaires ciblés
+                        {['MENSUALITE', 'BUS', 'CANTINE'].includes(fd.typeOffre) && <span className="text-rose-600 ml-1">*</span>}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => toggleAllNiveaux(idx)}
+                        className="text-[9px] font-black text-indigo-500 hover:text-indigo-700 uppercase tracking-widest transition-colors"
+                      >
+                        {NIVEAUX_SCOLAIRES.every(n => fd.niveauxCibles.includes(n.value)) ? 'Tout effacer' : 'Tout sélectionner'}
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {NIVEAUX_SCOLAIRES.map(n => {
                         const selected = fd.niveauxCibles.includes(n.value);
@@ -526,7 +573,14 @@ const Services = ({ currency }: { currency: string }) => {
                         );
                       })}
                     </div>
-                    {fd.niveauxCibles.length === 0 && <p className="text-[9px] text-slate-400 px-1">Aucun niveau sélectionné = applicable à tous.</p>}
+                    {fd.niveauxCibles.length === 0 && ['MENSUALITE', 'BUS', 'CANTINE'].includes(fd.typeOffre) && (
+                      <p className="text-[9px] text-rose-500 font-black px-1 flex items-center gap-1">
+                        <AlertCircle size={11}/> Requis — sans niveau, l'offre ne sera pas utilisée dans la facturation automatique.
+                      </p>
+                    )}
+                    {fd.niveauxCibles.length === 0 && !['MENSUALITE', 'BUS', 'CANTINE'].includes(fd.typeOffre) && (
+                      <p className="text-[9px] text-slate-400 px-1">Aucun niveau sélectionné — offre ponctuelle globale.</p>
+                    )}
                   </div>
 
                   {/* Cantine incluse */}

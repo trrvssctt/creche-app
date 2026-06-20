@@ -219,7 +219,7 @@ function DetailRow({ label, value, className = '' }: { label: string; value?: st
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const Admission = ({ currency, user }: { currency: string; user: User }) => {
-  const { annee: ANNEE_COURANTE } = useAnnee();
+  const { annee: ANNEE_COURANTE, isInscriptionsOuvertes, getStatutAnnee } = useAnnee();
   const [dossiers, setDossiers] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -240,7 +240,9 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const showToast = useToast();
   const { isReadOnly } = useAnnee();
   const currentUser = authBridge.getSession()?.user;
-  const canModify = (currentUser ? authBridge.canPerform(currentUser, 'EDIT', 'eleves') : false) && !isReadOnly;
+  const statutAnnee = getStatutAnnee(ANNEE_COURANTE);
+  // Inscriptions accessibles si le statut de l'année est INSCRIPTIONS_OUVERTES ou EN_COURS (ou non encore configuré = legacy)
+  const canModify = (currentUser ? authBridge.canPerform(currentUser, 'EDIT', 'eleves') : false) && !isReadOnly && isInscriptionsOuvertes;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -590,6 +592,26 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
           </button>
         )}
       </div>
+
+      {/* ── Bannière inscriptions fermées ── */}
+      {!isReadOnly && statutAnnee && !['INSCRIPTIONS_OUVERTES', 'EN_COURS'].includes(statutAnnee) && (
+        <div className="flex items-start gap-4 p-5 bg-amber-50 border border-amber-200 rounded-[2rem]">
+          <div className="w-10 h-10 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
+            <Info size={20} className="text-amber-600"/>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-amber-900 uppercase tracking-wide">
+              Inscriptions non ouvertes pour {ANNEE_COURANTE}
+            </p>
+            <p className="text-[11px] text-amber-700 font-bold mt-1">
+              {statutAnnee === 'PREPARATION'
+                ? `L'année ${ANNEE_COURANTE} est en cours de préparation. Allez dans Paramètres > Années scolaires pour ouvrir les inscriptions.`
+                : `L'année ${ANNEE_COURANTE} est clôturée. Les dossiers sont consultables en lecture seule.`
+              }
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">

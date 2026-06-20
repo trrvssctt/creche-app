@@ -1,7 +1,7 @@
 import { Leave, Employee, Department } from '../models/index.js';
 import { Op } from 'sequelize';
 import multer from 'multer';
-import { uploadToS3 } from '../services/S3Service.js';
+import { uploadToCloudinary } from '../services/CloudinaryService.js';
 
 // Configuration multer pour l'upload de fichiers (mémoire → S3)
 const upload = multer({
@@ -273,7 +273,7 @@ export class LeaveController {
       // Gérer l'upload du document pour les congés maladie
       if (type === 'SICK' && req.file) {
         try {
-          const uploadResult = await uploadToS3(
+          const uploadResult = await uploadToCloudinary(
             req.file.buffer,
             req.file.originalname,
             req.file.mimetype,
@@ -426,7 +426,7 @@ export class LeaveController {
       // Gérer l'upload du document si un fichier est fourni
       if (req.file) {
         try {
-          const uploadResult = await uploadToS3(
+          const uploadResult = await uploadToCloudinary(
             req.file.buffer,
             req.file.originalname,
             req.file.mimetype,

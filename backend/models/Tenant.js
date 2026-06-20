@@ -67,8 +67,9 @@ Tenant.init({
   storageUsedBytes: { type: DataTypes.BIGINT, defaultValue: 0, field: 'storage_used_bytes' },
 
   // Gestion des campagnes d'années scolaires
-  anneeActive:      { type: DataTypes.STRING(20), allowNull: true, field: 'annee_active' },
-  anneesCloturees:  { type: DataTypes.JSON,       allowNull: true, defaultValue: [], field: 'annees_cloturees' }
+  anneeActive:          { type: DataTypes.STRING(20), allowNull: true, field: 'annee_active' },
+  anneesCloturees:      { type: DataTypes.JSON,       allowNull: true, defaultValue: [], field: 'annees_cloturees' },
+  anneeScolaireConfig:  { type: DataTypes.JSONB,      allowNull: true, defaultValue: {}, field: 'annee_scolaire_config' }
 }, {
   sequelize,
   modelName: 'tenant',

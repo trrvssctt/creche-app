@@ -1,8 +1,18 @@
 import multer from 'multer';
-import { uploadToS3, getStorageInfo, s3Client, getS3Config } from '../services/S3Service.js';
+import { uploadToCloudinary, getStorageInfo } from '../services/CloudinaryService.js';
+// Fallback S3 conservé pour servir les anciennes URLs (/api/files?key=…) déjà en BD
+import { s3Client, getS3Config } from '../services/S3Service.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { Tenant } from '../models/Tenant.js';
 import { SupportTicket } from '../models/SupportTicket.js';
+
+// PNG transparent 1×1 utilisé comme fallback quand un fichier image S3 est introuvable.
+// Évite les erreurs "wrong PNG signature" dans le navigateur et les crashs html2canvas.
+const TRANSPARENT_PNG_FALLBACK = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'base64'
+);
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
 
 // Quota universel documents (indépendant du plan d'abonnement)
 const DOCUMENT_QUOTA_BYTES = 5 * 1024 * 1024 * 1024; // 5 Go
@@ -70,7 +80,7 @@ export class UploadController {
       }
 
       const folder = req.body.folder || 'uploads';
-      const result = await uploadToS3(
+      const result = await uploadToCloudinary(
         req.file.buffer,
         req.file.originalname,
         req.file.mimetype,
@@ -78,15 +88,10 @@ export class UploadController {
         folder
       );
 
-      // URL proxy : passe par le backend qui génère une URL signée S3 à la volée
-      // Fonctionne en dev (localhost:3000) et prod (domaine réel) automatiquement
-      const host = req.get('host');
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const proxyUrl = `${protocol}://${host}/api/files?key=${encodeURIComponent(result.key)}`;
-
+      // Cloudinary retourne une URL CDN directe — plus besoin de proxy backend
       return res.status(200).json({
-        url:       proxyUrl,
-        key:       result.key,
+        url:       result.url,
+        publicId:  result.publicId,
         sizeBytes: result.sizeBytes,
         mimeType:  req.file.mimetype,
         fileName:  req.file.originalname
@@ -121,6 +126,15 @@ export class UploadController {
       data.Body.pipe(res);
     } catch (err) {
       console.error('[UploadController] serveFile error:', err.message);
+      // Pour les fichiers image : retourner un PNG transparent plutôt que du JSON.
+      // Cela évite les erreurs "wrong PNG signature" dans le navigateur et les crashs
+      // html2canvas qui tente de charger cette URL comme image.
+      const ext = String(key).split('.').pop()?.toLowerCase();
+      if (IMAGE_EXTENSIONS.has(ext || '')) {
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'no-store');
+        return res.send(TRANSPARENT_PNG_FALLBACK);
+      }
       return res.status(404).json({ error: 'Fichier introuvable.' });
     }
   }

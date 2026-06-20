@@ -109,8 +109,14 @@ router.use('/admin/contact', contactAdminRoutes);
 const ALL_TENANT_ROLES = ['ADMIN', 'SALES', 'STOCK_MANAGER', 'ACCOUNTANT', 'EMPLOYEE', 'HR_MANAGER', 'ENSEIGNANT', 'MAITRESSE', 'DIRECTEUR', 'ASSISTANTE'];
 router.get('/settings', tenantIsolation, checkPermission(ALL_TENANT_ROLES), TenantController.getSettings);
 router.put('/settings', tenantIsolation, checkPermission(['ADMIN']), TenantController.updateSettings);
+// Anciennes routes (conservées pour compatibilité avec le frontend existant)
 router.post('/settings/annee/cloturer', tenantIsolation, checkPermission(['ADMIN']), TenantController.cloturerAnnee);
 router.post('/settings/annee/nouvelle', tenantIsolation, checkPermission(['ADMIN']), TenantController.demarrerNouvelleAnnee);
+// Nouvelles routes — cycle de vie complet des années scolaires
+router.post('/settings/annees',                                    tenantIsolation, checkPermission(['ADMIN']), TenantController.creerAnnee);
+router.put( '/settings/annees/:annee/ouvrir-inscriptions',         tenantIsolation, checkPermission(['ADMIN']), TenantController.ouvrirInscriptions);
+router.put( '/settings/annees/:annee/demarrer',                    tenantIsolation, checkPermission(['ADMIN']), TenantController.demarrerAnnee);
+router.put( '/settings/annees/:annee/cloturer',                    tenantIsolation, checkPermission(['ADMIN']), TenantController.cloturerAnnee);
 
 // Route pour récupérer les informations du tenant (alias de /settings en lecture)
 router.get('/tenant/info', tenantIsolation, checkPermission(ALL_TENANT_ROLES), TenantController.getSettings);

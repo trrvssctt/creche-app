@@ -446,16 +446,54 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     return MAP[api] ?? 'EN_ATTENTE';
   };
 
+  // Aplatit un objet Eleve (JSONB parent1/parent2/ficheSanitaire) en champs plats
+  // attendus par selectDossierForInscription (companyName, mainContact, billingAddress, …)
+  const normalizeEleveDossier = (e: any) => {
+    const p1 = e.parent1 || {};
+    const p2 = e.parent2 || {};
+    const urgence = e.contactUrgence || {};
+    const fs = e.ficheSanitaire || {};
+    return {
+      ...e,
+      ...fs,
+      companyName:    `${e.prenom || ''} ${e.nom || ''}`.trim(),
+      mainContact:    `${p1.prenom || ''} ${p1.nom || ''}`.trim(),
+      phone:          p1.telephone || p1.tel || '',
+      email:          p1.email || '',
+      billingAddress: e.lieuNaissance || '',
+      parent1Nom:     p1.nom || '',
+      parent1Prenom:  p1.prenom || '',
+      parent1Tel:     p1.telephone || p1.tel || '',
+      parent1Whatsapp:p1.whatsapp || p1.telephone || p1.tel || '',
+      parent1Email:   p1.email || '',
+      parent1Lien:    p1.lien || 'MERE',
+      parent1TelDomicile: p1.telDomicile || '',
+      parent1TelTravail:  p1.telTravail || '',
+      parent1Adresse:     p1.adresse || '',
+      parent2Nom:     p2.nom || '',
+      parent2Prenom:  p2.prenom || '',
+      parent2Lien:    p2.lien || 'PERE',
+      parent2Tel:     p2.telephone || p2.tel || '',
+      parent2TelDomicile: p2.telDomicile || '',
+      parent2TelTravail:  p2.telTravail || '',
+      urgenceNom:  urgence.nom || '',
+      urgenceTel:  urgence.telephone || urgence.tel || '',
+      urgenceLien: urgence.lien || '',
+    };
+  };
+
   const fetchAdmissions = async () => {
     setAdmissionsLoading(true);
     try {
-      const data = await apiClient.get('/customers');
-      const list = Array.isArray(data) ? data : (data?.rows ?? data?.customers ?? []);
-      // Garder EN_ATTENTE et ADMIS — exclure déjà inscrits / radiés / actifs
-      setAdmissions(list.filter((d: any) => {
-        const s = resolveStatut(d);
-        return s === 'EN_ATTENTE' || s === 'ADMIS';
-      }));
+      // Les dossiers de candidature sont dans la table eleves (statut EN_ATTENTE ou ADMIS)
+      const data = await apiClient.get('/eleves', { params: { anneeScolaire: ANNEE_COURANTE } });
+      const list = Array.isArray(data) ? data : (data?.rows ?? data?.eleves ?? []);
+      // Garder EN_ATTENTE et ADMIS, normaliser les champs JSONB pour le préremplissage
+      setAdmissions(
+        list
+          .filter((d: any) => { const s = resolveStatut(d); return s === 'EN_ATTENTE' || s === 'ADMIS'; })
+          .map(normalizeEleveDossier)
+      );
     } catch {
       setAdmissions([]);
     } finally {
@@ -740,11 +778,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         if (selectedDossierId) {
           const dossierIdToMark = selectedDossierId;
           try {
-            await apiClient.put(`/customers/${dossierIdToMark}`, {
-              statut: 'INSCRIT',
-              status: 'inscrit',
-              isActive: true,
-            });
+            // Le dossier d'admission est dans /eleves (statut EN_ATTENTE ou ADMIS)
+            await apiClient.put(`/eleves/${dossierIdToMark}`, { statut: 'INSCRIT' });
           } catch (e) {
             console.warn('[Eleves] Mise à jour statut dossier échouée :', e);
           }
