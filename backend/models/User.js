@@ -56,10 +56,15 @@ User.init({
     defaultValue: false, 
     field: 'active_session' 
   },
-  isActive: { 
-    type: DataTypes.BOOLEAN, 
-    defaultValue: true, 
-    field: 'is_active' 
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    field: 'is_active'
+  },
+  eleveIds: {
+    type: DataTypes.ARRAY(DataTypes.UUID),
+    defaultValue: [],
+    field: 'eleve_ids'
   }
 }, { 
   sequelize, 

@@ -3,7 +3,8 @@ import {
   ClipboardList, Search, Filter, RefreshCw, Plus, Eye, CheckCircle2,
   X, AlertCircle, Loader2, ArrowRight, UserCheck, UserX,
   Clock, GraduationCap, Baby, Phone, Mail, Save,
-  Info, ChevronLeft, Edit3, MapPin, Heart, Shield, Stethoscope, Camera, Ban,
+  Info, ChevronLeft, Edit3, MapPin, Heart, Shield, Stethoscope, Camera, Ban, UserPlus, Copy,
+  Globe, Building2,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -30,8 +31,9 @@ const STATUTS_ADMISSION: { value: StatutAdmission; label: string; color: string;
   { value: 'ADMIS',      label: 'Admis',       color: 'bg-blue-50 text-blue-700 border-blue-200',            icon: CheckCircle2 },
   { value: 'INSCRIT',    label: 'Inscrit',     color: 'bg-violet-50 text-violet-700 border-violet-200',      icon: UserCheck },
   { value: 'ACTIF',      label: 'Actif',       color: 'bg-emerald-50 text-emerald-700 border-emerald-200',   icon: UserCheck },
+  { value: 'REJETE',     label: 'Refusé',      color: 'bg-rose-50 text-rose-700 border-rose-200',            icon: Ban },
   { value: 'SUSPENDU',   label: 'Suspendu',    color: 'bg-slate-100 text-slate-600 border-slate-200',        icon: UserX },
-  { value: 'RADIE',      label: 'Radié',       color: 'bg-rose-50 text-rose-700 border-rose-200',            icon: UserX },
+  { value: 'RADIE',      label: 'Radié',       color: 'bg-slate-100 text-slate-500 border-slate-200',        icon: UserX },
 ];
 
 const REGIMES: { value: RegimeFinancier; label: string }[] = [
@@ -228,12 +230,19 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [search, setSearch] = useState('');
   const [filterStatut, setFilterStatut] = useState('ALL');
   const [filterNiveau, setFilterNiveau] = useState('ALL');
+  const [filterSource, setFilterSource] = useState<'ALL' | 'ADMIN' | 'PARENT'>('ALL');
   const [showFilters, setShowFilters] = useState(false);
   const [modalMode, setModalMode] = useState<'CREATE' | 'EDIT' | 'VIEW' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form, setForm] = useState<DossierForm>(emptyDossier());
   const [showConfirmStatut, setShowConfirmStatut] = useState<{ dossier: any; newStatut: StatutAdmission } | null>(null);
   const [showAnnulInscription, setShowAnnulInscription] = useState<{ dossier: any; motif: string } | null>(null);
+  const [showRejetModal, setShowRejetModal] = useState<{ dossier: any; motif: string } | null>(null);
+  const [showParentAccountModal, setShowParentAccountModal] = useState(false);
+  const [parentAccountForm, setParentAccountForm] = useState({ email: '', nom: '', prenom: '', motDePasseTemporaire: '' });
+  const [parentAccountLoading, setParentAccountLoading] = useState(false);
+  const [parentAccountResult, setParentAccountResult] = useState<{ created: boolean; tempPassword?: string } | null>(null);
+  const [parentsByEleveId, setParentsByEleveId] = useState<Record<string, { id: string; email: string; name: string; isActive: boolean }[]>>({});
   const [wizardStep, setWizardStep] = useState(1);
   const [modeInscription, setModeInscription] = useState(false);
 
@@ -248,18 +257,24 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setLoading(true);
     setError(null);
     try {
-      const [dossiersData, classesData] = await Promise.all([
+      const [dossiersData, classesData, parentData] = await Promise.all([
         apiClient.get('/eleves', { params: { anneeScolaire: ANNEE_COURANTE } }),
         apiClient.get('/classes').catch(() => []),
+        apiClient.get('/admin/parent-accounts').catch(() => ({ byEleveId: {} })),
       ]);
       const raw = Array.isArray(dossiersData) ? dossiersData : (dossiersData?.rows ?? dossiersData?.eleves ?? []);
       setDossiers(raw.map(normalizeEleve));
       setClasses(Array.isArray(classesData) ? classesData : []);
+      setParentsByEleveId(parentData?.byEleveId || {});
     } catch { setError('Impossible de charger les dossiers.'); }
     finally { setLoading(false); }
   }, [ANNEE_COURANTE]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Source : portail parent vs admin ──────────────────────────────────────
+
+  const isFromParent = (d: any) => typeof d.notes === 'string' && d.notes.includes('[parent_user:');
 
   // ── Filtrage avec statut correctement résolu ───────────────────────────────
 
@@ -272,21 +287,25 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       const matchStatut = filterStatut === 'ALL' || statut === filterStatut;
       const niveauVal = d.niveau || '';
       const matchNiveau = filterNiveau === 'ALL' || niveauVal === filterNiveau;
-      return matchSearch && matchStatut && matchNiveau;
+      const fromParent = isFromParent(d);
+      const matchSource = filterSource === 'ALL' || (filterSource === 'PARENT' ? fromParent : !fromParent);
+      return matchSearch && matchStatut && matchNiveau && matchSource;
     });
-  }, [dossiers, search, filterStatut, filterNiveau]);
+  }, [dossiers, search, filterStatut, filterNiveau, filterSource]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
   const kpis = useMemo(() => ({
-    total:    dossiers.length,
-    enAttente: dossiers.filter(d => getStatut(d) === 'EN_ATTENTE').length,
-    admis:    dossiers.filter(d => getStatut(d) === 'ADMIS').length,
-    inscrits: dossiers.filter(d => getStatut(d) === 'INSCRIT').length,
-    actifs:   dossiers.filter(d => getStatut(d) === 'ACTIF').length,
-    garcons:  dossiers.filter(d => d.sexe === 'M').length,
-    filles:   dossiers.filter(d => d.sexe === 'F').length,
-    ceJour:   dossiers.filter(d => {
+    total:      dossiers.length,
+    enAttente:  dossiers.filter(d => getStatut(d) === 'EN_ATTENTE').length,
+    admis:      dossiers.filter(d => getStatut(d) === 'ADMIS').length,
+    inscrits:   dossiers.filter(d => getStatut(d) === 'INSCRIT').length,
+    actifs:     dossiers.filter(d => getStatut(d) === 'ACTIF').length,
+    rejetes:    dossiers.filter(d => getStatut(d) === 'REJETE').length,
+    garcons:    dossiers.filter(d => d.sexe === 'M').length,
+    filles:     dossiers.filter(d => d.sexe === 'F').length,
+    portail:    dossiers.filter(d => isFromParent(d)).length,
+    ceJour:     dossiers.filter(d => {
       const created = d.createdAt || d.created_at || '';
       return created && new Date(created).toDateString() === new Date().toDateString();
     }).length,
@@ -457,6 +476,30 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     finally { setActionLoading(false); }
   };
 
+  // ── Rejeter une candidature (EN_ATTENTE/ADMIS → REJETE) avec motif ─────────
+
+  const handleRejet = async () => {
+    if (!showRejetModal || !canModify) return;
+    const { dossier, motif } = showRejetModal;
+    if (!motif.trim()) return;
+    setActionLoading(true);
+    try {
+      const date = new Date().toLocaleDateString('fr-FR');
+      const notesUpdated = [dossier.notes, `[REJET ${date}] ${motif.trim()}`]
+        .filter(Boolean).join('\n');
+      await apiClient.put(`/eleves/${dossier.id}`, {
+        statut: 'REJETE',
+        notes: notesUpdated,
+      });
+      showToast('Candidature refusée. Le parent verra le motif dans son espace.', 'success');
+      setShowRejetModal(null);
+      setSelected(null);
+      setModalMode(null);
+      fetchData();
+    } catch (err: any) { showToast(err.message || 'Erreur', 'error'); }
+    finally { setActionLoading(false); }
+  };
+
   // ── Annuler une inscription (INSCRIT/ACTIF → RADIE) ──────────────────────
 
   const handleAnnulInscription = async () => {
@@ -616,14 +659,15 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
         {[
-          { label: 'Total dossiers',  value: kpis.total,     color: 'bg-slate-900 text-white',          icon: ClipboardList },
-          { label: 'Candidatures',    value: kpis.enAttente, color: 'bg-amber-50 text-amber-700',       icon: Clock },
-          { label: 'Admis',           value: kpis.admis,     color: 'bg-blue-50 text-blue-700',         icon: CheckCircle2 },
-          { label: 'Inscrits',        value: kpis.inscrits,  color: 'bg-violet-50 text-violet-700',     icon: UserCheck },
-          { label: 'Actifs',          value: kpis.actifs,    color: 'bg-emerald-50 text-emerald-700',   icon: UserCheck },
-          { label: 'Garçons',         value: kpis.garcons,   color: 'bg-sky-50 text-sky-700',           icon: UserCheck, prefix: '♂' },
-          { label: 'Filles',          value: kpis.filles,    color: 'bg-pink-50 text-pink-600',         icon: UserCheck, prefix: '♀' },
-          { label: 'Nouveaux (jour)', value: kpis.ceJour,    color: 'bg-indigo-50 text-indigo-700',     icon: Plus },
+          { label: 'Total dossiers',   value: kpis.total,     color: 'bg-slate-900 text-white',          icon: ClipboardList },
+          { label: 'Candidatures',     value: kpis.enAttente, color: 'bg-amber-50 text-amber-700',       icon: Clock },
+          { label: 'Admis',            value: kpis.admis,     color: 'bg-blue-50 text-blue-700',         icon: CheckCircle2 },
+          { label: 'Inscrits',         value: kpis.inscrits,  color: 'bg-violet-50 text-violet-700',     icon: UserCheck },
+          { label: 'Actifs',           value: kpis.actifs,    color: 'bg-emerald-50 text-emerald-700',   icon: UserCheck },
+          { label: 'Refusés',          value: kpis.rejetes,   color: 'bg-rose-50 text-rose-700',         icon: Ban },
+          { label: 'Portail parents',  value: kpis.portail,   color: 'bg-purple-50 text-purple-700',     icon: Globe },
+          { label: 'Garçons',          value: kpis.garcons,   color: 'bg-sky-50 text-sky-700',           icon: UserCheck, prefix: '♂' },
+          { label: 'Filles',           value: kpis.filles,    color: 'bg-pink-50 text-pink-600',         icon: UserCheck, prefix: '♀' },
         ].map(k => {
           const Icon = k.icon;
           return (
@@ -679,6 +723,36 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
             </button>
           );
         })}
+
+        {/* Séparateur */}
+        <span className="w-px h-5 bg-slate-200 self-center" />
+
+        {/* Filtres par source */}
+        {([
+          { value: 'ALL',    label: 'Toutes sources',    icon: ClipboardList },
+          { value: 'ADMIN',  label: 'Saisie admin',      icon: Building2 },
+          { value: 'PARENT', label: 'Portail parents',   icon: Globe },
+        ] as const).map(s => {
+          const Icon = s.icon;
+          const active = filterSource === s.value;
+          const count = s.value === 'ALL' ? dossiers.length
+            : s.value === 'PARENT' ? dossiers.filter(d => isFromParent(d)).length
+            : dossiers.filter(d => !isFromParent(d)).length;
+          return (
+            <button key={s.value} onClick={() => setFilterSource(s.value)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                active
+                  ? s.value === 'PARENT'
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : s.value === 'ADMIN'
+                    ? 'bg-slate-700 text-white border-slate-700'
+                    : 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+              }`}>
+              <Icon size={11} /> {s.label} <span className="opacity-60">({count})</span>
+            </button>
+          );
+        })}
       </div>
 
       {showFilters && (
@@ -714,6 +788,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               <th className="px-6 py-4">Enfant</th>
               <th className="px-6 py-4">Niveau</th>
               <th className="px-6 py-4">Parent / Contact</th>
+              <th className="px-6 py-4 text-center">Source</th>
               <th className="px-6 py-4 text-center">Statut</th>
               <th className="px-6 py-4 text-center">Options</th>
               <th className="px-6 py-4 text-right">Actions</th>
@@ -725,7 +800,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 <tr key={i} className="h-16"><td colSpan={6} className="px-6"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td></tr>
               ))
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="py-20 text-center">
+              <tr><td colSpan={7} className="py-20 text-center">
                 <ClipboardList size={32} className="mx-auto text-slate-200 mb-3" />
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Aucun dossier trouvé</p>
               </td></tr>
@@ -737,18 +812,38 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               const avecCantine = !!d.cantine;
               const avecBus = !!(d.transportBus || d.transport_bus);
               const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE';
+              const fromParent = isFromParent(d);
               return (
-                <tr key={d.id} className="group hover:bg-slate-50/60 transition-all">
+                <tr key={d.id} className={`group hover:bg-slate-50/60 transition-all ${fromParent ? 'border-l-2 border-l-purple-400' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                        fromParent ? 'bg-purple-100 text-purple-700' : 'bg-indigo-50 text-indigo-600'
+                      }`}>
                         {nomEnfant.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-black text-slate-900 text-sm uppercase">{nomEnfant}</p>
                           {d.sexe === 'M' && <span className="px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full text-[8px] font-black border border-sky-100 shrink-0">♂ G</span>}
                           {d.sexe === 'F' && <span className="px-2 py-0.5 bg-pink-50 text-pink-600 rounded-full text-[8px] font-black border border-pink-100 shrink-0">♀ F</span>}
+                          {fromParent ? (
+                            <span title="Dossier soumis via le portail parent"
+                              className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-[8px] font-black border border-purple-200 shrink-0 flex items-center gap-1">
+                              <Globe size={8}/> Portail parent
+                            </span>
+                          ) : (
+                            <span title="Dossier créé par l'administration"
+                              className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px] font-black border border-slate-200 shrink-0 flex items-center gap-1">
+                              <Building2 size={8}/> Admin
+                            </span>
+                          )}
+                          {parentsByEleveId[d.id]?.length > 0 && (
+                            <span title={`Compte parent : ${parentsByEleveId[d.id].map((p: any) => p.email).join(', ')}`}
+                              className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[8px] font-black border border-amber-200 shrink-0 flex items-center gap-1">
+                              <UserPlus size={8}/> Accès parent
+                            </span>
+                          )}
                         </div>
                         {d.dateNaissance && (
                           <p className="text-[9px] text-slate-400 font-bold">
@@ -1529,6 +1624,40 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <Edit3 size={14}/> Modifier
                     </button>
                   )}
+                  {(() => {
+                    const roles: string[] = currentUser
+                      ? (Array.isArray((currentUser as any).roles) && (currentUser as any).roles.length > 0
+                          ? (currentUser as any).roles
+                          : [(currentUser as any).role])
+                      : [];
+                    const isAdmin = roles.some(r => r === 'ADMIN' || r === 'DIRECTEUR' || r === 'SUPER_ADMIN');
+                    const estInscrit = statut === 'INSCRIT' || statut === 'ACTIF';
+                    const parentEmail = selected.email && !selected.email.includes('@letoidesanges.sn') ? selected.email : (selected.parent1Email || '');
+                    if (!isAdmin || !estInscrit) return null;
+                    return (
+                      <button
+                        onClick={() => {
+                          setParentAccountForm({
+                            email: parentEmail,
+                            nom: selected.parent1Nom || '',
+                            prenom: selected.parent1Prenom || '',
+                            motDePasseTemporaire: Math.random().toString(36).slice(2, 10).toUpperCase(),
+                          });
+                          setParentAccountResult(null);
+                          setShowParentAccountModal(true);
+                        }}
+                        className="px-4 py-2 bg-amber-400/80 hover:bg-amber-400 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2"
+                      >
+                        <UserPlus size={14}/> Compte parent
+                      </button>
+                    );
+                  })()}
+                  {canModify && (statut === 'EN_ATTENTE' || statut === 'ADMIS') && isFromParent(selected) && (
+                    <button onClick={() => setShowRejetModal({ dossier: selected, motif: '' })}
+                      className="px-4 py-2 bg-rose-500/80 hover:bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2">
+                      <Ban size={14}/> Rejeter
+                    </button>
+                  )}
                   {peutAnnuler && (
                     <button onClick={() => setShowAnnulInscription({ dossier: selected, motif: '' })}
                       className="px-4 py-2 bg-rose-500/80 hover:bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2">
@@ -1711,6 +1840,11 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 <section>
                   <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                     <Phone size={12} className="text-indigo-500"/> Parent / Tuteur légal
+                    {parentsByEleveId[selected.id]?.length > 0 && (
+                      <span className="ml-2 px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-full text-[8px] font-black flex items-center gap-1">
+                        <UserPlus size={8}/> Compte portail : {parentsByEleveId[selected.id].map((p: any) => p.email).join(', ')}
+                      </span>
+                    )}
                   </h4>
                   <div className="bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <DetailRow label="Nom & Prénom" value={parentFull || null} />
@@ -1750,6 +1884,22 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   </section>
                 )}
 
+                {/* ── Motif de rejet (visible si REJETE) ── */}
+                {statut === 'REJETE' && (() => {
+                  const rejetMatch = (selected.notes || '').match(/\[REJET ([^\]]+)\] ([\s\S]+?)(?=\n\[|$)/);
+                  if (!rejetMatch) return null;
+                  return (
+                    <section>
+                      <div className="bg-rose-50 border border-rose-200 p-5 rounded-2xl">
+                        <h4 className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <Ban size={13}/> Motif de refus — {rejetMatch[1]}
+                        </h4>
+                        <p className="text-sm text-rose-800 font-medium leading-relaxed">{rejetMatch[2].trim()}</p>
+                      </div>
+                    </section>
+                  );
+                })()}
+
                 {/* ── Notes internes ── */}
                 {selected.notes && (
                   <section>
@@ -1757,7 +1907,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <h4 className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
                         <Info size={13}/> Notes internes
                       </h4>
-                      <p className="text-sm text-slate-700 font-medium leading-relaxed">{selected.notes}</p>
+                      <p className="text-sm text-slate-700 font-medium leading-relaxed whitespace-pre-line">{selected.notes}</p>
                     </div>
                   </section>
                 )}
@@ -1767,6 +1917,138 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
           </div>
         );
       })()}
+
+      {/* ══ MODAL CRÉER COMPTE PARENT ═════════════════════════════════════════ */}
+      {showParentAccountModal && selected && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Portail Parents</p>
+                <h3 className="text-xl font-black text-slate-900">Créer un compte parent</h3>
+              </div>
+              <button onClick={() => { setShowParentAccountModal(false); setParentAccountResult(null); }}
+                className="p-2 rounded-2xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
+                <X size={20}/>
+              </button>
+            </div>
+
+            {!parentAccountResult ? (
+              <>
+                <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+                  Un compte sera créé pour ce parent avec le rôle <strong>PARENT</strong>.
+                  L'enfant <strong>{selected.companyName || selected.name}</strong> sera automatiquement lié.
+                </p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Prénom</label>
+                      <input type="text" value={parentAccountForm.prenom}
+                        onChange={e => setParentAccountForm(f => ({ ...f, prenom: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                        placeholder="Prénom du parent" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Nom</label>
+                      <input type="text" value={parentAccountForm.nom}
+                        onChange={e => setParentAccountForm(f => ({ ...f, nom: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                        placeholder="Nom de famille" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Email <span className="text-rose-500">*</span></label>
+                    <input type="email" value={parentAccountForm.email}
+                      onChange={e => setParentAccountForm(f => ({ ...f, email: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      placeholder="email@exemple.com" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Mot de passe temporaire</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={parentAccountForm.motDePasseTemporaire}
+                        onChange={e => setParentAccountForm(f => ({ ...f, motDePasseTemporaire: e.target.value }))}
+                        className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 font-mono"
+                        placeholder="Généré automatiquement" />
+                      <button type="button"
+                        onClick={() => setParentAccountForm(f => ({ ...f, motDePasseTemporaire: Math.random().toString(36).slice(2, 10).toUpperCase() }))}
+                        className="px-3 py-2 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition text-xs font-bold">
+                        Regen
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={() => { setShowParentAccountModal(false); setParentAccountResult(null); }}
+                    className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition">
+                    Annuler
+                  </button>
+                  <button
+                    disabled={!parentAccountForm.email || parentAccountLoading}
+                    onClick={async () => {
+                      setParentAccountLoading(true);
+                      try {
+                        await apiClient.post('/admin/parent-accounts', {
+                          email: parentAccountForm.email,
+                          nom: parentAccountForm.nom,
+                          prenom: parentAccountForm.prenom,
+                          motDePasseTemporaire: parentAccountForm.motDePasseTemporaire,
+                          eleveIds: [selected.id],
+                        });
+                        setParentAccountResult({ created: true, tempPassword: parentAccountForm.motDePasseTemporaire });
+                        showToast('Compte parent créé avec succès.', 'success');
+                        // Rafraîchir l'index des comptes parents dans la liste
+                        apiClient.get('/admin/parent-accounts').then((r: any) => setParentsByEleveId(r?.byEleveId || {})).catch(() => {});
+                      } catch (err: any) {
+                        showToast(err?.message || 'Erreur lors de la création du compte.', 'error');
+                      } finally {
+                        setParentAccountLoading(false);
+                      }
+                    }}
+                    className="flex-1 py-3 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest transition flex items-center justify-center gap-2 disabled:opacity-50">
+                    {parentAccountLoading
+                      ? <><Loader2 className="animate-spin" size={15}/> Création…</>
+                      : <><UserPlus size={15}/> Créer le compte</>}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-emerald-100 rounded-[2rem] flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={32} className="text-emerald-500"/>
+                </div>
+                <h4 className="font-black text-slate-900 text-lg mb-1">Compte créé !</h4>
+                <p className="text-xs text-slate-500 mb-5">Transmettez ces informations au parent.</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left space-y-2 mb-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">URL de connexion</span>
+                  </div>
+                  <p className="text-sm font-bold text-slate-700 font-mono">/parents</p>
+                  <div className="border-t border-amber-200 pt-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Email</span>
+                    <p className="text-sm font-bold text-slate-700">{parentAccountForm.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mot de passe temporaire</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xl font-black text-amber-600 font-mono tracking-widest">{parentAccountResult.tempPassword}</p>
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(parentAccountResult.tempPassword || '')}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-amber-100 transition">
+                        <Copy size={14}/>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => { setShowParentAccountModal(false); setParentAccountResult(null); }}
+                  className="w-full py-3 rounded-2xl bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition">
+                  Fermer
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══ MODAL ANNULATION INSCRIPTION ══════════════════════════════════════ */}
       {showAnnulInscription && (
@@ -1801,6 +2083,53 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               <button onClick={() => setShowAnnulInscription(null)}
                 className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors text-center">
                 Retour
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL REJET CANDIDATURE ════════════════════════════════════════════ */}
+      {showRejetModal && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-10 animate-in zoom-in-95">
+            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+              <Ban size={32}/>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-1 text-center">Refuser la candidature</h3>
+            <p className="text-xs text-slate-400 font-medium text-center mb-6">
+              Dossier de{' '}
+              <span className="font-black text-slate-700">{showRejetModal.dossier.companyName || showRejetModal.dossier.name}</span>
+            </p>
+
+            <div className="space-y-3 mb-6">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                Motif de refus <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={showRejetModal.motif}
+                onChange={e => setShowRejetModal(s => s ? { ...s, motif: e.target.value } : s)}
+                rows={4}
+                placeholder="Expliquez clairement le motif du refus. Le parent verra ce message et pourra corriger son dossier..."
+                className="w-full bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-400 resize-none leading-relaxed"
+                autoFocus
+              />
+              <p className="text-[9px] text-slate-400 font-medium">
+                Ce motif sera visible par le parent dans son espace. Il pourra corriger et resoumettre son dossier.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleRejet}
+                disabled={actionLoading || !showRejetModal.motif.trim()}
+                className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-40">
+                {actionLoading ? <Loader2 className="animate-spin" size={16}/> : <Ban size={16}/>}
+                Confirmer le refus
+              </button>
+              <button onClick={() => setShowRejetModal(null)}
+                className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors">
+                Annuler
               </button>
             </div>
           </div>

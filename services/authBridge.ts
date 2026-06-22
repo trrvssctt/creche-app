@@ -107,6 +107,28 @@ const ROLE_MODULES: Record<string, string[]> = {
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
+
+  [UserRole.PARENT]: [
+    'parent-dashboard',
+    'parent-enfants',
+    'parent-factures',
+    'parent-bulletins',
+    'parent-planning',
+    'parent-actualites',
+    'parent-documents',
+    'parent-admission',
+  ],
+
+  [UserRole.TUTEUR]: [
+    'parent-dashboard',
+    'parent-enfants',
+    'parent-factures',
+    'parent-bulletins',
+    'parent-planning',
+    'parent-actualites',
+    'parent-documents',
+    'parent-admission',
+  ],
 };
 
 export const authBridge = {

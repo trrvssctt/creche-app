@@ -103,16 +103,32 @@ export class EleveController {
     try {
       const { niveau, statut, anneeScolaire, search } = req.query;
       const where = { tenantId: req.user.tenantId };
-      if (niveau)        where.niveau = niveau;
-      if (statut)        where.statut = statut;
-      if (anneeScolaire) where.anneeScolaire = anneeScolaire;
-      if (search) {
-        where[Op.or] = [
-          { nom:       { [Op.iLike]: `%${search}%` } },
-          { prenom:    { [Op.iLike]: `%${search}%` } },
-          { matricule: { [Op.iLike]: `%${search}%` } },
-        ];
+      if (niveau) where.niveau = niveau;
+      if (statut) where.statut = statut;
+
+      const andConditions = [];
+
+      if (anneeScolaire) {
+        // Inclut aussi les dossiers portail sans année (EN_ATTENTE ou REJETE, soumis avant le correctif)
+        andConditions.push({
+          [Op.or]: [
+            { anneeScolaire },
+            { anneeScolaire: null, statut: { [Op.in]: ['EN_ATTENTE', 'REJETE'] } },
+          ],
+        });
       }
+
+      if (search) {
+        andConditions.push({
+          [Op.or]: [
+            { nom:       { [Op.iLike]: `%${search}%` } },
+            { prenom:    { [Op.iLike]: `%${search}%` } },
+            { matricule: { [Op.iLike]: `%${search}%` } },
+          ],
+        });
+      }
+
+      if (andConditions.length > 0) where[Op.and] = andConditions;
 
       // Enseignant/Maîtresse : limiter aux élèves de leurs classes (prof principal + intervenant)
       if (isTeacher(req)) {

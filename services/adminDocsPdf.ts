@@ -841,7 +841,6 @@ export async function downloadSingleAdminDoc(
   const html = buildHtml(type, eleve, logoBase64);
   const w = window.open('', '_blank', 'width=900,height=750');
   if (!w) {
-    // fallback if popup blocked
     const blob = await htmlToBlob(html);
     downloadBlob(blob, docFilename(type, eleve));
     return;
@@ -850,6 +849,17 @@ export async function downloadSingleAdminDoc(
   w.document.close();
   w.focus();
   setTimeout(() => { w.print(); }, 600);
+}
+
+// Téléchargement direct en PDF sans dialog d'impression (pour l'espace parent)
+export async function downloadAdminDocAsPdf(
+  type: DocAdminType,
+  eleve: Partial<Eleve> & { motifRadiation?: string }
+): Promise<void> {
+  const logoBase64 = await getLogoBase64();
+  const html = buildHtml(type, eleve, logoBase64);
+  const blob = await htmlToBlob(html);
+  downloadBlob(blob, docFilename(type, eleve));
 }
 
 export async function downloadAdminDocsZip(eleve: Partial<Eleve>): Promise<void> {

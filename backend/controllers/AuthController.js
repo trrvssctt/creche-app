@@ -1256,4 +1256,92 @@ static async login(req, res) {
       return AuthController.sendSafeError(res, 500, error, 'PasswordChangeError');
     }
   }
+
+  // POST /api/admin/parent-accounts
+  static async createParentAccount(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { email, nom, prenom, eleveIds = [], motDePasseTemporaire } = req.body;
+
+      if (!email || !nom || !prenom) {
+        return res.status(400).json({ error: 'BadRequest', message: 'email, nom et prenom sont requis.' });
+      }
+      if (!motDePasseTemporaire || motDePasseTemporaire.length < 6) {
+        return res.status(400).json({ error: 'BadRequest', message: 'Mot de passe temporaire requis (6 caractères minimum).' });
+      }
+
+      // Vérifier unicité email dans le tenant
+      const existing = await User.findOne({ where: { email, tenantId } });
+      if (existing) {
+        return res.status(409).json({ error: 'UserAlreadyExists', message: 'Un compte existe déjà pour cet email.' });
+      }
+
+      // Valider que chaque eleveId appartient au tenant
+      if (eleveIds.length > 0) {
+        const { Eleve } = await import('../models/index.js');
+        const eleves = await Eleve.findAll({ where: { id: eleveIds, tenantId }, attributes: ['id'] });
+        if (eleves.length !== eleveIds.length) {
+          return res.status(400).json({ error: 'InvalidEleveIds', message: 'Un ou plusieurs élèves introuvables.' });
+        }
+      }
+
+      const user = await User.create({
+        tenantId,
+        name: `${prenom} ${nom}`,
+        email,
+        password: motDePasseTemporaire,
+        roles: ['PARENT'],
+        role: 'PARENT',
+        eleveIds,
+        isActive: true,
+      });
+
+      await AuditLog.create({
+        tenantId,
+        userId: req.user.id,
+        userName: req.user.name,
+        action: 'PARENT_ACCOUNT_CREATED',
+        resource: `User: ${email}`,
+        severity: 'LOW',
+        sha256Signature: crypto.createHash('sha256').update(`${req.user.id}:parent-account:${email}:${Date.now()}`).digest('hex'),
+      });
+
+      return res.status(201).json({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        roles: user.roles,
+        eleveIds: user.eleveIds,
+        message: 'Compte parent créé. Transmettez le mot de passe temporaire au parent.',
+      });
+    } catch (error) {
+      console.error('[AUTH CREATE PARENT ACCOUNT]:', error);
+      return res.status(500).json({ error: 'ServerError', message: error.message });
+    }
+  }
+
+  static async listParentAccounts(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const parents = await User.findAll({
+        where: {
+          tenantId,
+          roles: { [Op.contains]: ['PARENT'] },
+        },
+        attributes: ['id', 'email', 'name', 'eleveIds', 'isActive'],
+      });
+      // Construire un index eleveId → infos compte parent
+      const byEleveId = {};
+      for (const p of parents) {
+        for (const eleveId of (p.eleveIds || [])) {
+          if (!byEleveId[eleveId]) byEleveId[eleveId] = [];
+          byEleveId[eleveId].push({ id: p.id, email: p.email, name: p.name, isActive: p.isActive });
+        }
+      }
+      return res.json({ byEleveId });
+    } catch (error) {
+      console.error('[LIST PARENT ACCOUNTS]:', error);
+      return res.status(500).json({ error: 'ServerError', message: error.message });
+    }
+  }
 }

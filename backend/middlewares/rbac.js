@@ -59,4 +59,6 @@ export const ROLES = {
   HR_MANAGER:    'HR_MANAGER',
   SALES:         'SALES',
   EMPLOYEE:      'EMPLOYEE',
+  PARENT:        'PARENT',
+  TUTEUR:        'TUTEUR',
 };

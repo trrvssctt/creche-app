@@ -46,6 +46,8 @@ import TimeDeductionSettings from './components/rh/TimeDeductionSettings';
 import EmployeePointage from './components/rh/EmployeePointage';
 import OvertimeRequests from './components/rh/OvertimeRequests';
 import Login from './components/Login';
+import ParentLogin from './components/ParentLogin';
+import ParentPortal from './components/ParentPortal';
 import TeacherPortal from './components/TeacherPortal';
 import AIAnalysis from './components/AIAnalysis';
 import Support from './components/Support';
@@ -260,9 +262,12 @@ const App: React.FC = () => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     await syncSettings(user);
-    tabHistoryRef.current = ['dashboard'];
-    localStorage.setItem(ACTIVE_TAB_KEY, 'dashboard');
-    setActiveTab('dashboard');
+    const rolesArr = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role];
+    const isParent = rolesArr.some(r => (r as string) === 'PARENT' || (r as string) === 'TUTEUR');
+    const initialTab = isParent ? 'parent-dashboard' : 'dashboard';
+    tabHistoryRef.current = [initialTab];
+    localStorage.setItem(ACTIVE_TAB_KEY, initialTab);
+    setActiveTab(initialTab);
   };
 
   const handleLogout = () => {
@@ -295,12 +300,30 @@ const App: React.FC = () => {
 
   // ── Écran de connexion ───────────────────────────────────────────────────
   if (!isLoggedIn) {
+    const isParentRoute = window.location.pathname.startsWith('/parents');
+    if (isParentRoute) {
+      return <ParentLogin onLoginSuccess={handleLoginSuccess} />;
+    }
     return (
       <Login
         onLoginSuccess={handleLoginSuccess}
         onBackToLanding={() => {}}
       />
     );
+  }
+
+  // ── Portail Parent ───────────────────────────────────────────────────────
+  if (currentUser) {
+    const rolesArr = Array.isArray(currentUser.roles) && currentUser.roles.length > 0
+      ? currentUser.roles : [currentUser.role];
+    const isParent = rolesArr.some((r: any) => r === 'PARENT' || r === 'TUTEUR');
+    if (isParent) {
+      return (
+        <ToastProvider>
+          <ParentPortal user={currentUser} onLogout={handleLogout} />
+        </ToastProvider>
+      );
+    }
   }
 
   // ── Rendu du contenu selon l'onglet actif ────────────────────────────────

@@ -10,6 +10,8 @@ export enum UserRole {
   EMPLOYEE   = 'EMPLOYEE',    // personnel non-enseignant générique
   INFIRMIERE = 'INFIRMIERE',  // infirmière / agent de santé
   CHAUFFEUR  = 'CHAUFFEUR',   // chauffeur / transport scolaire
+  PARENT  = 'PARENT',    // parent ou tuteur légal d'un élève
+  TUTEUR  = 'TUTEUR',    // alias de PARENT
   // Aliases de compatibilité (anciens rôles ERP SaaS)
   SUPER_ADMIN   = 'ADMIN',
   ACCOUNTANT    = 'COMPTABLE',
@@ -443,7 +445,8 @@ export type StatutAdmission =
   | 'INSCRIT'
   | 'ACTIF'
   | 'RADIE'
-  | 'SUSPENDU';
+  | 'SUSPENDU'
+  | 'REJETE';
 
 export type Trimestre = 'T1' | 'T2' | 'T3';
 

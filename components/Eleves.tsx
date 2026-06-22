@@ -6,7 +6,7 @@ import {
   UserCheck, UserX, Clock, GraduationCap, Heart,
   ArrowRight, ChevronLeft, FileText, FolderOpen,
   ClipboardCheck, UserPlus, ClipboardList, Banknote,
-  Repeat, Calendar, AlertTriangle, Lock,
+  Repeat, Calendar, AlertTriangle, Lock, Globe, Building2,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -99,6 +99,9 @@ const emptyForm = (annee = ''): Partial<Eleve> => ({
   parent2: undefined,
   contactUrgence: undefined,
 });
+
+// Dossier soumis via le portail parent (tag [parent_user:] dans notes)
+const isFromParent = (d: any) => typeof d.notes === 'string' && d.notes.includes('[parent_user:');
 
 // ─── Document helpers (délégués à adminDocsPdf.ts) ───────────────────────────
 
@@ -1360,17 +1363,35 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         const statut: StatutAdmission = resolveStatut(d);
                         const niveau = d.niveau as NiveauScolaire | undefined;
                         const contact = d.mainContact || '—';
+                        const fromParent = isFromParent(d);
                         return (
                           <div
                             key={d.id}
-                            className="flex items-center gap-4 p-4 bg-slate-50 hover:bg-indigo-50 border border-slate-100 hover:border-indigo-200 rounded-2xl transition-all cursor-pointer group"
+                            className={`flex items-center gap-4 p-4 border rounded-2xl transition-all cursor-pointer group ${
+                              fromParent
+                                ? 'bg-purple-50/60 hover:bg-purple-100/70 border-purple-200 hover:border-purple-300 border-l-4 border-l-purple-400'
+                                : 'bg-slate-50 hover:bg-indigo-50 border-slate-100 hover:border-indigo-200'
+                            }`}
                             onClick={() => selectDossierForInscription(d)}
                           >
-                            <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center font-black text-sm shrink-0">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
+                              fromParent ? 'bg-purple-100 text-purple-700' : 'bg-indigo-100 text-indigo-600'
+                            }`}>
                               {nomEnfant.charAt(0).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-black text-slate-900 text-sm uppercase truncate">{nomEnfant}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-black text-slate-900 text-sm uppercase truncate">{nomEnfant}</p>
+                                {fromParent ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[8px] font-black border border-purple-200 shrink-0">
+                                    <Globe size={8} /> Portail parent
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px] font-black border border-slate-200 shrink-0">
+                                    <Building2 size={8} /> Admin
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-500 font-bold truncate">
                                 {contact}{niveau ? ` — ${niveauLabel(niveau)}` : ''}
                               </p>

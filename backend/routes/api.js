@@ -38,6 +38,8 @@ import abonnementsRoutes from './abonnements.routes.js';
 import teacherRoutes from './teacher.routes.js';
 import scheduleRoutes from './schedule.routes.js';
 import planningRoutes from './planning.routes.js';
+import parentRoutes from './parent.routes.js';
+import { AuthController } from '../controllers/AuthController.js';
 
 const router = Router();
 
@@ -96,6 +98,19 @@ router.use('/abonnements',  tenantIsolation, abonnementsRoutes);
 router.use('/teacher',      tenantIsolation, teacherRoutes);
 router.use('/schedule',     tenantIsolation, scheduleRoutes);
 router.use('/planning',    tenantIsolation, planningRoutes);
+
+// ── Portail Parents / Tuteurs ─────────────────────────────────────────────────
+// Les routes parent gèrent elles-mêmes authenticateJWT + checkPermission + tenantIsolation
+router.use('/parent', parentRoutes);
+// Création de compte parent par l'admin
+router.get('/admin/parent-accounts',
+  authenticateJWT, checkPermission(['ADMIN', 'DIRECTEUR']), tenantIsolation,
+  AuthController.listParentAccounts
+);
+router.post('/admin/parent-accounts',
+  authenticateJWT, checkPermission(['ADMIN', 'DIRECTEUR']), tenantIsolation,
+  AuthController.createParentAccount
+);
 
 // Subscription upgrade (tenant ADMIN → PENDING, validated by SuperAdmin)
 router.post('/subscription/upgrade', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.upgradePlan);
