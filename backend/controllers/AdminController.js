@@ -1039,8 +1039,10 @@ export class AdminController {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      const in30days     = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      const annee        = req.query.annee || '2025-2026';
+
+      // Toujours utiliser l'année active du tenant pour le dashboard
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['anneeActive'] });
+      const annee  = tenant?.anneeActive || '2025-2026';
 
       // ── Effectifs par classe ─────────────────────────────────────────
       const classesRows = await sequelize.query(`
@@ -1117,25 +1119,19 @@ export class AdminController {
         LIMIT 6
       `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
 
-      // ── Prochains événements (30 jours) ──────────────────────────────
-      const upcomingEvents = await sequelize.query(`
-        SELECT titre, type, date_debut, date_fin, description
-        FROM school_events
-        WHERE tenant_id = :tenantId AND date_debut >= :today AND date_debut <= :in30days
-        ORDER BY date_debut
-        LIMIT 6
-      `, { replacements: { tenantId, today: now.toISOString().split('T')[0], in30days: in30days.toISOString().split('T')[0] },
-        type: sequelize.QueryTypes.SELECT });
+      // ── Prochains événements ─────────────────────────────────────────
+      // Les événements sont stockés en localStorage côté frontend (pas de table BD)
+      const upcomingEvents = [];
 
       // ── Derniers paiements ───────────────────────────────────────────
       const recentPayments = await sequelize.query(`
-        SELECT p.amount, p.method, p.status, p.created_at,
+        SELECT p.amount, p.method, p.statut AS status, p.payment_date AS created_at,
           c.company_name AS client
         FROM payments p
         LEFT JOIN sales s ON s.id = p.sale_id
         LEFT JOIN customers c ON c.id = s.customer_id
         WHERE p.tenant_id = :tenantId AND p.sale_id IS NOT NULL
-        ORDER BY p.created_at DESC
+        ORDER BY p.payment_date DESC
         LIMIT 6
       `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT });
 
@@ -1151,15 +1147,44 @@ export class AdminController {
         WHERE tenant_id = :tenantId AND status = 'ACTIVE'
       `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT });
 
+      // ── Candidatures portail parent en attente ───────────────────────
+      const candidaturesPortail = await sequelize.query(`
+        SELECT e.id, e.prenom || ' ' || e.nom AS nom_complet,
+          e.niveau, e.created_at, e.notes
+        FROM eleves e
+        WHERE e.tenant_id = :tenantId
+          AND e.statut = 'EN_ATTENTE'
+          AND e.notes LIKE '%[parent_user:%'
+          AND e.annee_scolaire = :annee
+        ORDER BY e.created_at DESC
+        LIMIT 8
+      `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Taux de recouvrement global (écheances) ──────────────────────
+      // Filtre par annee_scolaire via la table eleves (echeances_paiements n'a pas annee_scolaire)
+      const echeancesStats = await sequelize.query(`
+        SELECT
+          COALESCE(SUM(ep.montant), 0)                                            AS total_facture,
+          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE'), 0)          AS total_encaisse,
+          COUNT(*) FILTER (WHERE ep.statut IN ('EN_ATTENTE','EN_RETARD'))         AS nb_en_attente,
+          COUNT(*) FILTER (WHERE ep.statut = 'EN_RETARD')                         AS nb_en_retard,
+          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut IN ('EN_ATTENTE','EN_RETARD')), 0) AS montant_restant
+        FROM echeances_paiements ep
+        JOIN eleves el ON el.id = ep.eleve_id
+        WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee
+      `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
+
       return res.json({
-        classes:           classesRows,
-        elevesStats:       elevesStats[0] || {},
-        financeStats:      financeStats[0] || {},
+        classes:             classesRows,
+        elevesStats:         elevesStats[0] || {},
+        financeStats:        financeStats[0] || {},
+        echeancesStats:      echeancesStats[0] || {},
         topDebtors,
         recentAdmissions,
         upcomingEvents,
         recentPayments,
-        staffStats:        staffStats[0] || {},
+        staffStats:          staffStats[0] || {},
+        candidaturesPortail,
         annee
       });
     } catch (error) {

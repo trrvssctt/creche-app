@@ -1879,32 +1879,36 @@ const Dashboard: React.FC<{
     EMPLOYEE: 'Employé',
   };
 
+  const isSchoolAdmin = userRoles.includes(UserRole.ADMIN) || userRoles.includes(UserRole.SUPER_ADMIN);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <div>
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-            {now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
-          <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase">
-            {greeting}, <span className="text-indigo-600">{user.name}</span>
-          </h2>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {userRoles.map(r => (
-              <span key={r} className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-sm ${roleColors[r] || 'bg-slate-200 text-slate-700'}`}>
-                {roleLabels[r] || r.replace(/_/g, ' ')}
-              </span>
-            ))}
+      {/* Header + TimeMachine — masqués pour ADMIN/SUPER_ADMIN (SchoolAdminDashboard a son propre header) */}
+      {!isSchoolAdmin && (
+        <>
+          <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                {now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+              <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase">
+                {greeting}, <span className="text-indigo-600">{user.name}</span>
+              </h2>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {userRoles.map(r => (
+                  <span key={r} className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-sm ${roleColors[r] || 'bg-slate-200 text-slate-700'}`}>
+                    {roleLabels[r] || r.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 text-[9px] font-black uppercase tracking-widest self-start md:self-auto">
+              <ShieldCheck size={12}/> Connexion Sécurisée • Kernel v3.2.1
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 text-[9px] font-black uppercase tracking-widest self-start md:self-auto">
-          <ShieldCheck size={12}/> Connexion Sécurisée • Kernel v3.2.1
-        </div>
-      </div>
-
-      {/* TIME MACHINE FILTER — visible pour tous les rôles */}
-      <TimeMachineFilter value={filterState} onChange={setFilterState} />
+          <TimeMachineFilter value={filterState} onChange={setFilterState} />
+        </>
+      )}
 
       {/* BANNIÈRE ESSAI GRATUIT — visible pour tous les rôles non-admin aussi */}
       {trialDaysLeft !== null && !userRoles.includes(UserRole.ADMIN) && !userRoles.includes(UserRole.SUPER_ADMIN) && (
