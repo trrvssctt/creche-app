@@ -40,6 +40,7 @@ import scheduleRoutes from './schedule.routes.js';
 import planningRoutes from './planning.routes.js';
 import parentRoutes from './parent.routes.js';
 import { AuthController } from '../controllers/AuthController.js';
+import { SchoolEventController } from '../controllers/SchoolEventController.js';
 
 const router = Router();
 
@@ -112,6 +113,13 @@ router.post('/admin/parent-accounts',
   AuthController.createParentAccount
 );
 
+// ── Événements scolaires (agenda admin → visible parents) ─────────────────────
+const SCHOOL_ROLES = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE'];
+router.get('/admin/school-events',        authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.list);
+router.post('/admin/school-events',       authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.upsert);
+router.put('/admin/school-events/:id',    authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.upsert);
+router.delete('/admin/school-events/:id', authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.remove);
+
 // Subscription upgrade (tenant ADMIN → PENDING, validated by SuperAdmin)
 router.post('/subscription/upgrade', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.upgradePlan);
 router.get('/subscription', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.getMySubscription);
@@ -132,6 +140,7 @@ router.post('/settings/annees',                                    tenantIsolati
 router.put( '/settings/annees/:annee/ouvrir-inscriptions',         tenantIsolation, checkPermission(['ADMIN']), TenantController.ouvrirInscriptions);
 router.put( '/settings/annees/:annee/demarrer',                    tenantIsolation, checkPermission(['ADMIN']), TenantController.demarrerAnnee);
 router.put( '/settings/annees/:annee/cloturer',                    tenantIsolation, checkPermission(['ADMIN']), TenantController.cloturerAnnee);
+router.put( '/settings/annees/:annee/reactiver',                   tenantIsolation, checkPermission(['ADMIN']), TenantController.reactiverAnnee);
 
 // Route pour récupérer les informations du tenant (alias de /settings en lecture)
 router.get('/tenant/info', tenantIsolation, checkPermission(ALL_TENANT_ROLES), TenantController.getSettings);

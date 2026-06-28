@@ -595,6 +595,53 @@ export class TenantController {
   }
 
   /**
+   * Réactiver une année clôturée par erreur (CLOTUREE → EN_COURS)
+   * PUT /settings/annees/:annee/reactiver
+   */
+  static async reactiverAnnee(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const anneeLibelle = req.params.annee;
+      const tenant = await Tenant.findByPk(tenantId);
+      if (!tenant) return res.status(404).json({ error: 'TenantNotFound' });
+
+      const config = tenant.anneeScolaireConfig || {};
+      const anneeConfig = config[anneeLibelle] || {};
+
+      const newConfig = await TenantController._patchAnneeConfig(tenant, anneeLibelle, {
+        ...anneeConfig,
+        statut: 'EN_COURS',
+        dateCloture: null,
+      });
+
+      const existing = Array.isArray(tenant.anneesCloturees) ? tenant.anneesCloturees : [];
+      await tenant.update({
+        anneesCloturees: existing.filter(a => a !== anneeLibelle),
+        anneeActive: anneeLibelle,
+      });
+
+      await AuditLog.create({
+        tenantId,
+        userId: req.user.id,
+        action: 'ANNEE_REACTIVEE',
+        resource: `Année scolaire: ${anneeLibelle}`,
+        severity: 'HIGH',
+        sha256Signature: crypto.createHash('sha256').update(`${tenantId}:reactiver:${anneeLibelle}:${Date.now()}`).digest('hex'),
+      });
+
+      return res.status(200).json({
+        message: `Année scolaire ${anneeLibelle} réactivée.`,
+        annee: anneeLibelle,
+        config: newConfig[anneeLibelle],
+        anneeActive: anneeLibelle,
+        anneesCloturees: existing.filter(a => a !== anneeLibelle),
+      });
+    } catch (error) {
+      return res.status(500).json({ error: 'ReactiverAnneeError', message: error.message });
+    }
+  }
+
+  /**
    * Compat : ancienne route POST /settings/annee/nouvelle
    * Redirige vers demarrerAnnee avec body → params
    */

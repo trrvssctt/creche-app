@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
-import { AnneeProvider } from './contexts/AnneeContext';
+import { AnneeProvider, useAnnee } from './contexts/AnneeContext';
 import { NiveauxProvider } from './contexts/NiveauxContext';
 import Layout from './components/Layout';
 import ToastProvider from './components/ToastProvider';
@@ -100,6 +100,28 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+// ─── YearSync ─────────────────────────────────────────────────────────────────
+// Composant enfant de AnneeProvider : propage anneeActive depuis le backend
+// vers le contexte dès que les données settings arrivent.
+
+interface YearData {
+  anneeActive?: string;
+  anneesCloturees?: string[];
+  anneeScolaireConfig?: Record<string, any>;
+}
+
+const YearSync: React.FC<{ data: YearData | null }> = ({ data }) => {
+  const { refreshAnneeRef, setCloturees, setAnneeScolaireConfig } = useAnnee();
+  useEffect(() => {
+    if (!data?.anneeActive) return;
+    refreshAnneeRef(data.anneeActive);
+    if (Array.isArray(data.anneesCloturees)) setCloturees(data.anneesCloturees);
+    if (data.anneeScolaireConfig && typeof data.anneeScolaireConfig === 'object')
+      setAnneeScolaireConfig(data.anneeScolaireConfig);
+  }, [data?.anneeActive]);
+  return null;
+};
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 const ACTIVE_TAB_KEY = 'gsp_active_tab';
@@ -124,6 +146,7 @@ const App: React.FC = () => {
     invoiceLogo: '',
     companyName: 'Le Toit des Anges',
   });
+  const [backendYearData, setBackendYearData] = useState<YearData | null>(null);
 
   // Synchronise les paramètres de l'établissement depuis le backend
   const syncSettings = async (_user: User) => {
@@ -149,6 +172,15 @@ const App: React.FC = () => {
       companyName: settings.name || 'Le Toit des Anges',
       ...settings,
     });
+
+    // Propager l'année scolaire active vers AnneeContext (source de vérité = backend)
+    if (settings.anneeActive) {
+      setBackendYearData({
+        anneeActive: settings.anneeActive,
+        anneesCloturees: settings.anneesCloturees,
+        anneeScolaireConfig: settings.anneeScolaireConfig,
+      });
+    }
     try {
       if (settings.primaryColor) {
         document.documentElement.style.setProperty('--primary-kernel', settings.primaryColor);
@@ -426,6 +458,7 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <NiveauxProvider>
       <AnneeProvider>
+      <YearSync data={backendYearData} />
       <ToastProvider>
         <div className="min-h-screen bg-slate-50">
           {/* Bannière rappel pointage */}

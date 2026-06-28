@@ -59,6 +59,7 @@ import { CreneauHoraire } from './CreneauHoraire.js';
 import { PlanningConfig } from './PlanningConfig.js';
 import { PlanningException } from './PlanningException.js';
 import { EleveDocument } from './EleveDocument.js';
+import { SchoolEvent } from './SchoolEvent.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
@@ -306,6 +307,12 @@ SaleItem.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
 Sale.hasMany(Payment, { foreignKey: 'sale_id', as: 'payments' });
 Payment.belongsTo(Sale, { foreignKey: 'sale_id' });
 
+// Factures
+Invoice.belongsTo(Sale, { foreignKey: 'sale_id', as: 'sale' });
+Sale.hasOne(Invoice, { foreignKey: 'sale_id', as: 'invoice' });
+Invoice.hasMany(InvoiceItem, { foreignKey: 'invoice_id', as: 'items' });
+InvoiceItem.belongsTo(Invoice, { foreignKey: 'invoice_id' });
+
 // Stocks & Catégories
 StockItem.hasMany(ProductMovement, { foreignKey: 'stock_item_id' });
 ProductMovement.belongsTo(StockItem, { foreignKey: 'stock_item_id' });
@@ -333,4 +340,5 @@ export {
   CreneauHoraire,
   PlanningConfig, PlanningException,
   EleveDocument,
+  SchoolEvent,
 };

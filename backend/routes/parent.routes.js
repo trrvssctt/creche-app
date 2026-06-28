@@ -21,6 +21,7 @@ router.get('/ecole',                 ParentController.getEcoleInfo);
 router.get('/enfants',               ParentController.getMesEnfants);
 router.get('/enfants/:id',           ParentController.getMesEnfantById);
 router.get('/echeances',             ParentController.getMesEcheances);
+router.get('/factures',              ParentController.getMesFactures);
 router.get('/bulletins',             ParentController.getMesBulletins);
 router.get('/planning',              ParentController.getMonPlanning);
 router.get('/actualites',            ParentController.getActualites);

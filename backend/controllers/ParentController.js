@@ -1,9 +1,10 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import axios from 'axios';
 import {
   Eleve, EcheancePaiement, Bulletin, CreneauHoraire,
-  Announcement, EleveDocument, Classe, Service,
+  Announcement, EleveDocument, Classe, Service, Invoice, InvoiceItem, Sale,
 } from '../models/index.js';
+import { sequelize } from '../config/database.js';
 import { Tenant } from '../models/Tenant.js';
 import { User }   from '../models/User.js';
 import { uploadToCloudinary } from '../services/CloudinaryService.js';
@@ -112,6 +113,62 @@ export class ParentController {
     }
   }
 
+  // GET /api/parent/factures
+  static async getMesFactures(req, res) {
+    try {
+      const { id, tenantId, eleveIds = [] } = req.user;
+      const allIds = await resolveAllEleveIds(id, tenantId, eleveIds);
+      if (!allIds.length) return res.json([]);
+
+      // Récupérer les échéances payées pour les enfants du parent
+      const where = { eleveId: { [Op.in]: allIds }, tenantId, statut: 'PAYE' };
+      if (req.query.eleveId) {
+        if (!allIds.includes(req.query.eleveId))
+          return res.status(403).json({ error: 'Accès refusé à cet élève.' });
+        where.eleveId = req.query.eleveId;
+      }
+
+      const echeances = await EcheancePaiement.findAll({
+        where,
+        attributes: ['id', 'saleId', 'eleveId', 'montant', 'periodeLabel', 'dateEcheance', 'paidAt'],
+        include: [
+          { model: Eleve,   as: 'eleve',   attributes: ['id', 'nom', 'prenom'] },
+          { model: Service, as: 'service', attributes: ['id', 'name'] },
+        ],
+        order: [['paidAt', 'DESC']],
+      });
+
+      // Regrouper par saleId pour retrouver la facture
+      const saleIds = [...new Set(echeances.map(e => e.saleId).filter(Boolean))];
+      const invoices = saleIds.length
+        ? await Invoice.findAll({
+            where: { saleId: { [Op.in]: saleIds }, tenantId },
+            include: [{ model: InvoiceItem, as: 'items' }],
+          })
+        : [];
+
+      const invoiceMap = Object.fromEntries(invoices.map(inv => [inv.saleId, inv]));
+
+      // Associer chaque écheance à sa facture
+      const result = echeances.map(ech => ({
+        id: ech.id,
+        saleId: ech.saleId,
+        eleve: ech.eleve,
+        service: ech.service,
+        montant: ech.montant,
+        periodeLabel: ech.periodeLabel,
+        dateEcheance: ech.dateEcheance,
+        paidAt: ech.paidAt,
+        invoice: ech.saleId ? (invoiceMap[ech.saleId] || null) : null,
+      }));
+
+      res.json(result);
+    } catch (err) {
+      console.error('[ParentController] getMesFactures:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
   // GET /api/parent/bulletins?eleveId=&trimestre=&annee=
   static async getMesBulletins(req, res) {
     try {
@@ -198,6 +255,19 @@ export class ParentController {
         }),
       ]);
 
+      let schoolEvents = [];
+      try {
+        schoolEvents = await sequelize.query(
+          `SELECT id, titre, description, type_evenement, statut,
+                  date_debut, date_fin, heure_debut, heure_fin, lieu,
+                  niveaux_cibles, diffuse, created_at
+           FROM school_events
+           WHERE tenant_id = :tenantId AND statut = 'PUBLIE'
+           ORDER BY date_debut ASC`,
+          { replacements: { tenantId }, type: QueryTypes.SELECT }
+        );
+      } catch (_) { /* table may not exist yet */ }
+
       const NIVEAUX_LABELS = {
         CRECHE: 'Crèche', PS: 'Petite Section', MS: 'Moyenne Section',
         GS: 'Grande Section', CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
@@ -215,7 +285,24 @@ export class ParentController {
         expiresAt: null,
       }));
 
-      res.json([...inscriptionEvents, ...annonces]);
+      const eventCards = schoolEvents.map(ev => ({
+        id: `event-${ev.id}`,
+        title: ev.titre,
+        body: [
+          ev.description || '',
+          ev.heure_debut ? `⏰ ${ev.heure_debut}${ev.heure_fin ? ` – ${ev.heure_fin}` : ''}` : '',
+          ev.lieu ? `📍 ${ev.lieu}` : '',
+        ].filter(Boolean).join('\n'),
+        type: ev.type_evenement,
+        isPinned: false,
+        isActive: true,
+        dateDebut: ev.date_debut,
+        dateFin: ev.date_fin,
+        createdAt: ev.created_at,
+        expiresAt: ev.date_fin ? new Date(ev.date_fin + 'T23:59:59') : null,
+      }));
+
+      res.json([...inscriptionEvents, ...eventCards, ...annonces]);
     } catch (err) {
       console.error('[ParentController] getActualites:', err.message);
       res.status(500).json({ error: 'Erreur serveur', message: err.message });

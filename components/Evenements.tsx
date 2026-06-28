@@ -42,8 +42,6 @@ interface Evenement {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const LS_EVENTS_KEY = 'evenements_ecole';
-
 const NIVEAUX_SCOLAIRES: NiveauScolaire[] = ['CRECHE', 'PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
 const NIVEAUX_LABELS: Record<string, string> = {
   TOUS: 'Tous les niveaux',
@@ -82,13 +80,34 @@ const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; }
-
-function loadEvents(): Evenement[] {
-  try { return JSON.parse(localStorage.getItem(LS_EVENTS_KEY) || '[]'); } catch { return []; }
+function rawToEvenement(raw: any): Evenement {
+  const niveaux = typeof raw.niveauxCibles === 'string'
+    ? (raw.niveauxCibles.split(',').filter(Boolean) as ('TOUS' | NiveauScolaire)[])
+    : (Array.isArray(raw.niveauxCibles) ? raw.niveauxCibles : ['TOUS']);
+  return {
+    id:            raw.id,
+    titre:         raw.titre || '',
+    typeEvenement: (raw.typeEvenement || 'INFO') as TypeEvenement,
+    statut:        (raw.statut || 'BROUILLON') as StatutEvenement,
+    description:   raw.description || '',
+    dateDebut:     raw.dateDebut || raw.date_debut || '',
+    dateFin:       raw.dateFin   || raw.date_fin,
+    heureDebut:    raw.heureDebut || raw.heure_debut,
+    heureFin:      raw.heureFin  || raw.heure_fin,
+    lieu:          raw.lieu,
+    niveauxCibles: niveaux,
+    diffuse:       !!raw.diffuse,
+    dateCreation:  raw.createdAt || raw.created_at || new Date().toISOString(),
+  };
 }
-function saveEvents(data: Evenement[]) {
-  try { localStorage.setItem(LS_EVENTS_KEY, JSON.stringify(data)); } catch {}
+
+function toPayload(ev: Omit<Evenement, 'id' | 'dateCreation'>) {
+  return {
+    titre: ev.titre, description: ev.description, typeEvenement: ev.typeEvenement,
+    statut: ev.statut, dateDebut: ev.dateDebut, dateFin: ev.dateFin || null,
+    heureDebut: ev.heureDebut || null, heureFin: ev.heureFin || null,
+    lieu: ev.lieu || null, niveauxCibles: ev.niveauxCibles, diffuse: ev.diffuse,
+  };
 }
 
 function getTypeInfo(id: TypeEvenement) {
@@ -238,7 +257,8 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
 
   // --- état général
   const [activeTab, setActiveTab] = useState<'liste' | 'calendrier'>('liste');
-  const [events, setEvents] = useState<Evenement[]>(loadEvents);
+  const [events, setEvents] = useState<Evenement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [eleves, setEleves] = useState<any[]>([]);
   const [loadingEleves, setLoadingEleves] = useState(false);
 
@@ -257,16 +277,35 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const [diffusionEvent, setDiffusionEvent] = useState<Evenement | null>(null);
   const [diffusionLinks, setDiffusionLinks] = useState<{ nom: string; phone: string; link: string }[]>([]);
 
-  // --- calendrier — synchronisé sur l'année scolaire sélectionnée
-  const anneeStartYear = parseInt(anneeScolaire.split('-')[0]) || new Date().getFullYear();
-  const [calAnnee, setCalAnnee] = useState(anneeStartYear);
-  const [calMois, setCalMois] = useState(8); // Septembre = début d'année scolaire
+  // --- calendrier — démarre au mois courant, se reset si l'année scolaire change
+  const [calAnnee, setCalAnnee] = useState(() => new Date().getFullYear());
+  const [calMois, setCalMois] = useState(() => new Date().getMonth());
+  const prevAnneeScolaireRef = React.useRef(anneeScolaire);
 
-  // Re-synchro quand l'utilisateur change d'année scolaire
   useEffect(() => {
-    setCalAnnee(parseInt(anneeScolaire.split('-')[0]) || new Date().getFullYear());
-    setCalMois(8);
+    if (prevAnneeScolaireRef.current !== anneeScolaire) {
+      prevAnneeScolaireRef.current = anneeScolaire;
+      // Quand l'admin change manuellement d'année scolaire → aller à septembre de cette année
+      setCalAnnee(parseInt(anneeScolaire.split('-')[0]) || new Date().getFullYear());
+      setCalMois(8);
+    }
   }, [anneeScolaire]);
+
+  // ── Charger événements depuis le backend ───────────────────────────────────
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const raw: any[] = await apiClient.get('/admin/school-events') || [];
+        setEvents(raw.map(rawToEvenement));
+      } catch {
+        showToast('Impossible de charger les événements.', 'error');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   // ── Charger élèves ─────────────────────────────────────────────────────────
 
@@ -331,41 +370,53 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
     setModalMode('EDIT');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.titre || !form.dateDebut) { showToast('Titre et date de début sont obligatoires.', 'error'); return; }
-    let updated: Evenement[];
-    if (modalMode === 'CREATE') {
-      updated = [{ ...form, id: genId(), dateCreation: new Date().toISOString() }, ...events];
-      showToast('Événement créé.', 'success');
-    } else {
-      updated = events.map(e => e.id === selected!.id ? { ...e, ...form } : e);
-      showToast('Événement mis à jour.', 'success');
+    try {
+      if (modalMode === 'CREATE') {
+        const raw = await apiClient.post('/admin/school-events', toPayload(form));
+        setEvents(prev => [rawToEvenement(raw), ...prev]);
+        showToast('Événement créé.', 'success');
+      } else {
+        const raw = await apiClient.put(`/admin/school-events/${selected!.id}`, toPayload({ ...selected!, ...form }));
+        setEvents(prev => prev.map(e => e.id === selected!.id ? rawToEvenement(raw) : e));
+        showToast('Événement mis à jour.', 'success');
+      }
+      setModalMode(null);
+    } catch {
+      showToast('Erreur lors de la sauvegarde.', 'error');
     }
-    setEvents(updated);
-    saveEvents(updated);
-    setModalMode(null);
   };
 
-  const handleDelete = (id: string) => {
-    const updated = events.filter(e => e.id !== id);
-    setEvents(updated);
-    saveEvents(updated);
-    setModalMode(null);
-    showToast('Événement supprimé.', 'info');
+  const handleDelete = async (id: string) => {
+    try {
+      await apiClient.delete(`/admin/school-events/${id}`);
+      setEvents(prev => prev.filter(e => e.id !== id));
+      setModalMode(null);
+      showToast('Événement supprimé.', 'info');
+    } catch {
+      showToast('Erreur lors de la suppression.', 'error');
+    }
   };
 
-  const handlePublish = (ev: Evenement) => {
-    const updated = events.map(e => e.id === ev.id ? { ...e, statut: 'PUBLIE' as StatutEvenement } : e);
-    setEvents(updated);
-    saveEvents(updated);
-    showToast(`"${ev.titre}" publié.`, 'success');
+  const handlePublish = async (ev: Evenement) => {
+    try {
+      const raw = await apiClient.put(`/admin/school-events/${ev.id}`, toPayload({ ...ev, statut: 'PUBLIE' }));
+      setEvents(prev => prev.map(e => e.id === ev.id ? rawToEvenement(raw) : e));
+      showToast(`"${ev.titre}" publié — visible par les parents.`, 'success');
+    } catch {
+      showToast('Erreur lors de la publication.', 'error');
+    }
   };
 
-  const handleCancel = (ev: Evenement) => {
-    const updated = events.map(e => e.id === ev.id ? { ...e, statut: 'ANNULE' as StatutEvenement } : e);
-    setEvents(updated);
-    saveEvents(updated);
-    showToast(`"${ev.titre}" annulé.`, 'info');
+  const handleCancel = async (ev: Evenement) => {
+    try {
+      const raw = await apiClient.put(`/admin/school-events/${ev.id}`, toPayload({ ...ev, statut: 'ANNULE' }));
+      setEvents(prev => prev.map(e => e.id === ev.id ? rawToEvenement(raw) : e));
+      showToast(`"${ev.titre}" annulé.`, 'info');
+    } catch {
+      showToast('Erreur lors de l\'annulation.', 'error');
+    }
   };
 
   // ── Diffusion WhatsApp ─────────────────────────────────────────────────────
@@ -388,11 +439,12 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
     setDiffusionEvent(ev);
   };
 
-  const handleConfirmDiffusion = () => {
+  const handleConfirmDiffusion = async () => {
     if (!diffusionEvent) return;
-    const updated = events.map(e => e.id === diffusionEvent.id ? { ...e, diffuse: true } : e);
-    setEvents(updated);
-    saveEvents(updated);
+    try {
+      const raw = await apiClient.put(`/admin/school-events/${diffusionEvent.id}`, toPayload({ ...diffusionEvent, diffuse: true }));
+      setEvents(prev => prev.map(e => e.id === diffusionEvent.id ? rawToEvenement(raw) : e));
+    } catch { /* non-bloquant */ }
     setDiffusionEvent(null);
     showToast('Événement marqué comme diffusé.', 'success');
   };
@@ -422,6 +474,12 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   );
 
   // ─── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-24">
+      <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">

@@ -127,21 +127,21 @@ const EleveDetailModal: React.FC<{ eleve: Eleve; grad: string; onClose: () => vo
   ].filter(Boolean) as string[];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3">
-      <div className="bg-gray-50 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-3">
+      <div className="bg-gray-50 w-full max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
 
         {/* ── En-tête ── */}
-        <div className={`bg-gradient-to-r ${grad} p-6 flex items-start justify-between flex-shrink-0`}>
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/40 flex items-center justify-center shadow-lg">
+        <div className={`bg-gradient-to-r ${grad} p-4 sm:p-6 flex items-start justify-between flex-shrink-0`}>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-white/20 border-2 border-white/40 flex items-center justify-center shadow-lg flex-shrink-0">
               {eleve.photoUrl
                 ? <img src={eleve.photoUrl} alt={eleve.prenom} className="w-full h-full object-cover rounded-2xl" />
-                : <span className="text-2xl font-black text-white">{eleve.prenom[0]}{eleve.nom[0]}</span>
+                : <span className="text-xl sm:text-2xl font-black text-white">{eleve.prenom[0]}{eleve.nom[0]}</span>
               }
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-0.5">Dossier élève</p>
-              <h2 className="text-2xl font-black text-white">{eleve.prenom} {eleve.nom}</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-white truncate">{eleve.prenom} {eleve.nom}</h2>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-full border bg-white/20 text-white border-white/30`}>
                   {stat.label}
@@ -442,7 +442,7 @@ const MesEnfants: React.FC<Props> = ({ enfants, onSelect }) => {
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+                      <div className="grid grid-cols-1 xs:grid-cols-2 gap-2 text-sm mb-4">
                         {e.dateNaissance && (
                           <div className="flex items-center gap-2 text-gray-500">
                             <Calendar className="w-4 h-4 text-amber-400 flex-shrink-0" />

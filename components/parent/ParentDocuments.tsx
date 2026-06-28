@@ -224,7 +224,7 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
                 </div>
 
                 {/* Grille des 4 documents */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {DOCS_INSCRIPTION.map(({ type, label, icon: Icon, color, desc }) => {
                     const loading = !!pdfLoading[`${enfant.id}-${type}`];
                     return (

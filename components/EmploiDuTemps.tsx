@@ -5,7 +5,7 @@ import {
   MessageCircle, Send, Copy, Check, Printer, Clock,
   GraduationCap, RefreshCw, Zap, School, ChevronDown,
   User as UserIcon, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  Calendar, AlertCircle, Ban, Star, Umbrella, Archive, Lock,
+  Calendar, AlertCircle, Ban, Star, Umbrella, Archive, Lock, Search,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { authBridge } from '../services/authBridge';
@@ -237,6 +237,180 @@ function getMatiereColor(m: string) {
   return MATIERE_COLORS[m] || 'bg-slate-100 text-slate-600 border-slate-200';
 }
 
+// ─── Sélecteur de classe ──────────────────────────────────────────────────────
+
+const GROUPE_NIVEAUX = [
+  {
+    label: 'Crèche',
+    niveaux: ['CRECHE'],
+    pill: 'bg-rose-100 text-rose-700 border-rose-200',
+    active: 'bg-rose-500 text-white border-rose-500 shadow-rose-100',
+    dot: 'bg-rose-400',
+  },
+  {
+    label: 'Maternelle',
+    niveaux: ['PS', 'MS', 'GS'],
+    pill: 'bg-violet-100 text-violet-700 border-violet-200',
+    active: 'bg-violet-500 text-white border-violet-500 shadow-violet-100',
+    dot: 'bg-violet-400',
+  },
+  {
+    label: 'Élémentaire',
+    niveaux: ['CP', 'CE1', 'CE2', 'CM1', 'CM2'],
+    pill: 'bg-sky-100 text-sky-700 border-sky-200',
+    active: 'bg-sky-500 text-white border-sky-500 shadow-sky-100',
+    dot: 'bg-sky-400',
+  },
+];
+
+interface ClasseInfo2 { id: string; nom: string; niveau: string; }
+
+const ClassePickerPanel: React.FC<{
+  classes: ClasseInfo2[];
+  selected: string;
+  onSelect: (id: string) => void;
+}> = ({ classes, selected, onSelect }) => {
+  const [query, setQuery] = useState('');
+
+  const filtered = query.trim()
+    ? classes.filter(c =>
+        c.nom.toLowerCase().includes(query.toLowerCase()) ||
+        c.niveau.toLowerCase().includes(query.toLowerCase())
+      )
+    : classes;
+
+  // Grouper par catégorie de niveau
+  const grouped = GROUPE_NIVEAUX.map(g => ({
+    ...g,
+    items: filtered.filter(c => g.niveaux.includes(c.niveau)),
+  })).filter(g => g.items.length > 0);
+
+  // Classes dont le niveau n'appartient à aucun groupe (sécurité)
+  const knownNiveaux = GROUPE_NIVEAUX.flatMap(g => g.niveaux);
+  const orphans = filtered.filter(c => !knownNiveaux.includes(c.niveau));
+
+  const selectedClasse = classes.find(c => c.id === selected);
+  const groupe = selectedClasse
+    ? GROUPE_NIVEAUX.find(g => g.niveaux.includes(selectedClasse.niveau))
+    : null;
+
+  return (
+    <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+      {/* En-tête */}
+      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-50">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-indigo-50 rounded-xl flex items-center justify-center">
+            <School size={14} className="text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Classe sélectionnée</p>
+            {selectedClasse ? (
+              <div className="flex items-center gap-2">
+                {groupe && <span className={`w-2 h-2 rounded-full ${groupe.dot}`} />}
+                <p className="text-sm font-black text-slate-900">{selectedClasse.nom}</p>
+                <span className="text-[9px] font-black text-slate-400 uppercase">{selectedClasse.niveau}</span>
+              </div>
+            ) : (
+              <p className="text-sm font-black text-slate-300">Aucune sélection</p>
+            )}
+          </div>
+        </div>
+        <span className="text-[9px] font-bold text-slate-300 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-full">
+          {classes.length} classe{classes.length > 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Filtre — visible dès 5 classes */}
+      {classes.length >= 5 && (
+        <div className="px-6 pt-4 pb-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Filtrer les classes…"
+              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-bold text-slate-700 placeholder-slate-300 outline-none focus:border-indigo-200 focus:ring-2 focus:ring-indigo-50 transition-all"
+            />
+            {query && (
+              <button onClick={() => setQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 transition-all">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Groupes */}
+      <div className="px-6 pb-5 pt-3 space-y-4">
+        {filtered.length === 0 && (
+          <p className="text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest py-4">
+            Aucune classe trouvée
+          </p>
+        )}
+
+        {grouped.map(g => (
+          <div key={g.label}>
+            {/* Label groupe */}
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`w-2 h-2 rounded-full ${g.dot}`} />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{g.label}</span>
+              <span className="text-[8px] font-bold text-slate-300">· {g.items.length}</span>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            {/* Chips */}
+            <div className="flex flex-wrap gap-2">
+              {g.items.map(c => {
+                const isActive = c.id === selected;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => onSelect(c.id)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-[10px] font-black border transition-all shadow-sm
+                      ${isActive
+                        ? g.active + ' shadow-lg'
+                        : g.pill + ' hover:shadow-md hover:scale-[1.02]'
+                      }`}
+                  >
+                    {isActive && <Check size={10} strokeWidth={3} />}
+                    <span>{c.nom}</span>
+                    <span className={`text-[8px] font-bold opacity-70`}>{c.niveau}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        {/* Classes orphelines (niveau inconnu) */}
+        {orphans.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-slate-300" />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Autres</span>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {orphans.map(c => (
+                <button key={c.id} onClick={() => onSelect(c.id)}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-[10px] font-black border transition-all
+                    ${c.id === selected
+                      ? 'bg-slate-700 text-white border-slate-700 shadow-lg'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+                    }`}>
+                  {c.id === selected && <Check size={10} strokeWidth={3} />}
+                  {c.nom}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
@@ -284,8 +458,11 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
   });
   const [savingException, setSavingException] = useState(false);
 
-  // Sélection classe
+  // Sélection classe (grille/calendrier)
   const [selectedClasseId, setSelectedClasseId] = useState('');
+
+  // Filtre classe — Mon Planning
+  const [myFilterClasseId, setMyFilterClasseId] = useState('');
 
   // Cahier
   const [cahier, setCahier]   = useState<CahierEntry[]>(loadCahier);
@@ -321,6 +498,14 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
     const t = setInterval(() => setCurrentY(nowY()), 60000);
     return () => clearInterval(t);
   }, []);
+
+  // Navigation semaine — tab "Mon Planning" (prof)
+  const [myWeekOffset, setMyWeekOffset] = useState(0);
+  const myWeekDates = useMemo(() => {
+    const lundi = getMondayOfWeek(new Date());
+    lundi.setDate(lundi.getDate() + myWeekOffset * 7);
+    return Array.from({ length: 5 }, (_, i) => addDays(lundi, i));
+  }, [myWeekOffset]);
 
   const todayIdx = todayJour();
   const empMap = useMemo(() => {
@@ -412,6 +597,30 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
     });
     return map;
   }, [myCreneaux]);
+
+  // Classes uniques que le prof enseigne (pour le filtre "Mon Planning")
+  const myClasses = useMemo<ClasseInfo2[]>(() => {
+    const seen = new Set<string>();
+    const result: ClasseInfo2[] = [];
+    myCreneaux.forEach(c => {
+      if (c.classe && !seen.has(c.classeId)) {
+        seen.add(c.classeId);
+        result.push({ id: c.classeId, nom: c.classe.nom, niveau: c.classe.niveau });
+      }
+    });
+    return result;
+  }, [myCreneaux]);
+
+  // Planning filtré par classe sélectionnée (Mon Planning)
+  const myCreneauxParJourFiltered = useMemo(() => {
+    const map: Record<number, Creneau[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+    myCreneaux
+      .filter(c => !myFilterClasseId || c.classeId === myFilterClasseId)
+      .forEach(c => {
+        map[c.jour] = [...(map[c.jour] || []), c].sort((a, b) => a.heureDebut.localeCompare(b.heureDebut));
+      });
+    return map;
+  }, [myCreneaux, myFilterClasseId]);
 
   // ── Stats prof ─────────────────────────────────────────────────────────────
   const myStats = useMemo(() => {
@@ -812,20 +1021,15 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
             )}
           </div>
 
-          {/* Contrôles */}
-          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 flex flex-wrap items-center justify-between gap-4">
-            {/* Sélecteur classe */}
-            <div className="flex items-center gap-3 flex-wrap">
-              {classes.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => setSelectedClasseId(c.id)}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${selectedClasseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
-                >
-                  {c.nom}
-                </button>
-              ))}
-            </div>
+          {/* Sélecteur classe */}
+          <ClassePickerPanel
+            classes={classes}
+            selected={selectedClasseId}
+            onSelect={setSelectedClasseId}
+          />
+
+          {/* Contrôles : navigation semaine + actions */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm px-6 py-4 flex flex-wrap items-center justify-between gap-4">
             {/* Navigation semaine + Actions */}
             <div className="flex items-center gap-2 flex-wrap">
 
@@ -875,7 +1079,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
           {/* Grille visuelle */}
           {selectedClasse && (
             <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-50 flex items-center gap-4">
+              <div className="p-6 border-b border-slate-50 flex items-center gap-4 flex-wrap">
                 <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-black">
                   {selectedClasse.nom.split(' ').pop() || 'A'}
                 </div>
@@ -883,7 +1087,12 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
                   <h3 className="text-base font-black text-slate-900">{selectedClasse.nom}</h3>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{NIVEAUX_LABELS[selectedClasse.niveau] || selectedClasse.niveau} · {creneaux.length} créneaux</p>
                 </div>
-                {loadingCreneaux && <RefreshCw size={14} className="animate-spin text-indigo-400 ml-auto" />}
+                <div className="ml-auto flex items-center gap-2">
+                  {loadingCreneaux && <RefreshCw size={14} className="animate-spin text-indigo-400" />}
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 rounded-xl text-[9px] font-black text-indigo-500 uppercase tracking-widest">
+                    <RefreshCw size={9} /> Récurrent · même grille chaque semaine
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '75vh' }}>
@@ -1051,16 +1260,15 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       {tab === 'calendrier' && (
         <div className="space-y-4 animate-in fade-in duration-300">
 
-          {/* Sélecteur classe + navigation semaine */}
-          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              {classes.map(c => (
-                <button key={c.id} onClick={() => setSelectedClasseId(c.id)}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${selectedClasseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}>
-                  {c.nom}
-                </button>
-              ))}
-            </div>
+          {/* Sélecteur classe */}
+          <ClassePickerPanel
+            classes={classes}
+            selected={selectedClasseId}
+            onSelect={setSelectedClasseId}
+          />
+
+          {/* Navigation semaine */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm px-6 py-4 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <button onClick={() => setWeekStart(w => getMondayOfWeek(addMonths(w, -1)))}
                 className="p-2.5 bg-slate-50 border border-slate-200 text-slate-400 rounded-xl hover:bg-slate-100 transition-all" title="Mois précédent">
@@ -1259,6 +1467,58 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       {tab === 'mon-planning' && (
         <div className="space-y-4 animate-in fade-in duration-300">
 
+          {/* Badge récurrent + navigation semaine */}
+          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <RefreshCw size={12} className="text-indigo-400" />
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">
+                Planning hebdomadaire récurrent · même grille chaque semaine
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setMyWeekOffset(w => w - 1)}
+                className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100 transition-all">
+                <ChevronLeft size={15} />
+              </button>
+              <div className="text-center px-2">
+                <p className="text-[11px] font-black text-slate-700">
+                  {formatShortFr(myWeekDates[0])} – {formatShortFr(myWeekDates[4])} {myWeekDates[0].getFullYear()}
+                </p>
+                {myWeekOffset === 0 ? (
+                  <p className="text-[9px] font-bold text-indigo-500">Semaine courante</p>
+                ) : (
+                  <button onClick={() => setMyWeekOffset(0)}
+                    className="text-[9px] font-bold text-indigo-400 hover:text-indigo-600 transition-all">
+                    Revenir à aujourd'hui
+                  </button>
+                )}
+              </div>
+              <button onClick={() => setMyWeekOffset(w => w + 1)}
+                className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100 transition-all">
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+
+          {/* Sélecteur classe (prof peut enseigner plusieurs classes) */}
+          {myClasses.length > 0 && (
+            <div>
+              <ClassePickerPanel
+                classes={myClasses}
+                selected={myFilterClasseId}
+                onSelect={id => setMyFilterClasseId(prev => prev === id ? '' : id)}
+              />
+              {myFilterClasseId && (
+                <button
+                  onClick={() => setMyFilterClasseId('')}
+                  className="mt-2 flex items-center gap-1.5 text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-all px-1"
+                >
+                  <X size={10} /> Voir toutes les classes
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Grille personnelle */}
           {myCreneaux.length === 0 ? (
             <div className="py-20 flex flex-col items-center gap-4 bg-white rounded-[2.5rem] border border-dashed border-slate-200 text-slate-400">
@@ -1269,18 +1529,38 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               {JOURS.map((jour, idx) => {
-                const list = myCreneauxParJour[idx] || [];
-                const isToday = idx === todayIdx;
+                const colDate  = myWeekDates[idx];
+                const todayStr = toISO(new Date());
+                const colStr   = toISO(colDate);
+                const isToday  = colStr === todayStr;
+                const isPast   = colStr < todayStr && !isToday;
+                const list = myCreneauxParJourFiltered[idx] || [];
                 const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
 
                 return (
-                  <div key={jour} className={`bg-white rounded-[2rem] border shadow-sm overflow-hidden ${isToday ? 'border-indigo-200 shadow-indigo-50' : 'border-slate-100'}`}>
-                    {/* En-tête jour */}
-                    <div className={`p-4 flex items-center justify-between ${isToday ? 'bg-indigo-600' : 'bg-slate-50'}`}>
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${isToday ? 'text-white' : 'text-slate-500'}`}>{jour}</span>
-                      {isToday && (
-                        <span className="text-[8px] font-black bg-white/20 text-white px-2 py-0.5 rounded-full">Aujourd'hui</span>
-                      )}
+                  <div key={jour} className={`bg-white rounded-[2rem] border shadow-sm overflow-hidden transition-all ${
+                    isToday ? 'border-indigo-200 shadow-indigo-50' : isPast ? 'border-slate-100 opacity-70' : 'border-slate-100'
+                  }`}>
+                    {/* En-tête jour avec vraie date */}
+                    <div className={`p-4 ${isToday ? 'bg-indigo-600' : 'bg-slate-50'}`}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className={`text-[10px] font-black uppercase tracking-widest block ${isToday ? 'text-white/80' : 'text-slate-400'}`}>
+                            {jour}
+                          </span>
+                          <span className={`text-2xl font-black leading-tight block ${isToday ? 'text-white' : isPast ? 'text-slate-300' : 'text-slate-800'}`}>
+                            {colDate.getDate()}
+                          </span>
+                          <span className={`text-[9px] font-bold ${isToday ? 'text-white/70' : 'text-slate-400'}`}>
+                            {colDate.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        {isToday && (
+                          <span className="text-[8px] font-black bg-white/20 text-white px-2 py-1 rounded-full mt-0.5">
+                            Aujourd'hui
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Cours du jour */}
@@ -1292,11 +1572,15 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
                         const [sh, sm] = c.heureDebut.split(':').map(Number);
                         const [eh, em] = c.heureFin.split(':').map(Number);
                         const isActive = isToday && sh * 60 + sm <= nowMins && nowMins < eh * 60 + em;
-                        const isPast   = isToday && eh * 60 + em <= nowMins;
+                        const isCoursPast = isToday && eh * 60 + em <= nowMins;
                         return (
                           <div
                             key={c.id}
-                            className={`rounded-2xl p-3 border transition-all ${isActive ? 'ring-2 ring-indigo-400 shadow-lg ' + col.block : isPast ? 'opacity-50 ' + col.block : col.block}`}
+                            className={`rounded-2xl p-3 border transition-all ${
+                              isActive    ? 'ring-2 ring-indigo-400 shadow-lg ' + col.block
+                              : isCoursPast ? 'opacity-50 ' + col.block
+                              : col.block
+                            }`}
                           >
                             {isActive && (
                               <div className="flex items-center gap-1 mb-1">
@@ -1316,7 +1600,9 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
 
                     {/* Footer stats */}
                     <div className="px-4 pb-3">
-                      <div className={`text-[9px] font-black uppercase tracking-widest ${isToday ? 'text-indigo-500' : 'text-slate-300'}`}>
+                      <div className={`text-[9px] font-black uppercase tracking-widest ${
+                        isToday ? 'text-indigo-500' : list.length ? 'text-slate-300' : 'text-slate-200'
+                      }`}>
                         {list.length} cours
                       </div>
                     </div>
@@ -1334,23 +1620,30 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       {tab === 'cahier' && (
         <div className="space-y-4 animate-in fade-in duration-300">
 
-          {/* Barre de contrôle */}
-          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-5 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest pr-1">Classe :</span>
-              {classes.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => { setCahierClasseId(c.id); setConfirmDeleteCahier(null); }}
-                  className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${cahierClasseId === c.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
-                >
-                  {c.nom}
-                </button>
-              ))}
+          {/* Sélecteur classe */}
+          <ClassePickerPanel
+            classes={isTeacher ? myClasses : classes}
+            selected={cahierClasseId}
+            onSelect={id => { setCahierClasseId(id); setConfirmDeleteCahier(null); }}
+          />
+
+          {/* Barre d'actions */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm px-6 py-4 flex items-center justify-between gap-4">
+            <div>
+              {cahierClasseId ? (
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  Cahier de texte · {(isTeacher ? myClasses : classes).find(c => c.id === cahierClasseId)?.nom}
+                </p>
+              ) : (
+                <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">
+                  Sélectionnez une classe pour afficher son cahier
+                </p>
+              )}
             </div>
             <button
               onClick={() => openCahier()}
-              className="px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+              disabled={!cahierClasseId}
+              className="px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus size={13} /> Nouvelle entrée
             </button>
@@ -1544,13 +1837,22 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
               <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Jour</label>
                 <div className="flex gap-2">
-                  {JOURS.map((j, i) => (
-                    <button key={j} type="button" onClick={() => setForm(f => ({ ...f, jour: i }))}
-                      className={`flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${form.jour === i ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}>
-                      {j.slice(0, 3)}
-                    </button>
-                  ))}
+                  {JOURS.map((j, i) => {
+                    const wd = weekDates[i];
+                    return (
+                      <button key={j} type="button" onClick={() => setForm(f => ({ ...f, jour: i }))}
+                        className={`flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex flex-col items-center gap-0.5 ${form.jour === i ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}>
+                        <span>{j.slice(0, 3)}</span>
+                        <span className={`text-[8px] font-bold ${form.jour === i ? 'text-white/70' : 'text-slate-300'}`}>
+                          {wd.getDate()}/{wd.getMonth() + 1}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
+                <p className="text-[8px] font-bold text-slate-400 px-2 flex items-center gap-1">
+                  <RefreshCw size={8} /> Ce créneau sera récurrent — il apparaîtra toutes les semaines à ce jour et ces horaires.
+                </p>
               </div>
 
               {/* Horaires */}

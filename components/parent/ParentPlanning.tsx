@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { CalendarDays, Clock, GraduationCap } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { CalendarDays, Clock, GraduationCap, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 
 interface Creneau {
   id: string; classeId: string; jour: number;
@@ -97,16 +97,52 @@ function todayJour(): number {
   return d === 0 || d === 6 ? -1 : d - 1; // 0=Lun … 4=Ven, -1=WE
 }
 
+// Lundi de la semaine contenant `date`
+function lundiDeLaSemaine(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // retour au lundi
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function fmtDate(date: Date): string {
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function fmtDateLong(date: Date): string {
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 // ─── Composant ────────────────────────────────────────────────────────────────
 
 const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
-  const [currentY, setCurrentY] = useState(nowY());
+  const [currentY,  setCurrentY]  = useState(nowY());
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = semaine courante
   const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setInterval(() => setCurrentY(nowY()), 60_000);
     return () => clearInterval(t);
   }, []);
+
+  // Dates de la semaine affichée
+  const weekDates = useMemo(() => {
+    const lundi = lundiDeLaSemaine(new Date());
+    lundi.setDate(lundi.getDate() + weekOffset * 7);
+    return Array.from({ length: 5 }, (_, i) => addDays(lundi, i));
+  }, [weekOffset]);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isCurrentWeek = weekOffset === 0;
 
   if (!creneaux.length) return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -160,6 +196,13 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
               </p>
             </div>
           )}
+          {/* Badge récurrent */}
+          <div className="flex items-center gap-1.5 mt-2">
+            <RefreshCw size={10} className="text-indigo-400" />
+            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+              Emploi du temps hebdomadaire · se répète chaque semaine
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <div className="bg-white border border-slate-100 rounded-2xl px-4 py-2.5 text-center shadow-sm">
@@ -171,6 +214,40 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">par sem.</p>
           </div>
         </div>
+      </div>
+
+      {/* ── Navigation semaine ── */}
+      <div className="flex items-center justify-between bg-white rounded-2xl border border-slate-100 px-4 py-3 shadow-sm shrink-0">
+        <button
+          onClick={() => setWeekOffset(w => w - 1)}
+          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 transition-all"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <div className="text-center">
+          <p className="text-sm font-black text-slate-800">
+            {fmtDateLong(weekDates[0])} – {fmtDateLong(weekDates[4])}
+          </p>
+          {isCurrentWeek && (
+            <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-0.5">
+              Semaine courante
+            </p>
+          )}
+          {!isCurrentWeek && (
+            <button
+              onClick={() => setWeekOffset(0)}
+              className="text-[10px] font-bold text-indigo-400 hover:text-indigo-600 uppercase tracking-widest mt-0.5 transition-all"
+            >
+              Revenir à aujourd'hui
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setWeekOffset(w => w + 1)}
+          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 transition-all"
+        >
+          <ChevronRight size={18} />
+        </button>
       </div>
 
       {/* ── Légende matières ── */}
@@ -219,7 +296,9 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
 
             {/* Colonnes jours */}
             {JOURS.map((jour, idx) => {
-              const isToday = idx === todayIdx;
+              const colDate   = weekDates[idx];
+              const isToday   = isCurrentWeek && idx === todayIdx;
+              const isPast    = colDate < today && !isToday;
               const dayCreneaux = byJour[idx] || [];
 
               return (
@@ -228,7 +307,7 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
                   {/* En-tête jour */}
                   <div
                     className={`h-[4.5rem] flex flex-col items-center justify-center gap-0.5 border-b border-slate-100 ${
-                      isToday ? 'bg-indigo-600' : 'bg-slate-50'
+                      isToday ? 'bg-indigo-600' : isPast ? 'bg-slate-50' : 'bg-slate-50'
                     }`}
                   >
                     <span
@@ -236,17 +315,22 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
                         isToday ? 'text-white' : 'text-slate-500'
                       }`}
                     >
-                      {jour}
+                      {jour.substring(0, 3)}
                     </span>
-                    {dayCreneaux.length > 0 && (
-                      <span
-                        className={`text-[8px] font-bold ${
-                          isToday ? 'text-white/70' : 'text-slate-400'
-                        }`}
-                      >
-                        {dayCreneaux.length} cours
-                      </span>
-                    )}
+                    <span
+                      className={`text-base font-black ${
+                        isToday ? 'text-white' : isPast ? 'text-slate-300' : 'text-slate-700'
+                      }`}
+                    >
+                      {colDate.getDate()}
+                    </span>
+                    <span
+                      className={`text-[9px] font-bold ${
+                        isToday ? 'text-white/70' : 'text-slate-400'
+                      }`}
+                    >
+                      {colDate.toLocaleDateString('fr-FR', { month: 'short' })}
+                    </span>
                   </div>
 
                   {/* Corps de la colonne */}
@@ -335,8 +419,9 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
       {/* ── Cards récap par jour ── */}
       <div className="grid grid-cols-5 gap-2 shrink-0">
         {JOURS.map((jour, idx) => {
-          const cours = byJour[idx] || [];
-          const isToday = idx === todayIdx;
+          const cours    = byJour[idx] || [];
+          const colDate  = weekDates[idx];
+          const isToday  = isCurrentWeek && idx === todayIdx;
           return (
             <div
               key={jour}
@@ -344,25 +429,16 @@ const ParentPlanning: React.FC<Props> = ({ creneaux }) => {
                 isToday ? 'border-indigo-200 bg-indigo-50/30' : 'border-slate-100'
               }`}
             >
-              <p
-                className={`text-[10px] font-black uppercase tracking-widest ${
-                  isToday ? 'text-indigo-500' : 'text-slate-400'
-                }`}
-              >
+              <p className={`text-[10px] font-black uppercase tracking-widest ${isToday ? 'text-indigo-500' : 'text-slate-400'}`}>
                 {jour.substring(0, 3)}
               </p>
-              <p
-                className={`text-xl font-black mt-0.5 ${
-                  isToday ? 'text-indigo-700' : cours.length ? 'text-slate-800' : 'text-slate-300'
-                }`}
-              >
+              <p className={`text-sm font-black ${isToday ? 'text-indigo-400' : 'text-slate-300'}`}>
+                {fmtDate(colDate)}
+              </p>
+              <p className={`text-xl font-black mt-0.5 ${isToday ? 'text-indigo-700' : cours.length ? 'text-slate-800' : 'text-slate-300'}`}>
                 {cours.length}
               </p>
-              <p
-                className={`text-[10px] font-medium ${
-                  cours.length ? 'text-slate-400' : 'text-slate-300'
-                }`}
-              >
+              <p className={`text-[10px] font-medium ${cours.length ? 'text-slate-400' : 'text-slate-300'}`}>
                 {cours.length > 0 ? 'cours' : 'libre'}
               </p>
               {cours.length > 0 && (

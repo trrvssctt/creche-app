@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import {
-  AbonnementEleve, EcheancePaiement, Eleve, Service, Sale, SaleItem, Payment
+  AbonnementEleve, EcheancePaiement, Eleve, Service, Sale, SaleItem, Payment,
+  Invoice, InvoiceItem,
 } from '../models/index.js';
 import { NotificationService } from '../services/NotificationService.js';
 
@@ -50,6 +51,77 @@ function periodeLabel(periodicite, date) {
 
 function genRef() {
   return 'VNT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
+}
+
+function genInvoiceId() {
+  return 'FAC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
+}
+
+const SAFE_METHODS = ['CASH', 'ORANGE_MONEY', 'WAVE', 'MTN_MOMO', 'STRIPE', 'TRANSFER', 'CHEQUE'];
+
+// Crée Sale + SaleItems + Payment + Invoice + InvoiceItems pour une liste d'échéances
+async function createPaymentBundle({ tenantId, echeances, methodePaiement, eleve }, t) {
+  const total = echeances.reduce((s, e) => s + parseFloat(e.montant), 0);
+  const safeMethod = SAFE_METHODS.includes(methodePaiement) ? methodePaiement : 'CASH';
+
+  const sale = await Sale.create({
+    tenantId,
+    reference: genRef(),
+    status: 'TERMINE',
+    totalHt: total,
+    totalTtc: total,
+    taxAmount: 0,
+    amountPaid: total,
+    saleDate: new Date(),
+    walkinName: eleve ? `${eleve.prenom} ${eleve.nom}` : null,
+  }, { transaction: t });
+
+  for (const ech of echeances) {
+    const m = parseFloat(ech.montant);
+    await SaleItem.create({
+      saleId: sale.id,
+      serviceId: ech.serviceId,
+      quantity: 1,
+      unitPrice: m,
+      taxRate: 0,
+      totalTtc: m,
+    }, { transaction: t });
+  }
+
+  await Payment.create({
+    saleId: sale.id,
+    tenantId,
+    amount: total,
+    method: safeMethod,
+    status: 'PAID',
+    paymentDate: new Date(),
+  }, { transaction: t });
+
+  const invoiceId = genInvoiceId();
+  const eleveLabel = eleve ? `${eleve.prenom} ${eleve.nom}` : 'Élève';
+  await Invoice.create({
+    id: invoiceId,
+    tenantId,
+    saleId: sale.id,
+    invoiceDate: new Date(),
+    amount: total,
+    taxAmount: 0,
+    currency: 'F CFA',
+    status: 'PAID',
+    type: 'REDEVANCE',
+  }, { transaction: t });
+
+  for (const ech of echeances) {
+    await InvoiceItem.create({
+      invoiceId,
+      name: `${ech.service?.name || 'Redevance'} — ${ech.periodeLabel || ''} · ${eleveLabel}`,
+      qty: 1,
+      price: parseFloat(ech.montant),
+      tva: 0,
+    }, { transaction: t });
+  }
+
+  return { sale, invoiceId };
 }
 
 // ── Contrôleur ──────────────────────────────────────────────────────────────
@@ -172,15 +244,15 @@ export class AbonnementController {
     }
   }
 
-  // ── Payer une échéance → création automatique de vente ──────────────────
+  // ── Payer une échéance → Sale + Invoice + reçu ─────────────────────────
   static async payEcheance(req, res) {
     const t = await sequelize.transaction();
     try {
       const ech = await EcheancePaiement.findOne({
         where: { id: req.params.id, tenantId: req.user.tenantId },
         include: [
-          { model: Eleve, as: 'eleve' },
-          { model: Service, as: 'service' },
+          { model: Eleve,           as: 'eleve' },
+          { model: Service,         as: 'service' },
           { model: AbonnementEleve, as: 'abonnement' },
         ],
       });
@@ -188,44 +260,14 @@ export class AbonnementController {
       if (ech.statut === 'PAYE') return res.status(400).json({ error: 'AlreadyPaid', message: 'Déjà payée.' });
 
       const { methodePaiement = 'CASH' } = req.body;
-      const montant = parseFloat(ech.montant);
 
-      // Créer la vente
-      const sale = await Sale.create({
+      const { sale, invoiceId } = await createPaymentBundle({
         tenantId: req.user.tenantId,
-        reference: genRef(),
-        status: 'TERMINE',
-        totalHt: montant,
-        totalTtc: montant,
-        taxAmount: 0,
-        amountPaid: montant,
-        saleDate: new Date(),
-        walkinName: ech.eleve ? `${ech.eleve.prenom} ${ech.eleve.nom}` : null,
-      }, { transaction: t });
+        echeances: [ech],
+        methodePaiement,
+        eleve: ech.eleve,
+      }, t);
 
-      // Créer l'item de vente
-      await SaleItem.create({
-        saleId: sale.id,
-        serviceId: ech.serviceId,
-        description: `${ech.service?.name || 'Redevance'} — ${ech.periodeLabel}`,
-        quantity: 1,
-        unitPrice: montant,
-        totalPrice: montant,
-      }, { transaction: t });
-
-      // Créer le paiement
-      const safeMethod = ['CASH', 'ORANGE_MONEY', 'WAVE', 'MTN_MOMO', 'STRIPE', 'TRANSFER', 'CHEQUE'].includes(methodePaiement)
-        ? methodePaiement : 'CASH';
-      await Payment.create({
-        saleId: sale.id,
-        tenantId: req.user.tenantId,
-        amount: montant,
-        method: safeMethod,
-        status: 'PAID',
-        paymentDate: new Date(),
-      }, { transaction: t });
-
-      // Mettre à jour l'échéance
       await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id }, { transaction: t });
 
       // Générer la prochaine échéance si l'abonnement est actif
@@ -253,11 +295,155 @@ export class AbonnementController {
       }
 
       await t.commit();
-      return res.json({ echeance: ech, saleId: sale.id });
+      return res.json({ echeance: ech, saleId: sale.id, invoiceId });
     } catch (err) {
       await t.rollback();
       console.error('[AbonnementController.payEcheance]', err);
       return res.status(500).json({ error: 'PayError', message: err.message });
+    }
+  }
+
+  // ── Payer toutes les échéances en attente d'un élève ────────────────────
+  static async payAllEleve(req, res) {
+    const t = await sequelize.transaction();
+    try {
+      const { eleveId } = req.params;
+      const { methodePaiement = 'CASH' } = req.body;
+
+      const echeances = await EcheancePaiement.findAll({
+        where: {
+          eleveId,
+          tenantId: req.user.tenantId,
+          statut: { [Op.in]: ['EN_ATTENTE', 'EN_RETARD'] },
+        },
+        include: [
+          { model: Eleve,   as: 'eleve' },
+          { model: Service, as: 'service' },
+          { model: AbonnementEleve, as: 'abonnement' },
+        ],
+        order: [['dateEcheance', 'ASC']],
+      });
+
+      if (!echeances.length)
+        return res.status(400).json({ error: 'NoDue', message: 'Aucune échéance à payer pour cet élève.' });
+
+      const eleve = echeances[0].eleve;
+
+      const { sale, invoiceId } = await createPaymentBundle({
+        tenantId: req.user.tenantId,
+        echeances,
+        methodePaiement,
+        eleve,
+      }, t);
+
+      for (const ech of echeances) {
+        await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id }, { transaction: t });
+
+        if (ech.abonnement?.isActive) {
+          const nextDate = nextDateEcheance(ech.abonnement.periodicite, ech.dateEcheance);
+          const fin = ech.abonnement.dateFin;
+          if (!fin || nextDate <= fin) {
+            const exists = await EcheancePaiement.findOne({
+              where: { abonnementId: ech.abonnementId, dateEcheance: nextDate },
+              transaction: t,
+            });
+            if (!exists) {
+              await EcheancePaiement.create({
+                tenantId: req.user.tenantId,
+                abonnementId: ech.abonnementId,
+                eleveId: ech.eleveId,
+                serviceId: ech.serviceId,
+                montant: ech.montant,
+                dateEcheance: nextDate,
+                periodeLabel: periodeLabel(ech.abonnement.periodicite, nextDate),
+                statut: 'EN_ATTENTE',
+              }, { transaction: t });
+            }
+          }
+        }
+      }
+
+      await t.commit();
+      return res.json({ count: echeances.length, saleId: sale.id, invoiceId });
+    } catch (err) {
+      await t.rollback();
+      console.error('[AbonnementController.payAllEleve]', err);
+      return res.status(500).json({ error: 'PayAllError', message: err.message });
+    }
+  }
+
+  // ── Payer une sélection d'échéances (ex: Cantine + Bus) ────────────────
+  static async paySelection(req, res) {
+    const t = await sequelize.transaction();
+    try {
+      const { echeanceIds, methodePaiement = 'CASH' } = req.body;
+      if (!Array.isArray(echeanceIds) || echeanceIds.length === 0)
+        return res.status(400).json({ error: 'MissingIds', message: 'Aucune échéance sélectionnée.' });
+
+      const echeances = await EcheancePaiement.findAll({
+        where: {
+          id: { [Op.in]: echeanceIds },
+          tenantId: req.user.tenantId,
+          statut: { [Op.in]: ['EN_ATTENTE', 'EN_RETARD'] },
+        },
+        include: [
+          { model: Eleve,   as: 'eleve' },
+          { model: Service, as: 'service' },
+          { model: AbonnementEleve, as: 'abonnement' },
+        ],
+        order: [['dateEcheance', 'ASC']],
+      });
+
+      if (!echeances.length)
+        return res.status(400).json({ error: 'NoDue', message: 'Aucune échéance payable dans la sélection.' });
+
+      const eleve = echeances[0].eleve;
+
+      const { sale, invoiceId } = await createPaymentBundle({
+        tenantId: req.user.tenantId,
+        echeances,
+        methodePaiement,
+        eleve,
+      }, t);
+
+      for (const ech of echeances) {
+        await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id }, { transaction: t });
+
+        if (ech.abonnement?.isActive) {
+          const nextDate = nextDateEcheance(ech.abonnement.periodicite, ech.dateEcheance);
+          const fin = ech.abonnement.dateFin;
+          if (!fin || nextDate <= fin) {
+            const exists = await EcheancePaiement.findOne({
+              where: { abonnementId: ech.abonnementId, dateEcheance: nextDate },
+              transaction: t,
+            });
+            if (!exists) {
+              await EcheancePaiement.create({
+                tenantId: req.user.tenantId,
+                abonnementId: ech.abonnementId,
+                eleveId: ech.eleveId,
+                serviceId: ech.serviceId,
+                montant: ech.montant,
+                dateEcheance: nextDate,
+                periodeLabel: periodeLabel(ech.abonnement.periodicite, nextDate),
+                statut: 'EN_ATTENTE',
+              }, { transaction: t });
+            }
+          }
+        }
+      }
+
+      await t.commit();
+      return res.json({
+        count: echeances.length,
+        saleId: sale.id,
+        invoiceId,
+        total: echeances.reduce((s, e) => s + parseFloat(e.montant), 0),
+      });
+    } catch (err) {
+      await t.rollback();
+      console.error('[AbonnementController.paySelection]', err);
+      return res.status(500).json({ error: 'PaySelectionError', message: err.message });
     }
   }
 
@@ -416,6 +602,119 @@ export class AbonnementController {
     } catch (err) {
       console.error('[AbonnementController.factureEleve]', err);
       return res.status(500).json({ error: 'FactureError', message: err.message });
+    }
+  }
+
+  // ── Synchronisation mensuelle : abonnements + échéances pour tous les élèves ──
+  static async syncMensuel(req, res) {
+    const tenantId = req.user.tenantId;
+    const now = new Date();
+    const m = parseInt(req.body.month) || now.getMonth() + 1;
+    const y = parseInt(req.body.year)  || now.getFullYear();
+
+    const from  = new Date(y, m - 1, 1).toISOString().split('T')[0]; // 1er du mois
+    const to    = new Date(y, m,     0).toISOString().split('T')[0]; // dernier du mois
+    const today = now.toISOString().split('T')[0];
+    const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
+
+    try {
+      // 1 — Services récurrents actifs du tenant
+      const services = await Service.findAll({
+        where: { tenantId, status: 'actif', typeOffre: { [Op.in]: RECURRING }, deletedAt: null },
+      });
+
+      if (!services.length)
+        return res.json({ message: 'Aucun service récurrent configuré.', elevesTraites: 0, abonnementsCreated: 0, echeancesCreated: 0 });
+
+      // 2 — Tous les élèves INSCRIT/ACTIF
+      const eleves = await Eleve.findAll({
+        where: { tenantId, statut: { [Op.in]: ['INSCRIT', 'ACTIF'] } },
+        attributes: ['id', 'niveau', 'anneeScolaire', 'regimeFinancier', 'remisePct', 'cantine', 'transportBus'],
+      });
+
+      let abosCreated = 0;
+      let echCreated  = 0;
+      let skipped     = 0;
+
+      for (const eleve of eleves) {
+        // Exonéré total → pas de facturation
+        if (eleve.regimeFinancier === 'CAS_SOCIAL_TOTAL') { skipped++; continue; }
+
+        const remisePct = parseFloat(eleve.remisePct || 0);
+
+        // Filtrer les services applicables à cet élève
+        const applicable = services.filter(svc => {
+          const type    = (svc.typeOffre || '').toUpperCase();
+          const niveaux = Array.isArray(svc.niveauxCibles) ? svc.niveauxCibles : [];
+
+          if (type === 'CANTINE' && !eleve.cantine)     return false;
+          if (type === 'BUS'     && !eleve.transportBus) return false;
+
+          // Filtre niveau (vide ou 'TOUS' = tous niveaux)
+          if (niveaux.length > 0 && !niveaux.includes('TOUS') && !niveaux.includes(eleve.niveau)) return false;
+
+          return true;
+        });
+
+        for (const svc of applicable) {
+          const prixBase = parseFloat(svc.price || 0);
+          const montant  = remisePct > 0 ? Math.round(prixBase * (1 - remisePct / 100)) : prixBase;
+
+          // Trouver ou créer l'abonnement actif
+          let [abo, createdAbo] = await AbonnementEleve.findOrCreate({
+            where: { tenantId, eleveId: eleve.id, serviceId: svc.id, isActive: true },
+            defaults: {
+              tenantId, eleveId: eleve.id, serviceId: svc.id,
+              periodicite: 'MENSUEL',
+              montant,
+              dateDebut: from,
+              isActive: true,
+            },
+          });
+          if (createdAbo) abosCreated++;
+
+          // Vérifier si une échéance existe déjà pour ce mois
+          const existingEch = await EcheancePaiement.findOne({
+            where: {
+              abonnementId: abo.id,
+              tenantId,
+              dateEcheance: { [Op.between]: [from, to] },
+            },
+          });
+
+          if (!existingEch) {
+            await EcheancePaiement.create({
+              tenantId,
+              abonnementId: abo.id,
+              eleveId:   eleve.id,
+              serviceId: svc.id,
+              montant,
+              dateEcheance: from,
+              periodeLabel: periodeLabel('MENSUEL', from),
+              statut: 'EN_ATTENTE',
+            });
+            echCreated++;
+          }
+        }
+      }
+
+      // Marquer EN_RETARD les échéances dépassées
+      await EcheancePaiement.update(
+        { statut: 'EN_RETARD' },
+        { where: { tenantId, statut: 'EN_ATTENTE', dateEcheance: { [Op.lt]: today } } }
+      );
+
+      return res.json({
+        message: 'Synchronisation terminée.',
+        elevesTraites:     eleves.length - skipped,
+        elevesExoneres:    skipped,
+        abonnementsCreated: abosCreated,
+        echeancesCreated:  echCreated,
+        mois: `${String(m).padStart(2, '0')}/${y}`,
+      });
+    } catch (err) {
+      console.error('[AbonnementController.syncMensuel]', err);
+      return res.status(500).json({ error: 'SyncError', message: err.message });
     }
   }
 

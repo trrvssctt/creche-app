@@ -7,6 +7,7 @@ import {
   ArrowRight, ChevronLeft, FileText, FolderOpen,
   ClipboardCheck, UserPlus, ClipboardList, Banknote,
   Repeat, Calendar, AlertTriangle, Lock, Globe, Building2,
+  Loader2, Copy,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -288,6 +289,13 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   // Matricules déjà inscrits dans l'année active (pour filtrer les éligibles à la réinscription)
   const [matriculesAnneeActive, setMatriculesAnneeActive] = useState<Set<string>>(new Set());
 
+  // ── Compte parent ──────────────────────────────────────────────────────────
+  const [parentsByEleveId, setParentsByEleveId] = useState<Record<string, any[]>>({});
+  const [showParentAccountModal, setShowParentAccountModal] = useState(false);
+  const [parentAccountForm, setParentAccountForm] = useState({ email: '', nom: '', prenom: '', motDePasseTemporaire: '' });
+  const [parentAccountLoading, setParentAccountLoading] = useState(false);
+  const [parentAccountResult, setParentAccountResult] = useState<{ created: boolean; tempPassword?: string } | null>(null);
+
   const showToast = useToast();
   const { annee: ANNEE_COURANTE, anneeNext, isReadOnly, anneesDisponibles, anneeActiveToday } = useAnnee();
   const canModify = authBridge.canPerform(user, 'EDIT', 'eleves') && !isReadOnly;
@@ -301,12 +309,15 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setLoading(true);
     setError(null);
     try {
-      const [elevesData, classesData] = await Promise.all([
+      const [elevesData, classesData, parentData] = await Promise.all([
         apiClient.get('/eleves', { params: { anneeScolaire: ANNEE_COURANTE } }),
         apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }),
+        apiClient.get('/admin/parent-accounts').catch(() => ({ byEleveId: {} })),
       ]);
-      setEleves(Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []));
+      const rawEleves = Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []);
+      setEleves([...new Map(rawEleves.map((e: any) => [e.id, e])).values()]);
       setClasses(Array.isArray(classesData) ? classesData : []);
+      setParentsByEleveId((parentData as any)?.byEleveId || {});
     } catch {
       setEleves([]);
     } finally {
@@ -1182,6 +1193,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                       <CheckCircle2 size={10} /> Inscrit {anneeActiveToday}
                     </span>
                   )}
+                  {parentsByEleveId[eleve.id]?.length > 0 && (
+                    <span title={parentsByEleveId[eleve.id].map((p: any) => p.email).join(', ')}
+                      className="px-3 py-1 bg-violet-100 text-violet-700 rounded-full text-[9px] font-black uppercase tracking-widest border border-violet-200 flex items-center gap-1">
+                      <UserPlus size={10} /> Portail parent
+                    </span>
+                  )}
                 </div>
                 {eleve.besoinSpecifique && (
                   <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-xl text-[9px] font-black text-blue-600 uppercase tracking-widest mb-3">
@@ -1257,9 +1274,15 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     </td>
                   )}
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-black text-slate-900">{eleve.prenom} {eleve.nom}</span>
                       {dejaInscrit && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[8px] font-black border border-emerald-200">✓ {anneeActiveToday}</span>}
+                      {parentsByEleveId[eleve.id]?.length > 0 && (
+                        <span title={parentsByEleveId[eleve.id].map((p: any) => p.email).join(', ')}
+                          className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[8px] font-black border border-violet-200 flex items-center gap-0.5">
+                          <UserPlus size={8}/> Portail
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-[10px] font-bold text-slate-500 font-mono">{eleve.matricule}</td>
@@ -1834,6 +1857,28 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <Edit3 size={14} /> Modifier
                   </button>
                 )}
+                {canModify && (
+                  parentsByEleveId[selectedEleve.id]?.length > 0 ? (
+                    <span title={`Portail actif : ${parentsByEleveId[selectedEleve.id].map((p: any) => p.email).join(', ')}`}
+                      className="px-5 py-2 bg-violet-100 text-violet-600 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 cursor-default border border-violet-200">
+                      <UserPlus size={14} /> Portail actif
+                    </span>
+                  ) : (
+                    <button onClick={() => {
+                      setParentAccountForm({
+                        email: selectedEleve.parent1?.email || '',
+                        nom: selectedEleve.parent1?.nom || '',
+                        prenom: selectedEleve.parent1?.prenom || '',
+                        motDePasseTemporaire: Math.random().toString(36).slice(2, 10).toUpperCase(),
+                      });
+                      setParentAccountResult(null);
+                      setShowParentAccountModal(true);
+                    }}
+                      className="px-5 py-2 bg-amber-400 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-amber-500 transition-all flex items-center gap-2">
+                      <UserPlus size={14} /> Compte parent
+                    </button>
+                  )
+                )}
                 <button onClick={() => setShowModal(null)}
                   className="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-rose-50 hover:text-rose-600 rounded-2xl transition-all">
                   <X size={18} />
@@ -2142,6 +2187,137 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
           eleve={selectedEleve}
           onClose={() => setShowDossier(false)}
         />
+      )}
+
+      {/* ── Modal Créer Compte Parent ─────────────────────────────────────── */}
+      {showParentAccountModal && selectedEleve && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Portail Parents</p>
+                <h3 className="text-xl font-black text-slate-900">Créer un compte parent</h3>
+              </div>
+              <button onClick={() => { setShowParentAccountModal(false); setParentAccountResult(null); }}
+                className="p-2 rounded-2xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
+                <X size={20}/>
+              </button>
+            </div>
+
+            {!parentAccountResult ? (
+              <>
+                <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+                  Un compte sera créé avec le rôle <strong>PARENT</strong>.
+                  L'enfant <strong>{selectedEleve.prenom} {selectedEleve.nom}</strong> sera automatiquement lié.
+                </p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Prénom</label>
+                      <input type="text" value={parentAccountForm.prenom}
+                        onChange={e => setParentAccountForm(f => ({ ...f, prenom: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                        placeholder="Prénom du parent" />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Nom</label>
+                      <input type="text" value={parentAccountForm.nom}
+                        onChange={e => setParentAccountForm(f => ({ ...f, nom: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                        placeholder="Nom de famille" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Email <span className="text-rose-500">*</span></label>
+                    <input type="email" value={parentAccountForm.email}
+                      onChange={e => setParentAccountForm(f => ({ ...f, email: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      placeholder="email@exemple.com" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Mot de passe temporaire</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={parentAccountForm.motDePasseTemporaire}
+                        onChange={e => setParentAccountForm(f => ({ ...f, motDePasseTemporaire: e.target.value }))}
+                        className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-amber-400 font-mono"
+                        placeholder="Généré automatiquement" />
+                      <button type="button"
+                        onClick={() => setParentAccountForm(f => ({ ...f, motDePasseTemporaire: Math.random().toString(36).slice(2, 10).toUpperCase() }))}
+                        className="px-3 py-2 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition text-xs font-bold">
+                        Regen
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={() => { setShowParentAccountModal(false); setParentAccountResult(null); }}
+                    className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition">
+                    Annuler
+                  </button>
+                  <button
+                    disabled={!parentAccountForm.email || parentAccountLoading}
+                    onClick={async () => {
+                      setParentAccountLoading(true);
+                      try {
+                        await apiClient.post('/admin/parent-accounts', {
+                          email: parentAccountForm.email,
+                          nom: parentAccountForm.nom,
+                          prenom: parentAccountForm.prenom,
+                          motDePasseTemporaire: parentAccountForm.motDePasseTemporaire,
+                          eleveIds: [selectedEleve.id],
+                        });
+                        setParentAccountResult({ created: true, tempPassword: parentAccountForm.motDePasseTemporaire });
+                        showToast('Compte parent créé avec succès.', 'success');
+                        apiClient.get('/admin/parent-accounts').then((r: any) => setParentsByEleveId(r?.byEleveId || {})).catch(() => {});
+                      } catch (err: any) {
+                        showToast(err?.message || 'Erreur lors de la création du compte.', 'error');
+                      } finally {
+                        setParentAccountLoading(false);
+                      }
+                    }}
+                    className="flex-1 py-3 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest transition flex items-center justify-center gap-2 disabled:opacity-50">
+                    {parentAccountLoading
+                      ? <><Loader2 className="animate-spin" size={15}/> Création…</>
+                      : <><UserPlus size={15}/> Créer le compte</>}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-emerald-100 rounded-[2rem] flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={32} className="text-emerald-500"/>
+                </div>
+                <h4 className="font-black text-slate-900 text-lg mb-1">Compte créé !</h4>
+                <p className="text-xs text-slate-500 mb-5">Transmettez ces informations au parent.</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left space-y-2 mb-5">
+                  <div>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">URL de connexion</span>
+                    <p className="text-sm font-bold text-slate-700 font-mono">/parents</p>
+                  </div>
+                  <div className="border-t border-amber-200 pt-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Email</span>
+                    <p className="text-sm font-bold text-slate-700">{parentAccountForm.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mot de passe temporaire</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xl font-black text-amber-600 font-mono tracking-widest">{parentAccountResult.tempPassword}</p>
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(parentAccountResult.tempPassword || '')}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-amber-100 transition">
+                        <Copy size={14}/>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => { setShowParentAccountModal(false); setParentAccountResult(null); }}
+                  className="w-full py-3 rounded-2xl bg-slate-900 text-white font-black text-xs uppercase tracking-widest hover:bg-slate-700 transition">
+                  Fermer
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Confirmation suppression ───────────────────────────────────────── */}

@@ -4,7 +4,7 @@ import {
   CheckCircle2, TrendingDown, Phone, ChevronDown, ChevronUp,
   AlertTriangle, Users, Clock, X, Loader2, Send, FileText,
   Calendar, DollarSign, Eye, CreditCard, Filter, Download,
-  ArrowRight, BadgeCheck, XCircle,
+  ArrowRight, BadgeCheck, XCircle, ShoppingCart, Zap, Sparkles,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
@@ -93,11 +93,14 @@ const Recovery = ({ currency }: { currency: string }) => {
   const [expandedEleves, setExpandedEleves] = useState<Set<string>>(new Set());
   const [selectedEcheances, setSelectedEcheances] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Modals
   const [showReminderModal, setShowReminderModal] = useState<{ eleve: EleveGroupe; canal: 'EMAIL' | 'WHATSAPP' } | null>(null);
   const [showFactureModal, setShowFactureModal]   = useState<FactureData | null>(null);
   const [showPayModal, setShowPayModal]           = useState<Echeance | null>(null);
+  const [showPayAllModal, setShowPayAllModal]     = useState<EleveGroupe | null>(null);
+  const [showPaySelectionModal, setShowPaySelectionModal] = useState<{ eleve: EleveGroupe; echeances: Echeance[] } | null>(null);
   const [methodePaiement, setMethodePaiement]     = useState('CASH');
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -154,6 +157,23 @@ const Recovery = ({ currency }: { currency: string }) => {
     return Array.from(map.values()).sort((a, b) => b.totalRetard - a.totalRetard || b.totalDu - a.totalDu);
   }, [echeances, filterStatut, search]);
 
+  // Sélections payables (non-PAYE) par élève — pour la barre contextuelle
+  const selectedPayableByEleve = useMemo(() => {
+    const map = new Map<string, { echeances: Echeance[]; total: number }>();
+    for (const g of elevesGroupes) {
+      const sel = g.echeances.filter(
+        e => selectedEcheances.has(e.id) && (e.statut === 'EN_ATTENTE' || e.statut === 'EN_RETARD')
+      );
+      if (sel.length > 0) {
+        map.set(g.eleveId, {
+          echeances: sel,
+          total: sel.reduce((s, e) => s + parseFloat(e.montant as any), 0),
+        });
+      }
+    }
+    return map;
+  }, [selectedEcheances, elevesGroupes]);
+
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
     const total    = echeances.reduce((s, e) => s + (e.statut !== 'ANNULE' ? parseFloat(e.montant as any) : 0), 0);
@@ -163,6 +183,26 @@ const Recovery = ({ currency }: { currency: string }) => {
     const txRecouvrement = total > 0 ? Math.round((paye / total) * 100) : 0;
     return { total, paye, retard, attente, txRecouvrement, nbEleves: elevesGroupes.length };
   }, [echeances, elevesGroupes]);
+
+  // ── Synchronisation : génère les échéances pour tous les élèves du mois ──
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiClient.post('/abonnements/sync-mensuel', {
+        month: selectedMonth,
+        year: selectedYear,
+      });
+      showToast(
+        `✓ ${res.elevesTraites} élève(s) traité(s) · ${res.echeancesCreated} échéance(s) créée(s)${res.elevesExoneres ? ` · ${res.elevesExoneres} exonéré(s)` : ''}`,
+        'success'
+      );
+      fetchEcheances();
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors de la synchronisation.', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handlePayEcheance = async () => {
@@ -175,6 +215,43 @@ const Recovery = ({ currency }: { currency: string }) => {
       fetchEcheances();
     } catch (err: any) {
       showToast(err.message || 'Erreur lors du paiement.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePaySelection = async () => {
+    if (!showPaySelectionModal) return;
+    const ids = showPaySelectionModal.echeances.map(e => e.id);
+    setActionLoading(`sel-${showPaySelectionModal.eleve.eleveId}`);
+    try {
+      const res = await apiClient.post('/abonnements/echeances/payer-selection', {
+        echeanceIds: ids, methodePaiement,
+      });
+      showToast(
+        `${res.count} redevance(s) encaissée(s) — facture ${res.invoiceId} · ${fmtAmount(res.total)} ${currency}`,
+        'success'
+      );
+      setShowPaySelectionModal(null);
+      setSelectedEcheances(new Set());
+      fetchEcheances();
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors du paiement groupé.', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePayAll = async () => {
+    if (!showPayAllModal) return;
+    setActionLoading(`payall-${showPayAllModal.eleveId}`);
+    try {
+      const res = await apiClient.post(`/abonnements/echeances/payer-tout/${showPayAllModal.eleveId}`, { methodePaiement });
+      showToast(`${res.count} échéance(s) soldée(s) — facture ${res.invoiceId} créée.`, 'success');
+      setShowPayAllModal(null);
+      fetchEcheances();
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors du paiement global.', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -258,25 +335,39 @@ const Recovery = ({ currency }: { currency: string }) => {
           </p>
         </div>
 
-        {/* Sélecteur mois/année */}
-        <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-2xl shadow-sm p-1">
-          <select
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(+e.target.value)}
-            className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Bouton synchronisation */}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            title="Génère les échéances manquantes pour tous les élèves INSCRIT/ACTIF de ce mois"
+            className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-violet-700 shadow-lg shadow-violet-100 transition-all disabled:opacity-50"
           >
-            {MOIS_NOMS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <select
-            value={selectedYear}
-            onChange={e => setSelectedYear(+e.target.value)}
-            className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
-          >
-            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <button onClick={fetchEcheances} className="p-2 hover:text-indigo-600 text-slate-400 transition-all">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            {syncing
+              ? <><Loader2 size={13} className="animate-spin" /> Synchronisation…</>
+              : <><Sparkles size={13} /> Synchroniser les élèves</>}
           </button>
+
+          {/* Sélecteur mois/année */}
+          <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-2xl shadow-sm p-1">
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(+e.target.value)}
+              className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
+            >
+              {MOIS_NOMS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+            <select
+              value={selectedYear}
+              onChange={e => setSelectedYear(+e.target.value)}
+              className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
+            >
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <button onClick={fetchEcheances} className="p-2 hover:text-indigo-600 text-slate-400 transition-all">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -381,6 +472,15 @@ const Recovery = ({ currency }: { currency: string }) => {
 
                   {/* Actions rapides */}
                   <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                    {g.totalDu > 0 && (
+                      <button title="Tout encaisser en une fois"
+                        onClick={() => { setShowPayAllModal(g); setMethodePaiement('CASH'); }}
+                        disabled={!!actionLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-40 shrink-0">
+                        {actionLoading === `payall-${g.eleveId}` ? <Loader2 size={11} className="animate-spin" /> : <CreditCard size={11} />}
+                        Tout solder
+                      </button>
+                    )}
                     <button title="Relance WhatsApp"
                       onClick={() => setShowReminderModal({ eleve: g, canal: 'WHATSAPP' })}
                       disabled={!g.whatsapp || actionLoading === `relance-${g.eleveId}`}
@@ -407,39 +507,119 @@ const Recovery = ({ currency }: { currency: string }) => {
                 </div>
 
                 {/* ── Détail des échéances ── */}
-                {expanded && (
-                  <div className="border-t border-slate-50 divide-y divide-slate-50">
-                    {g.echeances.map(ech => (
-                      <div key={ech.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/30 transition-all">
-                        <input type="checkbox"
-                          checked={selectedEcheances.has(ech.id)}
-                          onChange={() => toggleSelectEcheance(ech.id)}
-                          className="w-4 h-4 rounded accent-indigo-600"
-                          onClick={e => e.stopPropagation()}
-                        />
-                        <div className="flex-1">
-                          <p className="text-xs font-black text-slate-700">{ech.service?.name || '—'} — {ech.periodeLabel}</p>
-                          <p className="text-[9px] text-slate-400 font-bold">Échéance : {fmtDate(ech.dateEcheance)}
-                            {ech.reminderSentAt && <span className="ml-2 text-indigo-400">· relancé {fmtDate(ech.reminderSentAt)}</span>}
-                          </p>
-                        </div>
-                        <p className="text-sm font-black text-slate-900 w-28 text-right">{fmtAmount(parseFloat(ech.montant as any))} {currency}</p>
-                        {statutBadge(ech.statut)}
-                        {(ech.statut === 'EN_ATTENTE' || ech.statut === 'EN_RETARD') && (
-                          <button onClick={() => setShowPayModal(ech)}
-                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-1">
-                            <CreditCard size={10} /> Encaisser
-                          </button>
-                        )}
-                        {ech.statut === 'PAYE' && ech.saleId && (
-                          <span className="text-[8px] font-black text-emerald-500 flex items-center gap-1">
-                            <BadgeCheck size={10} /> Vente #{ech.saleId.slice(-6)}
+                {expanded && (() => {
+                  const selectionEleve = selectedPayableByEleve.get(g.eleveId);
+                  return (
+                    <div className="border-t border-slate-50">
+                      {/* Indication sélection multiple */}
+                      {g.echeances.some(e => e.statut === 'EN_ATTENTE' || e.statut === 'EN_RETARD') && (
+                        <div className="px-5 py-2 bg-slate-50/70 flex items-center gap-2">
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                            Cochez pour payer plusieurs redevances ensemble
                           </span>
-                        )}
+                        </div>
+                      )}
+
+                      <div className="divide-y divide-slate-50">
+                        {g.echeances.map(ech => {
+                          const isPayable = ech.statut === 'EN_ATTENTE' || ech.statut === 'EN_RETARD';
+                          const isSelected = selectedEcheances.has(ech.id);
+                          return (
+                            <div key={ech.id}
+                              className={`flex items-center gap-3 px-5 py-3 transition-all ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50/30'}`}>
+                              {/* Checkbox — uniquement pour les payables */}
+                              {isPayable ? (
+                                <input type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectEcheance(ech.id)}
+                                  className="w-4 h-4 rounded accent-indigo-600 cursor-pointer shrink-0"
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              ) : (
+                                <div className="w-4 h-4 shrink-0" />
+                              )}
+
+                              {/* Infos */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-black text-slate-700">{ech.service?.name || '—'}
+                                  <span className="font-bold text-slate-400"> — {ech.periodeLabel}</span>
+                                </p>
+                                <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                                  Échéance : {fmtDate(ech.dateEcheance)}
+                                  {ech.reminderSentAt && <span className="ml-2 text-indigo-400">· relancé {fmtDate(ech.reminderSentAt)}</span>}
+                                </p>
+                              </div>
+
+                              {/* Montant */}
+                              <p className={`text-sm font-black w-28 text-right shrink-0 ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
+                                {fmtAmount(parseFloat(ech.montant as any))} {currency}
+                              </p>
+
+                              {/* Statut */}
+                              {statutBadge(ech.statut)}
+
+                              {/* Actions */}
+                              {isPayable && !isSelected && (
+                                <button onClick={() => { setShowPayModal(ech); setMethodePaiement('CASH'); }}
+                                  className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-1 shrink-0">
+                                  <CreditCard size={10} /> Encaisser
+                                </button>
+                              )}
+                              {isPayable && isSelected && (
+                                <span className="text-[8px] font-black text-indigo-500 flex items-center gap-1 shrink-0">
+                                  <ShoppingCart size={10} /> Sélectionné
+                                </span>
+                              )}
+                              {ech.statut === 'PAYE' && ech.saleId && (
+                                <span className="text-[8px] font-black text-emerald-500 flex items-center gap-1 shrink-0">
+                                  <BadgeCheck size={10} /> Réglé
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                )}
+
+                      {/* ── Barre de paiement groupé ── */}
+                      {selectionEleve && (
+                        <div className="border-t border-indigo-100 bg-indigo-50 px-5 py-4 flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">
+                              {selectionEleve.echeances.length} redevance{selectionEleve.echeances.length > 1 ? 's' : ''} sélectionnée{selectionEleve.echeances.length > 1 ? 's' : ''}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {selectionEleve.echeances.map(e => (
+                                <span key={e.id} className="text-[8px] font-black bg-white text-indigo-600 border border-indigo-200 px-1.5 py-0.5 rounded-lg">
+                                  {e.service?.name || e.periodeLabel}
+                                </span>
+                              ))}
+                              <span className="text-[9px] text-slate-400 font-bold">= </span>
+                              <span className="text-sm font-black text-indigo-900">{fmtAmount(selectionEleve.total)} {currency}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => setSelectedEcheances(prev => {
+                                const n = new Set(prev);
+                                selectionEleve.echeances.forEach(e => n.delete(e.id));
+                                return n;
+                              })}
+                              className="px-3 py-2 text-slate-500 text-[8px] font-black uppercase rounded-xl border border-slate-200 hover:bg-slate-100 transition-all">
+                              Effacer
+                            </button>
+                            <button
+                              onClick={() => { setShowPaySelectionModal({ eleve: g, echeances: selectionEleve.echeances }); setMethodePaiement('CASH'); }}
+                              disabled={!!actionLoading}
+                              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:opacity-40">
+                              <Zap size={12} />
+                              Payer {fmtAmount(selectionEleve.total)} {currency}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -480,7 +660,7 @@ const Recovery = ({ currency }: { currency: string }) => {
             </div>
 
             <div className="bg-slate-50 rounded-2xl p-3 mb-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-              Une vente sera automatiquement créée dans le module Ventes.
+              Une vente + une facture seront créées automatiquement. Le parent verra le reçu dans son espace.
             </div>
 
             <div className="flex gap-3">
@@ -492,6 +672,173 @@ const Recovery = ({ currency }: { currency: string }) => {
                 className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 shadow-xl transition-all flex items-center justify-center gap-2">
                 {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                 Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL PAIEMENT GROUPÉ ════════════════════════════════════════════ */}
+      {showPaySelectionModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+
+            {/* En-tête */}
+            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-8 pt-8 pb-6">
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <p className="text-[9px] font-black text-indigo-200 uppercase tracking-widest mb-1">Paiement groupé</p>
+                  <h3 className="text-xl font-black uppercase tracking-tighter">
+                    {showPaySelectionModal.eleve.prenom} {showPaySelectionModal.eleve.nom}
+                  </h3>
+                </div>
+                <button onClick={() => setShowPaySelectionModal(null)} className="p-2 bg-white/10 hover:bg-white/20 rounded-2xl transition-all">
+                  <X size={16} />
+                </button>
+              </div>
+              <p className="text-indigo-200 text-[10px] font-bold">
+                {showPaySelectionModal.echeances.length} redevance{showPaySelectionModal.echeances.length > 1 ? 's' : ''} · Une seule facture sera générée
+              </p>
+            </div>
+
+            <div className="p-8 space-y-5">
+              {/* Détail ligne par ligne */}
+              <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Détail des redevances</p>
+                <div className="space-y-2">
+                  {showPaySelectionModal.echeances.map((e, idx) => (
+                    <div key={e.id} className="flex items-center justify-between bg-slate-50 rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-600 text-[9px] font-black flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <p className="text-xs font-black text-slate-800">{e.service?.name || '—'}</p>
+                          <p className="text-[9px] text-slate-400 font-bold">{e.periodeLabel} · éch. {fmtDate(e.dateEcheance)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {statutBadge(e.statut)}
+                        <p className="text-sm font-black text-slate-900 w-24 text-right">{fmtAmount(parseFloat(e.montant as any))} {currency}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl px-5 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Total à encaisser</p>
+                  <p className="text-[9px] text-slate-400 font-bold mt-0.5">1 vente · 1 facture · {showPaySelectionModal.echeances.length} ligne{showPaySelectionModal.echeances.length > 1 ? 's' : ''}</p>
+                </div>
+                <p className="text-2xl font-black text-indigo-900">
+                  {fmtAmount(showPaySelectionModal.echeances.reduce((s, e) => s + parseFloat(e.montant as any), 0))} {currency}
+                </p>
+              </div>
+
+              {/* Mode de paiement */}
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mode de paiement</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { v: 'CASH', l: 'Espèces' }, { v: 'WAVE', l: 'Wave' }, { v: 'ORANGE_MONEY', l: 'Orange Money' },
+                    { v: 'CHEQUE', l: 'Chèque' }, { v: 'TRANSFER', l: 'Virement' }, { v: 'MTN_MOMO', l: 'MTN MoMo' },
+                  ].map(m => (
+                    <button key={m.v} onClick={() => setMethodePaiement(m.v)}
+                      className={`py-2 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${methodePaiement === m.v ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-indigo-200'}`}>
+                      {m.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                La facture détaillée sera visible dans le portail parent et la trésorerie.
+              </div>
+
+              {/* Boutons */}
+              <div className="flex gap-3">
+                <button onClick={() => setShowPaySelectionModal(null)}
+                  className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
+                  Annuler
+                </button>
+                <button onClick={handlePaySelection}
+                  disabled={!!actionLoading}
+                  className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-2">
+                  {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                  Encaisser
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL TOUT SOLDER ════════════════════════════════════════════════ */}
+      {showPayAllModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-md shadow-2xl p-10 animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-1">Solder toutes les dettes</h3>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">
+              {showPayAllModal.prenom} {showPayAllModal.nom} · {showPayAllModal.echeances.filter(e => e.statut !== 'PAYE' && e.statut !== 'ANNULE').length} échéance(s)
+            </p>
+
+            {/* Récap des échéances à payer */}
+            <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
+              {showPayAllModal.echeances
+                .filter(e => e.statut === 'EN_ATTENTE' || e.statut === 'EN_RETARD')
+                .map(e => (
+                  <div key={e.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="text-xs font-black text-slate-700">{e.service?.name} — {e.periodeLabel}</p>
+                      <p className="text-[9px] text-slate-400 font-bold">{fmtDate(e.dateEcheance)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">{fmtAmount(parseFloat(e.montant as any))} {currency}</span>
+                      {statutBadge(e.statut)}
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-6 flex items-center justify-between">
+              <span className="text-[10px] font-black text-emerald-600 uppercase">Total à encaisser</span>
+              <span className="text-2xl font-black text-emerald-900">{fmtAmount(showPayAllModal.totalDu)} {currency}</span>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mode de paiement</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { v: 'CASH', l: 'Espèces' },
+                  { v: 'WAVE', l: 'Wave' },
+                  { v: 'ORANGE_MONEY', l: 'Orange Money' },
+                  { v: 'CHEQUE', l: 'Chèque' },
+                  { v: 'TRANSFER', l: 'Virement' },
+                  { v: 'MTN_MOMO', l: 'MTN MoMo' },
+                ].map(m => (
+                  <button key={m.v} onClick={() => setMethodePaiement(m.v)}
+                    className={`py-2 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${methodePaiement === m.v ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-indigo-200'}`}>
+                    {m.l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-3 mb-6 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              Une vente et une facture globale seront créées. Le parent verra le reçu dans son espace.
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowPayAllModal(null)}
+                className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:bg-slate-200 transition-all">
+                Annuler
+              </button>
+              <button onClick={handlePayAll} disabled={!!actionLoading}
+                className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase hover:bg-emerald-700 shadow-xl transition-all flex items-center justify-center gap-2">
+                {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Tout encaisser
               </button>
             </div>
           </div>

@@ -59,7 +59,13 @@ const ParentPortal: React.FC<Props> = ({ user, onLogout }) => {
       if (cre.status === 'fulfilled') setCreneaux(cre.value?.creneaux || cre.value || []);
       if (doc.status === 'fulfilled') setDocuments(doc.value?.documents || doc.value || []);
       if (ann.status === 'fulfilled') setAnnonces(ann.value?.annonces || ann.value || []);
-      if (eco.status === 'fulfilled') setEcole(eco.value || null);
+      if (eco.status === 'fulfilled') {
+        const ecoleData = eco.value || null;
+        setEcole(ecoleData);
+        if (ecoleData) {
+          try { localStorage.setItem('ecole_branding', JSON.stringify(ecoleData)); } catch {}
+        }
+      }
     } finally { setLoading(false); }
   }, []);
 
@@ -105,18 +111,37 @@ const ParentPortal: React.FC<Props> = ({ user, onLogout }) => {
       `}>
 
         {/* En-tête sidebar */}
-        <div className="bg-gradient-to-br from-amber-400 to-orange-500 px-6 py-8">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center flex-shrink-0">
-              <span className="text-xl font-black text-white">{initiales}</span>
+        <div className="bg-gradient-to-br from-amber-400 to-orange-500 px-6 pt-6 pb-7">
+          {/* Logo école */}
+          <div className="flex justify-center mb-5">
+            {ecole?.logoUrl ? (
+              <div className="w-20 h-20 rounded-2xl bg-white shadow-lg overflow-hidden flex items-center justify-center">
+                <img src={ecole.logoUrl} alt={ecole.name || 'Logo école'}
+                  className="w-full h-full object-contain p-1" />
+              </div>
+            ) : (
+              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
+                <span className="text-3xl font-black text-white/80">🏫</span>
+              </div>
+            )}
+          </div>
+          {ecole?.name && (
+            <p className="text-center text-xs font-black text-white/90 uppercase tracking-widest mb-4 truncate">{ecole.name}</p>
+          )}
+
+          {/* Profil parent */}
+          <div className="flex items-center gap-3 bg-white/20 backdrop-blur rounded-2xl px-4 py-3">
+            <div className="w-10 h-10 rounded-xl bg-white/30 flex items-center justify-center flex-shrink-0">
+              <span className="text-sm font-black text-white">{initiales}</span>
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-amber-100 uppercase tracking-widest mb-0.5">Espace Parents</p>
-              <p className="font-bold text-white text-base leading-tight truncate">{nomComplet}</p>
+              <p className="text-[9px] font-bold text-amber-100 uppercase tracking-widest">Espace Parents</p>
+              <p className="font-bold text-white text-sm leading-tight truncate">{nomComplet}</p>
             </div>
           </div>
+
           {impayeesCount > 0 && (
-            <div className="mt-4 bg-white/20 rounded-xl px-4 py-2.5 flex items-center gap-2.5">
+            <div className="mt-3 bg-red-500/80 rounded-xl px-4 py-2.5 flex items-center gap-2.5">
               <AlertTriangle className="w-4 h-4 text-white flex-shrink-0" />
               <p className="text-sm font-bold text-white">{impayeesCount} facture{impayeesCount > 1 ? 's' : ''} en attente</p>
             </div>
@@ -162,13 +187,18 @@ const ParentPortal: React.FC<Props> = ({ user, onLogout }) => {
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Topbar mobile */}
-        <header className="lg:hidden sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-amber-100 px-4 py-4 flex items-center justify-between shadow-sm">
+        <header className="lg:hidden sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-amber-100 px-4 py-3 flex items-center justify-between shadow-sm">
           <button onClick={() => setSideOpen(true)} className="p-2 rounded-xl text-gray-500 hover:bg-amber-50">
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-2">
-            {currentNav && <currentNav.icon className={`w-5 h-5 ${currentNav.color}`} />}
-            <p className="font-bold text-gray-800">{currentNav?.label}</p>
+            {ecole?.logoUrl ? (
+              <img src={ecole.logoUrl} alt={ecole.name || 'Logo'}
+                className="h-8 w-8 rounded-lg object-contain bg-white border border-amber-100 p-0.5" />
+            ) : (
+              currentNav && <currentNav.icon className={`w-5 h-5 ${currentNav.color}`} />
+            )}
+            <p className="font-bold text-gray-800 text-sm">{ecole?.name || currentNav?.label}</p>
           </div>
           <div className="w-10" />
         </header>

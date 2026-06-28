@@ -115,6 +115,7 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
   const [showOuvrirModal, setShowOuvrirModal] = useState<string | null>(null);
   const [showDemarrerModal, setShowDemarrerModal] = useState<string | null>(null);
   const [showCloturerAnneeModal, setShowCloturerAnneeModal] = useState<string | null>(null);
+  const [showReactiverModal, setShowReactiverModal] = useState<string | null>(null);
 
   // ── Reconduction d'année ────────────────────────────────────────────────────
   const [showReconductionModal, setShowReconductionModal] = useState(false);
@@ -416,6 +417,23 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
       setShowCloturerAnneeModal(null);
       setTimeout(() => setCampagneSuccess(null), 5000);
     } catch (e: any) { setCampagneError(e?.message || 'Erreur lors de la clôture.'); }
+    finally { setCampagneLoading(false); }
+  };
+
+  const handleReactiverAnnee = async (annee: string) => {
+    setCampagneLoading(true); setCampagneError(null);
+    try {
+      const result = await apiClient.put(`/settings/annees/${annee}/reactiver`, {});
+      const newConfig = { ...anneeScolaireConfig, [annee]: result.config };
+      setAnneeScolaireConfig(newConfig);
+      setCloturees((result.anneesCloturees as string[]) || anneesCloturees.filter(a => a !== annee));
+      refreshAnneeRef(annee);
+      setAnnee(annee);
+      setAnneeDB(annee);
+      setCampagneSuccess(`Année scolaire ${annee} réactivée et définie comme année active.`);
+      setShowReactiverModal(null);
+      setTimeout(() => setCampagneSuccess(null), 6000);
+    } catch (e: any) { setCampagneError(e?.message || 'Erreur lors de la réactivation.'); }
     finally { setCampagneLoading(false); }
   };
 
@@ -1373,9 +1391,12 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
                           </button>
                         )}
                         {statut === 'CLOTUREE' && (
-                          <span className="px-3 py-2 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
-                            <Archive size={11}/> Archivée
-                          </span>
+                          <button
+                            onClick={() => setShowReactiverModal(annee)}
+                            className="px-3 py-2 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all"
+                          >
+                            <Archive size={11}/> Réactiver
+                          </button>
                         )}
                       </div>
                     </div>
@@ -1514,6 +1535,37 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
               <button onClick={() => setShowCloturerAnneeModal(null)} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Annuler</button>
               <button onClick={() => handleCloturerAnneeNew(showCloturerAnneeModal!)} disabled={campagneLoading} className="flex-1 py-4 bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                 {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <Archive size={14}/>} Confirmer la clôture
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── MODAL: Réactiver une année clôturée ── */}
+      {showReactiverModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowReactiverModal(null)}/>
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0"><Archive size={28} className="text-emerald-600"/></div>
+              <div>
+                <h3 className="text-lg font-black uppercase text-slate-900">Réactiver l'année</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Correction d'une clôture accidentelle</p>
+              </div>
+            </div>
+            <div className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
+              <AlertTriangle size={16} className="text-emerald-600 shrink-0 mt-0.5"/>
+              <p className="text-xs font-bold text-emerald-800">
+                Vous allez réactiver l'année scolaire <strong>{showReactiverModal}</strong> et la définir comme année active.
+                Elle passera du statut <em>Clôturée</em> à <em>En cours</em>.
+              </p>
+            </div>
+            {campagneError && <p className="text-xs text-red-500 font-bold">{campagneError}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setShowReactiverModal(null)} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Annuler</button>
+              <button onClick={() => handleReactiverAnnee(showReactiverModal!)} disabled={campagneLoading} className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                {campagneLoading ? <Loader2 size={14} className="animate-spin"/> : <Archive size={14}/>} Confirmer la réactivation
               </button>
             </div>
           </div>

@@ -385,11 +385,11 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
           MODAL — Formulaire d'inscription (5 étapes)
       ══════════════════════════════════════════════════════════════════════════ */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 lg:p-6">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-3 lg:p-6">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
 
             {/* ── Header modal : titre + steps ── */}
-            <div className="bg-gradient-to-r from-slate-900 to-indigo-900 px-6 pt-5 pb-0 flex-shrink-0">
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-900 px-4 sm:px-6 pt-4 sm:pt-5 pb-0 flex-shrink-0">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-white font-black text-base tracking-tight">
                   {rejeteId ? 'Corriger le dossier d\'inscription' : 'Nouveau dossier d\'inscription'}
@@ -422,7 +422,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
             </div>
 
             {/* ── Corps scrollable ── */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
 
               {error && (
                 <div className="p-3 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-xs font-black flex items-center gap-2">
@@ -436,7 +436,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Baby size={13} className="text-indigo-500" /> Identité de l'enfant
                   </p>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Prénom <span className="text-rose-500">*</span></label>
                       <input type="text" value={form.prenomEnfant} onChange={e => set({ prenomEnfant: e.target.value })} className={inp} placeholder="Prénom" />
@@ -626,7 +626,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Médecin traitant</label>
                       <input type="text" value={form.medecinNom} onChange={e => set({ medecinNom: e.target.value })} className={inp} placeholder="Nom" />
@@ -661,7 +661,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
                       <Phone size={13} className="text-indigo-500" /> Parent / Tuteur légal principal
                     </p>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Prénom</label>
                         <input type="text" value={form.parent1Prenom} onChange={e => set({ parent1Prenom: e.target.value })} className={inp} /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom</label>
@@ -690,7 +690,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
                       <Phone size={13} className="text-indigo-400" /> Second parent (facultatif)
                     </p>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Prénom</label>
                         <input type="text" value={form.parent2Prenom} onChange={e => set({ parent2Prenom: e.target.value })} className={inp} /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom</label>
@@ -709,7 +709,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
                       <Shield size={13} className="text-rose-500" /> Contact d'urgence (autre que parents)
                     </p>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom complet</label>
                         <input type="text" value={form.urgenceNom} onChange={e => set({ urgenceNom: e.target.value })} className={inp} /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Téléphone</label>

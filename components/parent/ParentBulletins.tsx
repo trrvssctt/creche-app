@@ -1,12 +1,24 @@
 import React, { useState } from 'react';
 import { BookOpen, ChevronDown, ChevronUp, TrendingUp, Award } from 'lucide-react';
 
+interface SousMatiere {
+  nom: string; note: number | string | ''; coefficient: number;
+}
+
+interface Matiere {
+  nom: string; coefficient: number; appreciation?: string;
+  // Structure admin (avec sous-matières détaillées)
+  sousMatieres?: SousMatiere[];
+  // Structure ancienne à plat (rétrocompat)
+  note?: number | string;
+}
+
 interface Bulletin {
   id: string; eleveId: string; trimestre: string; anneeScolaire: string;
   moyenneGenerale?: number | string; rang?: number; appreciation?: string;
   appreciationGenerale?: string;
   eleve?: { nom: string; prenom: string; niveau: string };
-  matieres?: Array<{ nom: string; note: number; coefficient: number; appreciation?: string }>;
+  matieres?: Matiere[];
 }
 
 interface Props { bulletins: Bulletin[]; }
@@ -14,6 +26,25 @@ interface Props { bulletins: Bulletin[]; }
 const TRIMESTRE_LABEL: Record<string, string> = {
   T1: '1er Trimestre', T2: '2ème Trimestre', T3: '3ème Trimestre',
 };
+
+// Calcule la note effective d'une matière (moyenne pondérée des sous-matières, ou note directe)
+function getMoyenneMatiere(m: Matiere): number | null {
+  // Structure plate (note directe)
+  if (m.note !== undefined && m.note !== '' && m.note !== null) {
+    const n = Number(m.note);
+    return isNaN(n) ? null : n;
+  }
+  // Structure avec sous-matières
+  if (m.sousMatieres && m.sousMatieres.length > 0) {
+    const saisies = m.sousMatieres.filter(s => s.note !== '' && s.note !== null && s.note !== undefined);
+    if (!saisies.length) return null;
+    const totalPts   = saisies.reduce((acc, s) => acc + (Number(s.note) * s.coefficient), 0);
+    const totalCoeff = saisies.reduce((acc, s) => acc + s.coefficient, 0);
+    if (totalCoeff === 0) return null;
+    return Math.round((totalPts / totalCoeff) * 100) / 100;
+  }
+  return null;
+}
 
 const getMoyColor = (n?: number | string) => {
   const v = Number(n);
@@ -65,17 +96,17 @@ const ParentBulletins: React.FC<Props> = ({ bulletins }) => {
             <div key={b.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
               {/* En-tête cliquable */}
               <button onClick={() => setExpanded(isOpen ? null : b.id)}
-                className="w-full text-left p-6 hover:bg-gray-50/50 transition">
-                <div className="flex items-center gap-5">
+                className="w-full text-left p-4 sm:p-6 hover:bg-gray-50/50 transition">
+                <div className="flex items-center gap-3 sm:gap-5">
                   {/* Cercle moyenne */}
-                  <div className={`w-20 h-20 rounded-2xl ${col.bg} flex flex-col items-center justify-center flex-shrink-0 border border-current/10`}>
+                  <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl ${col.bg} flex flex-col items-center justify-center flex-shrink-0 border border-current/10`}>
                     {b.moyenneGenerale !== undefined ? (
                       <>
-                        <span className={`text-2xl font-black ${col.txt}`}>{Number(b.moyenneGenerale).toFixed(1)}</span>
+                        <span className={`text-xl sm:text-2xl font-black ${col.txt}`}>{Number(b.moyenneGenerale).toFixed(1)}</span>
                         <span className={`text-xs font-bold ${col.txt} opacity-60`}>/20</span>
                       </>
                     ) : (
-                      <BookOpen className={`w-8 h-8 ${col.txt} opacity-40`} />
+                      <BookOpen className={`w-7 h-7 ${col.txt} opacity-40`} />
                     )}
                   </div>
 
@@ -108,7 +139,7 @@ const ParentBulletins: React.FC<Props> = ({ bulletins }) => {
 
               {/* Détails */}
               {isOpen && (
-                <div className="border-t border-gray-100 px-6 pb-6 pt-5 space-y-5">
+                <div className="border-t border-gray-100 px-3 sm:px-6 pb-5 sm:pb-6 pt-4 sm:pt-5 space-y-5">
                   {/* Barre de progression */}
                   {b.moyenneGenerale !== undefined && (
                     <div>
@@ -135,20 +166,38 @@ const ParentBulletins: React.FC<Props> = ({ bulletins }) => {
                   {b.matieres && b.matieres.length > 0 && (
                     <div>
                       <p className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Notes par matière</p>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {b.matieres.map((m, i) => {
-                          const mc = getMoyColor(m.note);
-                          const pct = Math.min(100, (m.note / 20) * 100);
+                          const moy = getMoyenneMatiere(m);
+                          const mc  = getMoyColor(moy ?? undefined);
+                          const pct = moy !== null ? Math.min(100, (moy / 20) * 100) : 0;
                           return (
-                            <div key={i} className="flex items-center gap-4">
-                              <span className="text-sm font-medium text-gray-700 w-32 flex-shrink-0 truncate">{m.nom}</span>
-                              <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full ${mc.bar} rounded-full`} style={{ width: `${pct}%` }} />
+                            <div key={i}>
+                              <div className="flex items-center gap-2 sm:gap-4">
+                                <span className="text-xs sm:text-sm font-semibold text-gray-700 w-24 sm:w-36 flex-shrink-0 leading-tight">{m.nom}</span>
+                                <div className="flex-1 h-2 sm:h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-full ${mc.bar} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className={`text-sm font-black ${mc.txt} w-10 sm:w-14 text-right flex-shrink-0`}>
+                                  {moy !== null ? moy.toFixed(1) : '—'}
+                                </span>
+                                <span className="text-[10px] text-gray-400 w-12 sm:w-14 flex-shrink-0 hidden xs:block">c.{m.coefficient}</span>
                               </div>
-                              <span className={`text-sm font-black ${mc.txt} w-12 text-right flex-shrink-0`}>
-                                {Number(m.note).toFixed(1)}
-                              </span>
-                              <span className="text-xs text-gray-400 w-14 flex-shrink-0">coeff {m.coefficient}</span>
+                              {/* Sous-matières (détail) */}
+                              {m.sousMatieres && m.sousMatieres.length > 1 && (
+                                <div className="ml-24 sm:ml-36 mt-1 space-y-0.5">
+                                  {m.sousMatieres.filter(s => s.note !== '' && s.note !== null && s.note !== undefined).map((s, si) => (
+                                    <div key={si} className="flex items-center gap-2 text-xs text-gray-400">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+                                      <span className="flex-1 truncate">{s.nom}</span>
+                                      <span className="font-bold text-gray-500">{Number(s.note).toFixed(1)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {m.appreciation && (
+                                <p className="ml-24 sm:ml-36 mt-0.5 text-xs italic text-indigo-500">{m.appreciation}</p>
+                              )}
                             </div>
                           );
                         })}

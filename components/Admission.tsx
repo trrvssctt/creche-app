@@ -263,7 +263,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
         apiClient.get('/admin/parent-accounts').catch(() => ({ byEleveId: {} })),
       ]);
       const raw = Array.isArray(dossiersData) ? dossiersData : (dossiersData?.rows ?? dossiersData?.eleves ?? []);
-      setDossiers(raw.map(normalizeEleve));
+      const unique = [...new Map(raw.map((e: any) => [e.id, e])).values()];
+      setDossiers(unique.map(normalizeEleve));
       setClasses(Array.isArray(classesData) ? classesData : []);
       setParentsByEleveId(parentData?.byEleveId || {});
     } catch { setError('Impossible de charger les dossiers.'); }

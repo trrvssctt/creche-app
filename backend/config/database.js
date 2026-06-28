@@ -616,6 +616,45 @@ export const connectDB = async () => {
       console.warn('⚠️ Note tables schedule/planning:', scheduleErr.message);
     }
 
+    // Table événements scolaires (agenda admin → portail parent)
+    // Si la table a été créée avec des colonnes camelCase (avant les field overrides Sequelize),
+    // on la supprime et recrée avec le schéma snake_case correct (table vide → aucune perte).
+    try {
+      const [colCheck] = await sequelize.query(
+        `SELECT COUNT(*) AS cnt FROM information_schema.columns
+         WHERE table_name = 'school_events' AND column_name = 'type_evenement'`,
+        { type: QueryTypes.SELECT }
+      );
+      if (parseInt(colCheck?.cnt ?? '0', 10) === 0) {
+        await sequelize.query('DROP TABLE IF EXISTS school_events CASCADE', { type: QueryTypes.RAW });
+        console.log('🔄 school_events supprimée (schéma camelCase obsolète), recréation…');
+      }
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS school_events (
+          id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id      UUID         NOT NULL,
+          titre          VARCHAR(255) NOT NULL,
+          description    TEXT,
+          type_evenement VARCHAR(50)  NOT NULL DEFAULT 'INFO',
+          statut         VARCHAR(20)  NOT NULL DEFAULT 'PUBLIE',
+          date_debut     DATE         NOT NULL,
+          date_fin       DATE,
+          heure_debut    VARCHAR(10),
+          heure_fin      VARCHAR(10),
+          lieu           VARCHAR(255),
+          niveaux_cibles TEXT         NOT NULL DEFAULT 'TOUS',
+          diffuse        BOOLEAN      NOT NULL DEFAULT false,
+          created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_school_events_tenant ON school_events (tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_school_events_statut ON school_events (statut);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Table school_events vérifiée (schéma snake_case)');
+    } catch (schoolEventsErr) {
+      console.warn('⚠️ Note table school_events:', schoolEventsErr.message);
+    }
+
     // 2. Connexion & Sync Registry IA (MySQL)
     await sequelize_db_template.authenticate();
     console.log('✅ Registry IA Connecté (MySQL)');

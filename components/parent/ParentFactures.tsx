@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, CheckCircle2, Clock, Send, Loader2,
   ChevronDown, ChevronUp, Utensils, Bus, GraduationCap, BookOpen, Users,
-  Home, Package, Receipt, Download,
+  Home, Package, Receipt, Download, FileText, BadgeCheck,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { generateRecu } from '../../services/pdfGenerator';
@@ -19,6 +19,18 @@ interface Echeance {
   eleve?: { nom: string; prenom: string };
   service?: ServiceInfo;
   periodeLabel?: string;
+}
+
+interface InvoiceFromApi {
+  id: string;
+  saleId?: string;
+  amount: number | string;
+  paidAt?: string;
+  invoice?: { id: string; amount: number | string; status: string; invoiceDate: string } | null;
+  eleve?: { id: string; nom: string; prenom: string };
+  service?: { id: string; name: string };
+  periodeLabel?: string;
+  dateEcheance?: string;
 }
 
 interface Props { echeances: Echeance[]; enfants?: any[]; ecole?: any; onRefresh?: () => void; }
@@ -67,8 +79,23 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
   const [reference, setReference]   = useState('');
   const [sending, setSending]       = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
-  const [showPaids, setShowPaids]   = useState(false);
+  const [showPaids, setShowPaids]   = useState(true);
   const [recuLoading, setRecuLoading] = useState<string | null>(null);
+
+  // Factures confirmées (payées par l'admin) depuis /parent/factures
+  const [facturesConfirmees, setFacturesConfirmees] = useState<InvoiceFromApi[]>([]);
+  useEffect(() => {
+    apiClient.get('/parent/factures')
+      .then((data: any) => setFacturesConfirmees(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [echeances]);
+
+  // Index : echeanceId → invoice
+  const invoiceByEcheanceId = React.useMemo(() => {
+    const map: Record<string, InvoiceFromApi> = {};
+    facturesConfirmees.forEach(f => { map[f.id] = f; });
+    return map;
+  }, [facturesConfirmees]);
 
   const handleRecu = async (e: Echeance) => {
     setRecuLoading(e.id);
@@ -139,21 +166,21 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
       </div>
 
       {/* Résumé */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-red-100 p-5 shadow-sm">
-          <p className="text-sm font-semibold text-gray-500 mb-1">Total à régler</p>
-          <p className="text-2xl font-black text-red-600">{fmt(totalDu)}</p>
-          <p className="text-xs text-gray-400 font-medium mt-0.5">FCFA</p>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="bg-white rounded-2xl border border-red-100 p-3 sm:p-5 shadow-sm">
+          <p className="text-xs sm:text-sm font-semibold text-gray-500 mb-1">Total à régler</p>
+          <p className="text-lg sm:text-2xl font-black text-red-600">{fmt(totalDu)}</p>
+          <p className="text-[10px] text-gray-400 font-medium mt-0.5">FCFA</p>
         </div>
-        <div className="bg-white rounded-2xl border border-amber-100 p-5 shadow-sm">
-          <p className="text-sm font-semibold text-gray-500 mb-1">En attente</p>
-          <p className="text-2xl font-black text-amber-600">{impayees.filter(e => e.statut === 'EN_ATTENTE').length}</p>
-          <p className="text-xs text-gray-400 font-medium mt-0.5">facture{impayees.length > 1 ? 's' : ''}</p>
+        <div className="bg-white rounded-2xl border border-amber-100 p-3 sm:p-5 shadow-sm">
+          <p className="text-xs sm:text-sm font-semibold text-gray-500 mb-1">En attente</p>
+          <p className="text-lg sm:text-2xl font-black text-amber-600">{impayees.filter(e => e.statut === 'EN_ATTENTE').length}</p>
+          <p className="text-[10px] text-gray-400 font-medium mt-0.5">facture{impayees.length > 1 ? 's' : ''}</p>
         </div>
-        <div className={`rounded-2xl border p-5 shadow-sm ${retard > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
-          <p className="text-sm font-semibold text-gray-500 mb-1">En retard</p>
-          <p className={`text-2xl font-black ${retard > 0 ? 'text-red-600' : 'text-gray-300'}`}>{retard}</p>
-          <p className="text-xs text-gray-400 font-medium mt-0.5">facture{retard > 1 ? 's' : ''}</p>
+        <div className={`rounded-2xl border p-3 sm:p-5 shadow-sm ${retard > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+          <p className="text-xs sm:text-sm font-semibold text-gray-500 mb-1">En retard</p>
+          <p className={`text-lg sm:text-2xl font-black ${retard > 0 ? 'text-red-600' : 'text-gray-300'}`}>{retard}</p>
+          <p className="text-[10px] text-gray-400 font-medium mt-0.5">facture{retard > 1 ? 's' : ''}</p>
         </div>
       </div>
 
@@ -182,10 +209,11 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                   <p className="font-black text-gray-900 text-sm">{enfant.prenom} {enfant.nom}</p>
                   <p className="text-[10px] font-bold mt-0.5">
                     {enfant.aucune && <span className="text-gray-400">Aucune facture pour le moment</span>}
-                    {!enfant.aucune && enfant.totalPaye > 0 && <span className="text-emerald-600">{fmt(enfant.totalPaye)} FCFA payé</span>}
-                    {!enfant.aucune && enfant.totalPaye > 0 && enfant.totalDu > 0 && <span className="text-gray-300"> · </span>}
                     {!enfant.aucune && enfant.totalDu > 0 && <span className="text-red-600">{fmt(enfant.totalDu)} FCFA à régler</span>}
-                    {!enfant.aucune && enfant.totalDu === 0 && <span className="text-emerald-500">À jour ✓</span>}
+                    {!enfant.aucune && enfant.totalDu > 0 && enfant.totalPaye > 0 && <span className="text-gray-300"> · </span>}
+                    {!enfant.aucune && enfant.totalPaye > 0 && <span className="text-emerald-600">{fmt(enfant.totalPaye)} FCFA déjà réglé(s)</span>}
+                    {!enfant.aucune && enfant.totalDu === 0 && enfant.totalPaye === 0 && <span className="text-gray-400">Aucune redevance</span>}
+                    {!enfant.aucune && enfant.totalDu === 0 && enfant.totalPaye > 0 && <span className="text-emerald-500">Tout est réglé ✓</span>}
                   </p>
                 </div>
                 {!enfant.aucune && enfant.totalDu > 0 && (
@@ -281,13 +309,15 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
           <button onClick={() => setShowPaids(v => !v)}
             className="flex items-center gap-2 text-base font-semibold text-gray-500 hover:text-gray-700 transition mb-3">
             {showPaids ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-            {payees.length} facture{payees.length > 1 ? 's' : ''} payée{payees.length > 1 ? 's' : ''}
+            Historique — {payees.length} paiement{payees.length > 1 ? 's' : ''} confirmé{payees.length > 1 ? 's' : ''}
           </button>
           {showPaids && (
             <div className="space-y-2">
               {payees.map(e => {
                 const svc = detectServiceType(e.service, e.periodeLabel);
                 const ServiceIcon = svc.icon;
+                const factureConfirmee = invoiceByEcheanceId[e.id];
+                const invoiceRef = factureConfirmee?.invoice?.id;
                 return (
                   <div key={e.id} className="bg-gray-50 rounded-2xl border border-gray-100 p-4 flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${svc.bg} border ${svc.border}`}>
@@ -296,12 +326,23 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-700 text-sm">{e.service?.name || e.periodeLabel || e.mois || '—'}</p>
                       <p className="text-xs text-gray-400">{svc.label} · {e.eleve ? `${e.eleve.prenom} ${e.eleve.nom}` : ''}</p>
+                      {invoiceRef && (
+                        <p className="text-[10px] font-black text-emerald-600 mt-0.5 flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> {invoiceRef}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <p className="font-bold text-gray-500 text-sm">{fmt(e.montant)} FCFA</p>
-                      <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Payé
-                      </span>
+                      {invoiceRef ? (
+                        <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                          <BadgeCheck className="w-3 h-3" /> Confirmé
+                        </span>
+                      ) : (
+                        <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Payé
+                        </span>
+                      )}
                       <button
                         onClick={() => handleRecu(e)}
                         disabled={recuLoading === e.id}
@@ -327,10 +368,10 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
         const svc = detectServiceType(modalEch.service, modalEch.periodeLabel);
         const ServiceIcon = svc.icon;
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8">
-              <h3 className="font-black text-2xl text-gray-900 mb-1">Notifier un paiement</h3>
-              <p className="text-gray-500 mb-6">L'école recevra une notification et validera manuellement.</p>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg p-5 sm:p-8 max-h-[92vh] overflow-y-auto">
+              <h3 className="font-black text-xl sm:text-2xl text-gray-900 mb-1">Notifier un paiement</h3>
+              <p className="text-gray-500 text-sm mb-5">L'école recevra une notification et validera manuellement.</p>
 
               {/* Récap facture */}
               <div className={`rounded-2xl border p-5 mb-6 ${svc.bg} ${svc.border}`}>
@@ -343,7 +384,7 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                 </div>
                 <div className="text-center pt-2 border-t border-current/10">
                   <p className="text-sm font-semibold text-gray-600 mb-1">Montant à régler</p>
-                  <p className={`text-4xl font-black ${svc.color}`}>{fmt(modalEch.montant)}</p>
+                  <p className={`text-3xl sm:text-4xl font-black ${svc.color}`}>{fmt(modalEch.montant)}</p>
                   <p className={`text-base font-bold ${svc.color} opacity-70`}>FCFA</p>
                   {modalEch.eleve && <p className="text-sm text-gray-500 mt-2">Pour {modalEch.eleve.prenom} {modalEch.eleve.nom}</p>}
                 </div>
@@ -352,10 +393,10 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
               <div className="space-y-5">
                 <div>
                   <p className="text-sm font-bold text-gray-700 mb-3">Méthode de paiement</p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {METHODES.map(m => (
                       <button key={m} type="button" onClick={() => setMethode(m)}
-                        className={`py-3 rounded-xl text-sm font-bold transition border ${
+                        className={`py-3.5 rounded-xl text-sm font-bold transition border ${
                           methode === m
                             ? 'bg-amber-400 text-white border-amber-400 shadow-md'
                             : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'

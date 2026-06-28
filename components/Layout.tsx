@@ -376,12 +376,12 @@ const Layout: React.FC<LayoutProps> = ({
   const isDirecteurRole = roles.includes(UserRole.DIRECTEUR);
   const isEmployee = roles.some((r: UserRole) => r === UserRole.EMPLOYEE);
 
-  // Les rôles non-admin/directeur voient toujours l'année scolaire courante
+  // Les rôles non-admin/directeur sont toujours sur l'année scolaire active (source = backend)
   useEffect(() => {
     if (!isAdminOrSuper && !isDirecteurRole) {
       setAnneeCtx(anneeActiveToday);
     }
-  }, [user.id]);
+  }, [user.id, anneeActiveToday, isAdminOrSuper, isDirecteurRole]);
 
   // Fetch du statut de pointage pour les employés (toutes les 2 minutes)
   useEffect(() => {

@@ -15,6 +15,14 @@ const ParentLogin: React.FC<ParentLoginProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
+  // Branding mis en cache lors de la dernière connexion
+  const [ecoleBranding] = useState<{ name?: string; logoUrl?: string } | null>(() => {
+    try {
+      const raw = localStorage.getItem('ecole_branding');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -59,16 +67,27 @@ const ParentLogin: React.FC<ParentLoginProps> = ({ onLoginSuccess }) => {
         {/* Carte principale */}
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl shadow-amber-100/50 border border-amber-100 overflow-hidden">
           {/* Header */}
-          <div className="bg-gradient-to-r from-amber-400 to-orange-400 px-8 py-10 text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 backdrop-blur rounded-2xl mb-4">
-              <Baby className="w-10 h-10 text-white" />
+          <div className="bg-gradient-to-r from-amber-400 to-orange-400 px-4 sm:px-8 py-8 sm:py-10 text-center">
+            <div className="inline-flex items-center justify-center w-24 h-24 mb-4">
+              {ecoleBranding?.logoUrl ? (
+                <div className="w-24 h-24 rounded-2xl bg-white shadow-xl overflow-hidden flex items-center justify-center">
+                  <img src={ecoleBranding.logoUrl} alt={ecoleBranding.name || 'Logo école'}
+                    className="w-full h-full object-contain p-1.5" />
+                </div>
+              ) : (
+                <div className="w-24 h-24 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                  <Baby className="w-12 h-12 text-white" />
+                </div>
+              )}
             </div>
-            <h1 className="text-2xl font-bold text-white">Espace Parents</h1>
+            <h1 className="text-2xl font-bold text-white">
+              {ecoleBranding?.name || 'Espace Parents'}
+            </h1>
             <p className="text-amber-100 text-sm mt-1">Portail de suivi de vos enfants</p>
           </div>
 
           {/* Formulaire */}
-          <div className="px-8 py-8">
+          <div className="px-4 sm:px-8 py-6 sm:py-8">
             <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">

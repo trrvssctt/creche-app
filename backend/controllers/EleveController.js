@@ -109,13 +109,7 @@ export class EleveController {
       const andConditions = [];
 
       if (anneeScolaire) {
-        // Inclut aussi les dossiers portail sans année (EN_ATTENTE ou REJETE, soumis avant le correctif)
-        andConditions.push({
-          [Op.or]: [
-            { anneeScolaire },
-            { anneeScolaire: null, statut: { [Op.in]: ['EN_ATTENTE', 'REJETE'] } },
-          ],
-        });
+        andConditions.push({ anneeScolaire });
       }
 
       if (search) {
