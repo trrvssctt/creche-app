@@ -67,7 +67,7 @@ export class PublicController {
       const {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
         cantine, transportBus, besoinSpecifique,
-        parent1, parent2,
+        ficheSanitaire, parent1, parent2, contactUrgence, notes,
       } = req.body;
 
       if (!nom?.trim() || !prenom?.trim()) {
@@ -78,6 +78,11 @@ export class PublicController {
       }
 
       const anneeResolue = tenant.anneeActive || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1);
+
+      const notesDossier = [
+        'Dossier soumis via le formulaire public en ligne.',
+        notes ? notes.trim() : null,
+      ].filter(Boolean).join('\n');
 
       const eleve = await Eleve.create({
         tenantId:        tenant.id,
@@ -90,11 +95,13 @@ export class PublicController {
         cantine:         !!cantine,
         transportBus:    !!transportBus,
         besoinSpecifique: besoinSpecifique || null,
+        ficheSanitaire:  ficheSanitaire || null,
         parent1:         parent1        || null,
         parent2:         parent2        || null,
+        contactUrgence:  contactUrgence || null,
         anneeScolaire:   anneeResolue,
         statut:          'EN_ATTENTE',
-        notes:           'Dossier soumis via le formulaire public en ligne.',
+        notes:           notesDossier,
       });
 
       // Référence lisible : PRE-AAAA-XXXX
