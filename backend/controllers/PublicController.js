@@ -3,41 +3,33 @@ import { Tenant, Eleve } from '../models/index.js';
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
   const raw = req.headers.origin || req.headers.referer || '';
-  try {
-    const hostname = new URL(raw).hostname; // ex: scolarite.letoitdesanges.com
+  let tenant = null;
 
-    // Cherche par domaine exact
-    let tenant = await Tenant.findOne({
-      where: { domain: hostname },
-      attributes: ['id', 'name', 'anneeActive', 'logoUrl'],
-    });
+  // Tentative de résolution depuis le domaine
+  if (raw) {
+    try {
+      const hostname = new URL(raw).hostname;
 
-    // Fallback : domaine sans sous-domaine (letoitdesanges.com)
-    if (!tenant && hostname.includes('.')) {
-      const baseDomain = hostname.split('.').slice(-2).join('.');
-      tenant = await Tenant.findOne({
-        where: { domain: baseDomain },
-        attributes: ['id', 'name', 'anneeActive', 'logoUrl'],
-      });
-    }
+      // Cherche par domaine exact
+      tenant = await Tenant.findOne({ where: { domain: hostname } });
 
-    // Dernier recours : si un seul tenant en base (déploiement mono-école)
-    if (!tenant) {
-      const count = await Tenant.count();
-      if (count === 1) {
-        tenant = await Tenant.findOne({ attributes: ['id', 'name', 'anneeActive', 'logoUrl'] });
+      // Fallback : domaine sans sous-domaine (letoitdesanges.com)
+      if (!tenant && hostname.includes('.')) {
+        const baseDomain = hostname.split('.').slice(-2).join('.');
+        tenant = await Tenant.findOne({ where: { domain: baseDomain } });
       }
+    } catch {
+      // URL invalide — on continue vers le fallback
     }
-
-    return tenant;
-  } catch {
-    // Dernier recours sans Origin valide
-    const count = await Tenant.count();
-    if (count === 1) {
-      return Tenant.findOne({ attributes: ['id', 'name', 'anneeActive', 'logoUrl'] });
-    }
-    return null;
   }
+
+  // Dernier recours : si un seul tenant en base (dev local ou déploiement mono-école)
+  if (!tenant) {
+    const all = await Tenant.findAll({ limit: 2 });
+    if (all.length === 1) tenant = all[0];
+  }
+
+  return tenant;
 }
 
 export class PublicController {
