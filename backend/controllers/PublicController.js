@@ -23,10 +23,9 @@ async function resolveTenantFromRequest(req) {
     }
   }
 
-  // Dernier recours : si un seul tenant en base (dev local ou déploiement mono-école)
-  if (!tenant) {
-    const all = await Tenant.findAll({ limit: 2 });
-    if (all.length === 1) tenant = all[0];
+  // Dernier recours : variable d'env CRECHE_TENANT_ID (dev local, multi-tenant)
+  if (!tenant && process.env.CRECHE_TENANT_ID) {
+    tenant = await Tenant.findOne({ where: { id: process.env.CRECHE_TENANT_ID } });
   }
 
   return tenant;
