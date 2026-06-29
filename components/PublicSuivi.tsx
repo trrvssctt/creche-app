@@ -198,14 +198,14 @@ const PublicSuivi: React.FC = () => {
                   setResult(null);
                 }}
                 placeholder="PRE-2026-C0C91A"
-                maxLength={14}
+                maxLength={15}
                 autoComplete="off"
                 autoCapitalize="characters"
                 spellCheck={false}
                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl px-5 py-4 text-xl font-black text-slate-900 tracking-widest outline-none focus:ring-4 focus:ring-indigo-500/15 focus:border-indigo-400 transition placeholder:text-slate-300 placeholder:font-normal placeholder:text-base text-center"
               />
               <p className="text-[10px] text-slate-400 text-center mt-2">
-                Format : PRE-AAAA-XXXXXX (14 caractères)
+                Format : PRE-AAAA-XXXXXX (15 caractères)
               </p>
             </div>
 
@@ -216,7 +216,7 @@ const PublicSuivi: React.FC = () => {
             )}
 
             <button type="submit"
-              disabled={loading || ref.length < 10}
+              disabled={loading || ref.length < 15}
               className="w-full flex items-center justify-center gap-2 py-4 bg-indigo-600 active:bg-indigo-700 text-white font-black rounded-2xl transition shadow-lg shadow-indigo-900/30 disabled:opacity-40 text-sm uppercase tracking-widest">
               {loading
                 ? <><RefreshCw size={16} className="animate-spin" /> Recherche…</>
