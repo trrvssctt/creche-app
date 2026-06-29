@@ -82,14 +82,26 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [result, setResult]   = useState<{ reference: string; message: string } | null>(null);
-  const [ecole, setEcole]     = useState<Ecole>({});
+  // Lit le cache branding en premier pour afficher le logo immédiatement,
+  // même avant que l'API réponde (même pattern que ParentLogin)
+  const [ecole, setEcole] = useState<Ecole>(() => {
+    try {
+      const raw = localStorage.getItem('ecole_branding');
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
 
   const set = (patch: Partial<FormType>) => setForm(f => ({ ...f, ...patch }));
   const niveauLabel = (v: string) => NIVEAUX.find(n => n.value === v)?.label ?? v;
 
   useEffect(() => {
     apiClient.get('/public/ecole')
-      .then((d: any) => setEcole(d || {}))
+      .then((d: any) => {
+        if (!d) return;
+        setEcole(d);
+        // Met à jour le cache pour les prochaines visites
+        localStorage.setItem('ecole_branding', JSON.stringify(d));
+      })
       .catch(() => {});
   }, []);
 
