@@ -68,8 +68,9 @@ router.get('/files', UploadController.serveFile);
 
 // ── Routes publiques école (sans auth) ────────────────────────────────────────
 // Branding école (logo, nom) et formulaire d'admission publique
-router.get('/public/ecole',     PublicController.getEcoleBranding);
-router.post('/public/admission', PublicController.submitAdmission);
+router.get('/public/ecole',                    PublicController.getEcoleBranding);
+router.post('/public/admission',               PublicController.submitAdmission);
+router.get('/public/admission/:reference',     PublicController.trackAdmission);
 
 // --- PROTECTION JWT ---
 router.use(authenticateJWT);

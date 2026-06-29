@@ -48,6 +48,7 @@ import OvertimeRequests from './components/rh/OvertimeRequests';
 import Login from './components/Login';
 import ParentLogin from './components/ParentLogin';
 import PublicAdmission from './components/PublicAdmission';
+import PublicSuivi from './components/PublicSuivi';
 import ParentPortal from './components/ParentPortal';
 import TeacherPortal from './components/TeacherPortal';
 import AIAnalysis from './components/AIAnalysis';
@@ -341,6 +342,11 @@ const App: React.FC = () => {
         window.history.pushState({}, '', '/parents');
         window.location.reload();
       }} />;
+    }
+
+    // Page de suivi de dossier publique
+    if (path.startsWith('/suivi-inscription')) {
+      return <PublicSuivi />;
     }
 
     const isParentRoute = path.startsWith('/parents');

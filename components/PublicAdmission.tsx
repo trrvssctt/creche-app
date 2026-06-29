@@ -191,13 +191,23 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
           <p className="text-xs text-slate-400 mt-2">Conservez ce numéro — il vous sera demandé lors de votre visite</p>
         </div>
         <p className="text-slate-500 text-sm leading-relaxed mb-6">{result.message}</p>
+        {/* Bouton suivi — lien direct avec la référence pré-remplie */}
+        <a href={`/suivi-inscription?ref=${result.reference}`}
+          onClick={e => {
+            e.preventDefault();
+            window.history.pushState({}, '', `/suivi-inscription?ref=${result.reference}`);
+            window.location.reload();
+          }}
+          className="w-full py-4 rounded-2xl bg-emerald-500 active:bg-emerald-600 text-white font-black uppercase tracking-widest transition mb-3 text-sm flex items-center justify-center gap-2">
+          <CheckCircle2 className="w-4 h-4" /> Suivre l'avancement de mon dossier
+        </a>
         <button onClick={() => { setResult(null); setForm(EMPTY); setStep(1); }}
-          className="w-full py-4 rounded-2xl bg-indigo-600 active:bg-indigo-700 text-white font-black uppercase tracking-widest transition mb-3 text-sm">
+          className="w-full py-4 rounded-2xl border-2 border-slate-200 text-slate-500 font-bold active:bg-slate-100 transition mb-2 text-sm">
           Soumettre un autre dossier
         </button>
         {onBack && (
           <button onClick={onBack}
-            className="w-full py-4 rounded-2xl border-2 border-slate-200 text-slate-500 font-bold active:bg-slate-100 transition text-sm">
+            className="w-full py-4 rounded-2xl border-2 border-slate-100 text-slate-400 font-bold active:bg-slate-50 transition text-sm">
             Retour à la connexion
           </button>
         )}

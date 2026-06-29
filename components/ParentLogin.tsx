@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { apiClient } from '../services/api';
 import { authBridge } from '../services/authBridge';
-import { Eye, EyeOff, Loader2, Baby, School, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Baby, School, UserPlus, Search } from 'lucide-react';
 
 interface ParentLoginProps {
   onLoginSuccess: (user: User) => void;
@@ -146,8 +146,8 @@ const ParentLogin: React.FC<ParentLoginProps> = ({ onLoginSuccess }) => {
               </button>
             </form>
 
-            {/* Bouton préinscription */}
-            <div className="mt-5 pt-5 border-t border-gray-100">
+            {/* Boutons préinscription + suivi */}
+            <div className="mt-5 pt-5 border-t border-gray-100 space-y-2">
               <p className="text-center text-xs text-gray-500 mb-3">Nouveau à l'école ?</p>
               <a
                 href="/inscription"
@@ -156,10 +156,22 @@ const ParentLogin: React.FC<ParentLoginProps> = ({ onLoginSuccess }) => {
                   window.history.pushState({}, '', '/inscription');
                   window.location.reload();
                 }}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-amber-300 text-amber-700 font-bold text-sm hover:bg-amber-50 transition"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-amber-300 text-amber-700 font-bold text-sm hover:bg-amber-50 active:bg-amber-100 transition"
               >
                 <Baby className="w-4 h-4" />
                 Déposer un dossier d'inscription
+              </a>
+              <a
+                href="/suivi-inscription"
+                onClick={e => {
+                  e.preventDefault();
+                  window.history.pushState({}, '', '/suivi-inscription');
+                  window.location.reload();
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-slate-200 text-slate-500 font-bold text-sm hover:bg-slate-50 active:bg-slate-100 transition"
+              >
+                <Search className="w-4 h-4" />
+                Suivre mon dossier d'inscription
               </a>
             </div>
 

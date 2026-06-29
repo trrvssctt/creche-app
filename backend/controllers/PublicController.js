@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import { Tenant, Eleve } from '../models/index.js';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
@@ -105,6 +106,49 @@ export class PublicController {
       });
     } catch (err) {
       console.error('[PublicController.submitAdmission]', err);
+      return res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // GET /api/public/admission/:reference — suivi public d'un dossier de préinscription
+  static async trackAdmission(req, res) {
+    const raw = (req.params.reference || '').toUpperCase().trim();
+
+    // Format attendu : PRE-YYYY-XXXXXX (6 chars alphanumériques)
+    const match = raw.match(/^PRE-(\d{4})-([A-Z0-9]{6})$/);
+    if (!match) {
+      return res.status(400).json({ error: 'Format de référence invalide. Exemple : PRE-2026-C0C91A' });
+    }
+
+    const idPrefix = match[2]; // ex: C0C91A — première partie de l'UUID
+
+    try {
+      const tenant = await resolveTenantFromRequest(req);
+      if (!tenant) return res.status(404).json({ error: 'École introuvable.' });
+
+      // Cherche l'élève dont l'UUID commence par idPrefix (6 premiers chars en majuscules)
+      const eleve = await Eleve.findOne({
+        where: {
+          tenantId: tenant.id,
+          [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${idPrefix}'`),
+        },
+        attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'createdAt'],
+      });
+
+      if (!eleve) {
+        return res.status(404).json({ error: 'Dossier introuvable. Vérifiez votre numéro de référence.' });
+      }
+
+      return res.json({
+        reference: raw,
+        prenom:      eleve.prenom,
+        nomInitiale: (eleve.nom || 'X')[0].toUpperCase() + '.',
+        niveau:      eleve.niveau,
+        statut:      eleve.statut || 'EN_ATTENTE',
+        dateDepot:   eleve.createdAt,
+      });
+    } catch (err) {
+      console.error('[PublicController.trackAdmission]', err);
       return res.status(500).json({ error: 'Erreur serveur', message: err.message });
     }
   }
