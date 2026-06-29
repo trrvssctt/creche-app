@@ -38,9 +38,8 @@ const REGIMES: { value: RegimeFinancier; label: string; color: string }[] = [
   { value: 'CAS_SOCIAL_TOTAL',     label: 'Cas social (total)',   color: 'bg-rose-50 text-rose-700 border-rose-200' },
 ];
 
+// EN_ATTENTE et ADMIS exclus : ces statuts n'apparaissent que dans le modal "Dossiers en attente"
 const STATUTS: { value: StatutAdmission; label: string; color: string }[] = [
-  { value: 'EN_ATTENTE', label: 'Candidature', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { value: 'ADMIS',      label: 'Admis',       color: 'bg-blue-50 text-blue-700 border-blue-200' },
   { value: 'INSCRIT',    label: 'Inscrit',     color: 'bg-violet-50 text-violet-700 border-violet-200' },
   { value: 'ACTIF',      label: 'Actif',       color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { value: 'RADIE',      label: 'Radié',       color: 'bg-rose-50 text-rose-700 border-rose-200' },
@@ -314,7 +313,9 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }),
         apiClient.get('/admin/parent-accounts').catch(() => ({ byEleveId: {} })),
       ]);
-      const rawEleves = Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []);
+      const rawEleves = (Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []))
+        // Les candidatures (EN_ATTENTE/ADMIS) n'appartiennent pas à la liste des élèves inscrits
+        .filter((e: any) => e.statut !== 'EN_ATTENTE' && e.statut !== 'ADMIS');
       setEleves([...new Map(rawEleves.map((e: any) => [e.id, e])).values()]);
       setClasses(Array.isArray(classesData) ? classesData : []);
       setParentsByEleveId((parentData as any)?.byEleveId || {});
@@ -780,33 +781,34 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         }),
       };
       if (showModal === 'EDIT' && selectedEleve?.id) {
+        // ── Modification d'un élève existant ──────────────────────────────────
         await apiClient.put(`/eleves/${selectedEleve.id}`, payload);
         showToast('Fiche élève mise à jour.', 'success');
         setShowModal(null);
         setSelectedEleve(null);
         fetchEleves();
+      } else if (selectedDossierId) {
+        // ── Inscription depuis un dossier de candidature ───────────────────────
+        // On met à jour le dossier existant (évite le doublon qu'un POST créerait)
+        const updated: any = await apiClient.put(`/eleves/${selectedDossierId}`, {
+          ...payload,
+          statut: 'INSCRIT',
+          dateAdmission: payload.dateAdmission || new Date().toISOString().slice(0, 10),
+          matricule: payload.matricule || genMatricule(payload.niveau as NiveauScolaire),
+        });
+        setInscritEleve({ ...payload, id: updated?.id || selectedDossierId });
+        setAdmissions(prev => prev.filter(d => d.id !== selectedDossierId));
+        showToast('Élève inscrit avec succès.', 'success');
+        loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
+        setCreateStep('DOCS');
+        fetchEleves();
       } else {
+        // ── Création directe d'un élève (sans dossier préalable) ──────────────
         const created: any = await apiClient.post('/eleves', payload);
         if (created?.id) setInscritEleve({ ...payload, id: created.id });
-        // Mettre à jour le dossier d'admission → INSCRIT si provient d'un dossier
-        if (selectedDossierId) {
-          const dossierIdToMark = selectedDossierId;
-          try {
-            // Le dossier d'admission est dans /eleves (statut EN_ATTENTE ou ADMIS)
-            await apiClient.put(`/eleves/${dossierIdToMark}`, { statut: 'INSCRIT' });
-          } catch (e) {
-            console.warn('[Eleves] Mise à jour statut dossier échouée :', e);
-          }
-          // Retirer le dossier de la liste locale dans tous les cas
-          setAdmissions(prev => prev.filter(d => d.id !== dossierIdToMark));
-        }
         showToast('Élève inscrit avec succès.', 'success');
         if (!created?.id) setInscritEleve(payload);
-        loadServicesApplicables(
-          payload.niveau as NiveauScolaire,
-          !!payload.cantine,
-          !!payload.transportBus
-        );
+        loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
         setCreateStep('DOCS');
         fetchEleves();
       }
