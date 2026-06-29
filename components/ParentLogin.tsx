@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { apiClient } from '../services/api';
 import { authBridge } from '../services/authBridge';
-import { Eye, EyeOff, Loader2, Baby, School } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Baby, School, UserPlus } from 'lucide-react';
 
 interface ParentLoginProps {
   onLoginSuccess: (user: User) => void;
@@ -146,16 +146,32 @@ const ParentLogin: React.FC<ParentLoginProps> = ({ onLoginSuccess }) => {
               </button>
             </form>
 
+            {/* Bouton préinscription */}
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <p className="text-center text-xs text-gray-500 mb-3">Nouveau à l'école ?</p>
+              <a
+                href="/inscription"
+                onClick={e => {
+                  e.preventDefault();
+                  window.history.pushState({}, '', '/inscription');
+                  window.location.reload();
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-amber-300 text-amber-700 font-bold text-sm hover:bg-amber-50 transition"
+              >
+                <Baby className="w-4 h-4" />
+                Déposer un dossier d'inscription
+              </a>
+            </div>
+
             {/* Lien espace école */}
-            <div className="mt-6 pt-5 border-t border-gray-100 text-center">
-              <p className="text-xs text-gray-500 mb-2">Vous êtes un membre du personnel ?</p>
+            <div className="mt-4 text-center">
               <a
                 href="/login"
                 onClick={e => { e.preventDefault(); window.history.pushState({}, '', '/'); window.location.reload(); }}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 transition"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 transition"
               >
-                <School className="w-4 h-4" />
-                Accès Espace École
+                <School className="w-3.5 h-3.5" />
+                Accès Espace École (personnel)
               </a>
             </div>
           </div>

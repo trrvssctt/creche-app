@@ -47,6 +47,7 @@ import EmployeePointage from './components/rh/EmployeePointage';
 import OvertimeRequests from './components/rh/OvertimeRequests';
 import Login from './components/Login';
 import ParentLogin from './components/ParentLogin';
+import PublicAdmission from './components/PublicAdmission';
 import ParentPortal from './components/ParentPortal';
 import TeacherPortal from './components/TeacherPortal';
 import AIAnalysis from './components/AIAnalysis';
@@ -332,7 +333,17 @@ const App: React.FC = () => {
 
   // ── Écran de connexion ───────────────────────────────────────────────────
   if (!isLoggedIn) {
-    const isParentRoute = window.location.pathname.startsWith('/parents');
+    const path = window.location.pathname;
+
+    // Page de préinscription publique (sans compte)
+    if (path.startsWith('/inscription')) {
+      return <PublicAdmission onBack={() => {
+        window.history.pushState({}, '', '/parents');
+        window.location.reload();
+      }} />;
+    }
+
+    const isParentRoute = path.startsWith('/parents');
     if (isParentRoute) {
       return <ParentLogin onLoginSuccess={handleLoginSuccess} />;
     }

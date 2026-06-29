@@ -27,6 +27,7 @@ import hrRoutes from './hr.routes.js';
 import uploadRoutes from './upload.routes.js';
 import { UploadController } from '../controllers/UploadController.js';
 import contactRoutes, { adminRouter as contactAdminRoutes } from './contact.routes.js';
+import { PublicController } from '../controllers/PublicController.js';
 import supportRoutes from './support.routes.js';
 import supplierRoutes from './suppliers.routes.js';
 import deliveryRoutes from './deliveries.routes.js';
@@ -64,6 +65,11 @@ router.use('/contact', contactRoutes);
 // Route publique pour servir les fichiers S3 (génère une URL signée + redirige)
 // DOIT être avant authenticateJWT pour que les <img src="/api/files?key=..."> fonctionnent
 router.get('/files', UploadController.serveFile);
+
+// ── Routes publiques école (sans auth) ────────────────────────────────────────
+// Branding école (logo, nom) et formulaire d'admission publique
+router.get('/public/ecole',     PublicController.getEcoleBranding);
+router.post('/public/admission', PublicController.submitAdmission);
 
 // --- PROTECTION JWT ---
 router.use(authenticateJWT);
