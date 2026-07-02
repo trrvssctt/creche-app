@@ -5,10 +5,9 @@ import {
   Eye, EyeOff, Zap, Check, ChevronLeft, RefreshCw,
   Building2, CreditCard, Sparkles, User as UserIcon,
   Star, WifiOff, X, MapPin, Phone, Briefcase, Info,
-  Terminal, Shield, Smartphone, Copy, Dices
+  Terminal, Shield, Smartphone, Copy, Dices, School, Baby
 } from 'lucide-react';
 import { User, UserRole } from '../types';
-import logo from '../assets/logo_gestockpro.png';
 import waveQr from '../assets/qr_code_marchant_wave.png';
 import { authBridge } from '../services/authBridge';
 import { apiClient, ApiError } from '../services/api';
@@ -81,6 +80,22 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
   const [loginPassword, setLoginPassword] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [tempUserId, setTempUserId] = useState<string | null>(null);
+
+  // Branding de l'école — cache localStorage pour affichage instantané, rafraîchi via l'API publique
+  const [ecole, setEcole] = useState<{ name?: string; logoUrl?: string }>(() => {
+    try {
+      const raw = localStorage.getItem('ecole_branding');
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  useEffect(() => {
+    apiClient.get('/public/ecole').then((d: any) => {
+      if (!d) return;
+      setEcole(d);
+      localStorage.setItem('ecole_branding', JSON.stringify(d));
+    }).catch(() => {});
+  }, []);
 
   const REG_DRAFT_KEY = 'reg_draft';
 
@@ -1003,22 +1018,43 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans text-slate-900">
-      <button type="button" onClick={onBackToLanding} className="absolute left-4 top-4 sm:left-6 sm:top-6 z-40 text-sm font-black text-white uppercase tracking-widest flex items-center gap-2 hover:text-indigo-300">
-        <ChevronLeft size={16} /> Accueil
-      </button>
-      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/10 rounded-full blur-[120px]"></div>
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans text-slate-900">
+      {/* Décorations de fond — même famille visuelle que l'espace parents */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-amber-200/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-rose-200/30 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-orange-100/20 rounded-full blur-3xl" />
+      </div>
 
-      <div className={`w-full transition-all duration-700 ${mode === 'REGISTER' ? 'max-w-5xl' : 'max-w-md'}`}>
-        <div className="text-center mb-6 md:mb-10">
+      <div className={`relative w-full transition-all duration-700 ${mode === 'REGISTER' ? 'max-w-5xl' : 'max-w-md'}`}>
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl shadow-amber-100/50 border border-amber-100 overflow-hidden relative">
 
-          <img src={logo} alt="GeStockPro" className="mx-auto mb-4 h-14" />
-          <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">
-            {mode === 'REGISTER' ? 'Déploiement Instance SaaS' : mode === 'SUPERADMIN' ? 'Console Maître Kernel' : mode === 'MFA' ? 'Vérification de Sécurité' : 'Accès Privé GeStock'}
-          </h1>
-        </div>
-
-        <div className="bg-white rounded-[2rem] md:rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden relative">
+          {/* En-tête aux couleurs de l'école */}
+          <div className={`px-4 sm:px-8 py-8 text-center ${mode === 'SUPERADMIN'
+            ? 'bg-gradient-to-r from-slate-800 to-slate-900'
+            : 'bg-gradient-to-r from-amber-400 to-orange-400'}`}>
+            <div className="inline-flex items-center justify-center w-20 h-20 mb-3">
+              {ecole.logoUrl ? (
+                <div className="w-20 h-20 rounded-2xl bg-white shadow-xl overflow-hidden flex items-center justify-center">
+                  <img src={ecole.logoUrl} alt={ecole.name || 'Logo école'}
+                    className="w-full h-full object-contain p-1.5" />
+                </div>
+              ) : (
+                <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                  <School className="w-10 h-10 text-white" />
+                </div>
+              )}
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-white">
+              {ecole.name || 'Espace École'}
+            </h1>
+            <p className={`text-sm mt-1 ${mode === 'SUPERADMIN' ? 'text-slate-300' : 'text-amber-100'}`}>
+              {mode === 'REGISTER' ? 'Création de votre espace'
+                : mode === 'SUPERADMIN' ? 'Console SuperAdmin'
+                : mode === 'MFA' ? 'Vérification de sécurité'
+                : 'Espace École — Réservé au personnel'}
+            </p>
+          </div>
           {(initialWavePending || apiError?.error === 'WaveValidationPending') && (
             <div className="absolute top-4 left-4 right-4 md:top-8 md:left-8 md:right-8 z-20 p-5 bg-amber-50 border-2 border-amber-200 rounded-3xl animate-in fade-in duration-500 flex items-start gap-4">
               <AlertCircle size={20} className="text-amber-500 shrink-0 mt-0.5" />
@@ -1038,7 +1074,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
           )}
 
           {mode === 'LOGIN' || mode === 'SUPERADMIN' ? (
-            <form onSubmit={handleLogin} className="p-5 md:p-12 space-y-5 md:space-y-6">
+            <form onSubmit={handleLogin} className="px-4 sm:px-8 py-6 sm:py-8 space-y-5">
               {/* Affichage du statut de blocage */}
               {blockedUntil && timeRemaining > 0 && (
                 <div className="p-5 bg-rose-50 border-2 border-rose-200 rounded-3xl text-rose-700 text-center animate-in shake duration-500">
@@ -1065,29 +1101,76 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
               )}
 
               <div className="space-y-5">
-                <div className="relative"><Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="email" required value={loginEmail} onChange={e => setLoginEmail(e.target.value.toLowerCase())} disabled={!!(blockedUntil && timeRemaining > 0)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed" placeholder={mode === 'SUPERADMIN' ? 'MASTER_ID' : 'Email Opérateur'} /></div>
-                <div className="relative"><Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type={showPassword ? 'text' : 'password'} required value={loginPassword} onChange={e => setLoginPassword(e.target.value)} disabled={!!(blockedUntil && timeRemaining > 0)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-14 py-4 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed" placeholder="ACCESS_KEY" /><button type="button" onClick={() => setShowPassword(!showPassword)} disabled={!!(blockedUntil && timeRemaining > 0)} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-indigo-600 disabled:cursor-not-allowed">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
-                <button type="submit" disabled={loading || (blockedUntil && timeRemaining > 0)} className={`w-full py-5 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed ${mode === 'SUPERADMIN' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-slate-900 hover:bg-indigo-600'}`}>{loading ? <RefreshCw className="animate-spin" size={18} /> : blockedUntil && timeRemaining > 0 ? <>ACCÈS BLOQUÉ <Lock size={18} /></> : <>OUVRIR LA SESSION <ArrowRight size={18} /></>}</button>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Adresse email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+                    <input type="email" required value={loginEmail}
+                      onChange={e => setLoginEmail(e.target.value.toLowerCase())}
+                      disabled={!!(blockedUntil && timeRemaining > 0)}
+                      autoComplete="email"
+                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      placeholder="votre@email.com" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">Mot de passe</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+                    <input type={showPassword ? 'text' : 'password'} required value={loginPassword}
+                      onChange={e => setLoginPassword(e.target.value)}
+                      disabled={!!(blockedUntil && timeRemaining > 0)}
+                      autoComplete="current-password"
+                      className="w-full pl-11 pr-12 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      placeholder="••••••••" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                      disabled={!!(blockedUntil && timeRemaining > 0)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 disabled:cursor-not-allowed">
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <button type="submit" disabled={loading || (blockedUntil && timeRemaining > 0)}
+                  className={`w-full py-3.5 text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${mode === 'SUPERADMIN'
+                    ? 'bg-slate-800 hover:bg-slate-900'
+                    : 'bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500'}`}>
+                  {loading ? <><RefreshCw className="animate-spin" size={16} /> Connexion en cours…</>
+                    : blockedUntil && timeRemaining > 0 ? <>Accès bloqué <Lock size={16} /></>
+                    : 'Se connecter'}
+                </button>
               </div>
+
+              {/* Lien espace parents */}
+              {mode === 'LOGIN' && (
+                <div className="pt-4 border-t border-gray-100 text-center">
+                  <a href="/parents"
+                    onClick={e => { e.preventDefault(); window.history.pushState({}, '', '/parents'); window.location.reload(); }}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-amber-600 transition">
+                    <Baby className="w-3.5 h-3.5" />
+                    Vous êtes parent ? Accédez à l'Espace Parents
+                  </a>
+                </div>
+              )}
             </form>
           ) : mode === 'MFA' ? (
-            <form onSubmit={handleVerifyMFA} className="p-6 md:p-16 space-y-6 md:space-y-8 animate-in zoom-in-95">
-              <div className="text-center space-y-4">
-                <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner"><Smartphone size={40} className="animate-bounce" /></div>
-                <h3 className="text-lg font-black uppercase text-slate-800">Double Authentification</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase leading-relaxed px-4">Un code de sécurité à 6 chiffres a été généré pour sécuriser votre accès.</p>
+            <form onSubmit={handleVerifyMFA} className="px-4 sm:px-8 py-8 space-y-6 animate-in zoom-in-95">
+              <div className="text-center space-y-3">
+                <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner"><Smartphone size={32} /></div>
+                <h3 className="text-lg font-bold text-slate-800">Double authentification</h3>
+                <p className="text-xs text-gray-500 leading-relaxed px-4">Saisissez le code de sécurité à 6 chiffres pour confirmer votre identité.</p>
               </div>
               <div className="space-y-4">
                 <input
                   type="text" required maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-5 text-center text-2xl sm:text-3xl font-black tracking-[0.3em] sm:tracking-[0.5em] outline-none focus:ring-4 focus:ring-indigo-500/10"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 text-center text-2xl sm:text-3xl font-black tracking-[0.3em] sm:tracking-[0.5em] outline-none focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
                   placeholder="000000"
                 />
-                <button type="submit" disabled={loading || mfaCode.length !== 6} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-slate-900 transition-all flex items-center justify-center gap-3">
-                  {loading ? <RefreshCw className="animate-spin" size={18} /> : <>VÉRIFIER L'IDENTITÉ <ArrowRight size={18} /></>}
+                <button type="submit" disabled={loading || mfaCode.length !== 6}
+                  className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-60">
+                  {loading ? <><RefreshCw className="animate-spin" size={16} /> Vérification…</> : 'Vérifier le code'}
                 </button>
               </div>
-              <button type="button" onClick={() => setMode('LOGIN')} className="w-full text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-indigo-600 transition-colors">Annuler la session</button>
+              <button type="button" onClick={() => setMode('LOGIN')} className="w-full text-xs font-medium text-gray-400 hover:text-amber-600 transition-colors">Annuler et revenir à la connexion</button>
             </form>
           ) : (
             <div className="flex flex-col lg:grid lg:grid-cols-12">
@@ -1115,12 +1198,17 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
             </div>
           )}
 
-          <div className="px-5 md:px-10 py-5 md:py-8 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row gap-3 items-center justify-center">
-            {mode === 'REGISTER' && (
-              <button type="button" onClick={() => setMode('LOGIN')} className="text-[11px] font-black text-slate-500 hover:text-indigo-600 transition-colors uppercase tracking-widest flex items-center gap-3"><ChevronLeft size={18} /> Retour Connexion</button>
-            )}
-          </div>
+          {mode === 'REGISTER' && (
+            <div className="px-5 md:px-10 py-5 bg-gray-50 border-t border-gray-100 flex items-center justify-center">
+              <button type="button" onClick={() => setMode('LOGIN')} className="text-xs font-semibold text-gray-500 hover:text-amber-600 transition-colors flex items-center gap-2"><ChevronLeft size={16} /> Retour à la connexion</button>
+            </div>
+          )}
         </div>
+
+        {/* Note de bas de page */}
+        <p className="text-center text-xs text-gray-400 mt-6">
+          Pour récupérer votre mot de passe, contactez l'administration de l'établissement.
+        </p>
       </div>
     </div>
   );
