@@ -15,6 +15,7 @@ interface DossierResult {
   nomInitiale: string;
   niveau: string;
   statut: Statut;
+  photoUrl?: string | null;
   dateDepot: string;
 }
 
@@ -245,9 +246,14 @@ const PublicSuivi: React.FC = () => {
                 {/* Infos enfant */}
                 <div className="px-5 sm:px-6 py-4 space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                      <Baby className="w-6 h-6 text-indigo-500" />
-                    </div>
+                    {result.photoUrl ? (
+                      <img src={result.photoUrl} alt={`${result.prenom} ${result.nomInitiale}`}
+                        className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-100 shadow-sm flex-shrink-0" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                        <Baby className="w-6 h-6 text-indigo-500" />
+                      </div>
+                    )}
                     <div>
                       <p className="font-black text-slate-900 text-lg leading-tight">
                         {result.prenom} {result.nomInitiale}

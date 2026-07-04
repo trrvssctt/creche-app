@@ -142,7 +142,7 @@ export class PublicController {
           tenantId: tenant.id,
           [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${idPrefix}'`),
         },
-        attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'createdAt'],
+        attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'photoUrl', 'createdAt'],
       });
 
       if (!eleve) {
@@ -155,6 +155,7 @@ export class PublicController {
         nomInitiale: (eleve.nom || 'X')[0].toUpperCase() + '.',
         niveau:      eleve.niveau,
         statut:      eleve.statut || 'EN_ATTENTE',
+        photoUrl:    eleve.photoUrl || null,
         dateDepot:   eleve.createdAt,
       });
     } catch (err) {
