@@ -472,6 +472,15 @@ export interface ContactParent {
   telDomicile?: string;
   telTravail?: string;
   adresse?: string;
+  profession?: string;
+  entreprise?: string;
+}
+
+// Personne autorisée à venir chercher l'enfant à la sortie
+export interface PersonneAutorisee {
+  nom: string;
+  telephone?: string;
+  lien?: string;
 }
 
 export interface ContactUrgence {
@@ -494,6 +503,7 @@ export interface Eleve {
   remisePct: number;        // 0-100 — remise cas social
   cantine: boolean;
   transportBus: boolean;
+  garderie?: boolean;        // maternelle uniquement (CRECHE, PS, MS, GS)
   besoinSpecifique?: string; // enfants avec retard ou besoins particuliers
   statut: StatutAdmission;
   dateAdmission: string;
@@ -501,6 +511,7 @@ export interface Eleve {
   parent1: ContactParent;
   parent2?: ContactParent;
   contactUrgence?: ContactUrgence;
+  personneAutorisee?: PersonneAutorisee;
   whatsappPrincipal: string;
   anneeScolaire: string;
   photoUrl?: string;

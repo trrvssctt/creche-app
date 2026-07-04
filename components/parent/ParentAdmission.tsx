@@ -6,8 +6,12 @@ import {
   RefreshCw, FileText,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
+import { compressImageToDataUrl } from '../../services/photoUtils';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
+
+// Niveaux maternelle : la garderie n'est proposée que pour eux
+const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
 
 const NIVEAUX = [
   { value: 'CRECHE', label: 'Crèche (3–12 mois)',  cycle: 'Crèche' },
@@ -40,8 +44,9 @@ const NIVEAUX_LABELS: Record<string, string> = {
 const EMPTY = {
   nomEnfant: '', prenomEnfant: '', dateNaissance: '', lieuNaissance: '',
   sexe: '' as '' | 'M' | 'F', dateDepot: new Date().toISOString().split('T')[0],
+  photoUrl: '',
   niveau: 'PS', regimeFinancier: 'NORMAL', remisePct: 0,
-  cantine: false, transportBus: false, besoinSpecifique: '',
+  cantine: false, transportBus: false, garderie: false, besoinSpecifique: '',
   vaccDiphterie: false, vaccDiphterieDate: '',
   vaccPolio: false,     vaccPolioDate: '',
   vaccCoqueluche: false,vaccCoquelucheDate: '',
@@ -65,9 +70,12 @@ const EMPTY = {
   parent1Nom: '', parent1Prenom: '', parent1Tel: '', parent1Whatsapp: '',
   parent1Email: '', parent1Lien: 'MERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent1TelDomicile: '', parent1TelTravail: '', parent1Adresse: '',
+  parent1Profession: '', parent1Entreprise: '',
   parent2Nom: '', parent2Prenom: '', parent2Lien: 'PERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent2Tel: '', parent2TelDomicile: '', parent2TelTravail: '',
+  parent2Profession: '', parent2Entreprise: '',
   urgenceNom: '', urgenceTel: '', urgenceLien: '',
+  recupNom: '', recupTel: '', recupLien: '',
   notes: '',
 };
 
@@ -99,6 +107,18 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
 
   const set = (patch: Partial<FormType>) => setForm(f => ({ ...f, ...patch }));
   const niveauLabel = (v: string) => NIVEAUX.find(n => n.value === v)?.label ?? v;
+  const isMaternelle = NIVEAUX_MATERNELLE.includes(form.niveau);
+
+  const handlePhoto = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      set({ photoUrl: dataUrl });
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Impossible de lire cette image.');
+    }
+  };
 
   const parseMotifRejet = (notes: string | null): { date: string; motif: string } | null => {
     if (!notes) return null;
@@ -150,6 +170,8 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
       niveau:       dossier.niveau || 'PS',
       cantine:      !!dossier.cantine,
       transportBus: !!dossier.transportBus,
+      garderie:     !!dossier.garderie,
+      photoUrl:     dossier.photoUrl || '',
     });
     setRejeteId(dossier.id);
     setStep(1); setError(null); setShowModal(true);
@@ -190,8 +212,10 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
         nom: form.nomEnfant, prenom: form.prenomEnfant,
         dateNaissance: form.dateNaissance, lieuNaissance: form.lieuNaissance,
         sexe: form.sexe, niveau: form.niveau,
+        photoUrl: form.photoUrl || null,
         regimeFinancier: form.regimeFinancier, remisePct: form.remisePct,
         cantine: form.cantine, transportBus: form.transportBus,
+        garderie: isMaternelle && form.garderie,
         besoinSpecifique: form.besoinSpecifique,
         ficheSanitaire: {
           vaccDiphterie: form.vaccDiphterie, vaccDiphterieDate: form.vaccDiphterieDate,
@@ -225,14 +249,19 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
           email: form.parent1Email, lien: form.parent1Lien,
           telDomicile: form.parent1TelDomicile, telTravail: form.parent1TelTravail,
           adresse: form.parent1Adresse,
+          profession: form.parent1Profession, entreprise: form.parent1Entreprise,
         },
         parent2: (form.parent2Nom || form.parent2Tel) ? {
           nom: form.parent2Nom, prenom: form.parent2Prenom,
           telephone: form.parent2Tel, lien: form.parent2Lien,
           telDomicile: form.parent2TelDomicile, telTravail: form.parent2TelTravail,
+          profession: form.parent2Profession, entreprise: form.parent2Entreprise,
         } : null,
         contactUrgence: form.urgenceNom ? {
           nom: form.urgenceNom, telephone: form.urgenceTel, lien: form.urgenceLien,
+        } : null,
+        personneAutorisee: form.recupNom ? {
+          nom: form.recupNom, telephone: form.recupTel, lien: form.recupLien,
         } : null,
         notes: form.notes,
       };
@@ -324,14 +353,19 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                 <div key={d.id} className={`flex flex-col gap-0 ${estRejete ? 'border-l-4 border-rose-400' : ''}`}>
                   {/* Ligne principale */}
                   <div className="px-6 py-4 flex items-center gap-4">
-                    {/* Avatar */}
-                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-base flex-shrink-0 ${
-                      estRejete
-                        ? 'bg-rose-100 text-rose-700'
-                        : 'bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700'
-                    }`}>
-                      {(d.prenom?.[0] || '').toUpperCase()}{(d.nom?.[0] || '').toUpperCase()}
-                    </div>
+                    {/* Avatar — photo de l'enfant si disponible */}
+                    {d.photoUrl ? (
+                      <img src={d.photoUrl} alt={`${d.prenom} ${d.nom}`}
+                        className="w-11 h-11 rounded-2xl object-cover border border-indigo-100 flex-shrink-0" />
+                    ) : (
+                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-base flex-shrink-0 ${
+                        estRejete
+                          ? 'bg-rose-100 text-rose-700'
+                          : 'bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700'
+                      }`}>
+                        {(d.prenom?.[0] || '').toUpperCase()}{(d.nom?.[0] || '').toUpperCase()}
+                      </div>
+                    )}
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-black text-gray-900">{d.prenom} {d.nom}</p>
@@ -339,6 +373,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                         {NIVEAUX_LABELS[d.niveau] || d.niveau}
                         {d.cantine && ' · Cantine'}
                         {d.transportBus && ' · Bus'}
+                        {d.garderie && ' · Garderie'}
                         {' · '}
                         Soumis le {new Date(d.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </p>
@@ -436,6 +471,41 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Baby size={13} className="text-indigo-500" /> Identité de l'enfant
                   </p>
+
+                  {/* Photo de l'enfant */}
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-shrink-0">
+                      {form.photoUrl ? (
+                        <>
+                          <img src={form.photoUrl} alt="Photo de l'enfant"
+                            className="w-20 h-20 rounded-2xl object-cover border-2 border-indigo-200 shadow-sm" />
+                          <button type="button" onClick={() => set({ photoUrl: '' })}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:bg-rose-600 transition">
+                            <X size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <label className="w-20 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition">
+                          <Camera className="w-6 h-6 text-slate-400 mb-0.5" />
+                          <span className="text-[8px] font-black text-slate-400 uppercase">Photo</span>
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => handlePhoto(e.target.files?.[0])} />
+                        </label>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Photo de l'enfant</p>
+                      <p className="text-xs text-slate-400 mt-1">Photo d'identité récente — elle apparaîtra sur le dossier et la fiche de l'élève.</p>
+                      {form.photoUrl && (
+                        <label className="inline-block mt-1.5 text-[10px] font-black text-indigo-600 uppercase tracking-widest cursor-pointer hover:text-indigo-800">
+                          Changer
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => handlePhoto(e.target.files?.[0])} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Prénom <span className="text-rose-500">*</span></label>
@@ -480,15 +550,22 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                       {NIVEAUX.map(n => <option key={n.value} value={n.value}>{n.label} — {n.cycle}</option>)}
                     </select>
                   </div>
-                  <div className="flex gap-3 pt-1">
-                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1">
+                  <div className="flex gap-3 pt-1 flex-wrap">
+                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1 min-w-[45%]">
                       <input type="checkbox" checked={form.cantine} onChange={e => set({ cantine: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
                       <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Cantine</span>
                     </label>
-                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1">
+                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1 min-w-[45%]">
                       <input type="checkbox" checked={form.transportBus} onChange={e => set({ transportBus: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
                       <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Bus scolaire</span>
                     </label>
+                    {/* Garderie : maternelle uniquement (crèche, PS, MS, GS) */}
+                    {isMaternelle && (
+                      <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1 min-w-[45%]">
+                        <input type="checkbox" checked={form.garderie} onChange={e => set({ garderie: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Garderie</span>
+                      </label>
+                    )}
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Besoins spécifiques</label>
@@ -680,6 +757,10 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                         <input type="tel" value={form.parent1TelDomicile} onChange={e => set({ parent1TelDomicile: e.target.value })} className={inp} placeholder="+221 33 xxx xxxx" /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. travail</label>
                         <input type="tel" value={form.parent1TelTravail} onChange={e => set({ parent1TelTravail: e.target.value })} className={inp} /></div>
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Profession</label>
+                        <input type="text" value={form.parent1Profession} onChange={e => set({ parent1Profession: e.target.value })} className={inp} placeholder="Enseignante, commerçant…" /></div>
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom de l'entreprise</label>
+                        <input type="text" value={form.parent1Entreprise} onChange={e => set({ parent1Entreprise: e.target.value })} className={inp} placeholder="Employeur / société" /></div>
                       <div className="col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Adresse</label>
                         <input type="text" value={form.parent1Adresse} onChange={e => set({ parent1Adresse: e.target.value })} className={inp} placeholder="Rue, quartier, ville…" /></div>
                     </div>
@@ -701,6 +782,25 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                         </select></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. portable</label>
                         <input type="tel" value={form.parent2Tel} onChange={e => set({ parent2Tel: e.target.value })} className={inp} /></div>
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Profession</label>
+                        <input type="text" value={form.parent2Profession} onChange={e => set({ parent2Profession: e.target.value })} className={inp} /></div>
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom de l'entreprise</label>
+                        <input type="text" value={form.parent2Entreprise} onChange={e => set({ parent2Entreprise: e.target.value })} className={inp} /></div>
+                    </div>
+                  </div>
+
+                  {/* Personne autorisée à venir chercher l'enfant */}
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <UserCheck size={13} className="text-emerald-600" /> Personne autorisée à venir chercher l'enfant
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom complet</label>
+                        <input type="text" value={form.recupNom} onChange={e => set({ recupNom: e.target.value })} className={inp} placeholder="Prénom et nom" /></div>
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Téléphone</label>
+                        <input type="tel" value={form.recupTel} onChange={e => set({ recupTel: e.target.value })} className={inp} placeholder="+221 77 xxx xxxx" /></div>
+                      <div className="col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Lien avec l'enfant</label>
+                        <input type="text" value={form.recupLien} onChange={e => set({ recupLien: e.target.value })} className={inp} placeholder="Grand-frère, nounou, chauffeur…" /></div>
                     </div>
                   </div>
 
@@ -729,6 +829,12 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                   </p>
 
                   <div className="bg-slate-50 rounded-2xl p-5 space-y-3 text-sm">
+                    {form.photoUrl && (
+                      <div className="flex justify-center pb-1">
+                        <img src={form.photoUrl} alt="Photo de l'enfant"
+                          className="w-16 h-16 rounded-2xl object-cover border-2 border-indigo-100 shadow-sm" />
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-slate-400 font-bold">Enfant</span>
                       <span className="font-black text-slate-900">{form.prenomEnfant} {form.nomEnfant}</span>
@@ -749,9 +855,10 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                       <span className="text-slate-400 font-bold">Niveau</span>
                       <span className="font-bold text-indigo-700">{niveauLabel(form.niveau)}</span>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       {form.cantine && <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-xl text-[9px] font-black border border-emerald-200">Cantine</span>}
                       {form.transportBus && <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-xl text-[9px] font-black border border-amber-200">Bus</span>}
+                      {isMaternelle && form.garderie && <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-xl text-[9px] font-black border border-indigo-200">Garderie</span>}
                     </div>
                     <div className="border-t border-slate-100 pt-3 flex justify-between">
                       <span className="text-slate-400 font-bold">Parent</span>

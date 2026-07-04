@@ -421,7 +421,7 @@ export class ParentController {
           tenantId,
           notes: { [Op.like]: `%[parent_user:${id}]%` },
         },
-        attributes: ['id', 'nom', 'prenom', 'niveau', 'sexe', 'statut', 'dateNaissance', 'cantine', 'transportBus', 'notes', 'createdAt', 'updatedAt'],
+        attributes: ['id', 'nom', 'prenom', 'niveau', 'sexe', 'statut', 'dateNaissance', 'cantine', 'transportBus', 'garderie', 'photoUrl', 'notes', 'createdAt', 'updatedAt'],
         order: [['created_at', 'DESC']],
       });
       res.json(dossiers);
@@ -485,8 +485,9 @@ export class ParentController {
       const { id } = req.params;
       const {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
-        regimeFinancier, remisePct, cantine, transportBus, besoinSpecifique,
-        ficheSanitaire, parent1, parent2, contactUrgence, notes,
+        regimeFinancier, remisePct, cantine, transportBus, garderie, besoinSpecifique,
+        ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
+        photoUrl, notes,
       } = req.body;
 
       const eleve = await Eleve.findOne({ where: { id, tenantId } });
@@ -512,11 +513,14 @@ export class ParentController {
         remisePct:        remisePct        ?? eleve.remisePct,
         cantine:          !!cantine,
         transportBus:     !!transportBus,
+        garderie:         !!garderie,
         besoinSpecifique: besoinSpecifique || eleve.besoinSpecifique,
         ficheSanitaire:   ficheSanitaire   || eleve.ficheSanitaire,
         parent1:          parent1          || eleve.parent1,
         parent2:          parent2          || eleve.parent2,
         contactUrgence:   contactUrgence   || eleve.contactUrgence,
+        personneAutorisee: personneAutorisee || eleve.personneAutorisee,
+        photoUrl:         photoUrl         || eleve.photoUrl,
         statut:           'EN_ATTENTE',
         notes:            nouvellesNotes,
       });
@@ -538,9 +542,9 @@ export class ParentController {
       const { tenantId } = req.user;
       const {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
-        regimeFinancier, remisePct, cantine, transportBus, besoinSpecifique,
-        ficheSanitaire, parent1, parent2, contactUrgence,
-        anneeScolaire, notes,
+        regimeFinancier, remisePct, cantine, transportBus, garderie, besoinSpecifique,
+        ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
+        photoUrl, anneeScolaire, notes,
       } = req.body;
 
       if (!nom || !prenom) {
@@ -563,11 +567,14 @@ export class ParentController {
         remisePct:        remisePct       || 0,
         cantine:          !!cantine,
         transportBus:     !!transportBus,
+        garderie:         !!garderie,
         besoinSpecifique: besoinSpecifique || null,
         ficheSanitaire:   ficheSanitaire  || null,
         parent1:          parent1         || null,
         parent2:          parent2         || null,
         contactUrgence:   contactUrgence  || null,
+        personneAutorisee: personneAutorisee || null,
+        photoUrl:         photoUrl        || null,
         anneeScolaire:    anneeResolue,
         statut: 'EN_ATTENTE',
         notes: `${notes || "Inscription soumise via le portail parent."} [parent_user:${req.user.id}]`,

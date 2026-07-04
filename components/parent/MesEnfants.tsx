@@ -177,7 +177,7 @@ const EleveDetailModal: React.FC<{ eleve: Eleve; grad: string; onClose: () => vo
             <Row label="Régime financier" value={REGIME_LABELS[eleve.regimeFinancier || ''] || eleve.regimeFinancier} />
             {(eleve.remisePct ?? 0) > 0 && <Row label="Remise" value={`${eleve.remisePct} %`} />}
             {eleve.besoinSpecifique && <Row label="Besoins spécifiques" value={eleve.besoinSpecifique} />}
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-2 mt-2 flex-wrap">
               {eleve.cantine && (
                 <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold">
                   <Utensils className="w-3.5 h-3.5" /> Cantine incluse
@@ -186,6 +186,11 @@ const EleveDetailModal: React.FC<{ eleve: Eleve; grad: string; onClose: () => vo
               {eleve.transportBus && (
                 <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-xl text-xs font-bold">
                   <Bus className="w-3.5 h-3.5" /> Transport scolaire
+                </span>
+              )}
+              {(eleve as any).garderie && (
+                <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold">
+                  <Baby className="w-3.5 h-3.5" /> Garderie
                 </span>
               )}
             </div>

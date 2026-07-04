@@ -7,8 +7,9 @@ import {
   ArrowRight, ChevronLeft, FileText, FolderOpen,
   ClipboardCheck, UserPlus, ClipboardList, Banknote,
   Repeat, Calendar, AlertTriangle, Lock, Globe, Building2,
-  Loader2, Copy,
+  Loader2, Copy, Camera,
 } from 'lucide-react';
+import { compressImageToDataUrl } from '../services/photoUtils';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
@@ -90,6 +91,8 @@ const emptyForm = (annee = ''): Partial<Eleve> => ({
   remisePct: 0,
   cantine: false,
   transportBus: false,
+  garderie: false,
+  photoUrl: '',
   besoinSpecifique: '',
   statut: 'INSCRIT',
   dateAdmission: new Date().toISOString().slice(0, 10),
@@ -98,7 +101,11 @@ const emptyForm = (annee = ''): Partial<Eleve> => ({
   parent1: { nom: '', prenom: '', telephone: '', whatsapp: '', email: '', lien: 'MERE' },
   parent2: undefined,
   contactUrgence: undefined,
+  personneAutorisee: undefined,
 });
+
+// Niveaux maternelle : la garderie n'est proposée que pour eux
+const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
 
 // Dossier soumis via le portail parent (tag [parent_user:] dans notes)
 const isFromParent = (d: any) => typeof d.notes === 'string' && d.notes.includes('[parent_user:');
@@ -485,12 +492,16 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       parent1TelDomicile: p1.telDomicile || '',
       parent1TelTravail:  p1.telTravail || '',
       parent1Adresse:     p1.adresse || '',
+      parent1Profession:  p1.profession || '',
+      parent1Entreprise:  p1.entreprise || '',
       parent2Nom:     p2.nom || '',
       parent2Prenom:  p2.prenom || '',
       parent2Lien:    p2.lien || 'PERE',
       parent2Tel:     p2.telephone || p2.tel || '',
       parent2TelDomicile: p2.telDomicile || '',
       parent2TelTravail:  p2.telTravail || '',
+      parent2Profession:  p2.profession || '',
+      parent2Entreprise:  p2.entreprise || '',
       urgenceNom:  urgence.nom || '',
       urgenceTel:  urgence.telephone || urgence.tel || '',
       urgenceLien: urgence.lien || '',
@@ -542,6 +553,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       remisePct: d.remisePct || 0,
       cantine: !!d.cantine,
       transportBus: !!(d.transportBus || d.transport_bus),
+      garderie: !!d.garderie,
+      photoUrl: d.photoUrl || '',
       besoinSpecifique: d.besoinSpecifique || '',
       statut: 'INSCRIT',
       dateAdmission: new Date().toISOString().slice(0, 10),
@@ -557,6 +570,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         telDomicile: d.parent1TelDomicile || '',
         telTravail: d.parent1TelTravail || '',
         adresse: d.parent1Adresse || '',
+        profession: d.parent1Profession || '',
+        entreprise: d.parent1Entreprise || '',
       },
       parent2: (d.parent2Nom || d.parent2Prenom) ? {
         nom: d.parent2Nom || '',
@@ -566,6 +581,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         lien: (d.parent2Lien as any) || 'PERE',
         telDomicile: d.parent2TelDomicile || '',
         telTravail: d.parent2TelTravail || '',
+        profession: d.parent2Profession || '',
+        entreprise: d.parent2Entreprise || '',
       } : undefined,
       contactUrgence: d.urgenceNom ? {
         nom: d.urgenceNom,
@@ -573,6 +590,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         telephone: d.urgenceTel || '',
         lien: d.urgenceLien || '',
       } : undefined,
+      personneAutorisee: d.personneAutorisee || undefined,
       // ── Fiche sanitaire ───────────────────────────────────────────────────
       sexe: (d.sexe || '') as any,
       vaccDiphterie:   !!d.vaccDiphterie,   vaccDiphterieDate:   d.vaccDiphterieDate || '',
@@ -1143,15 +1161,25 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         className="w-5 h-5 rounded-lg accent-emerald-600 cursor-pointer"
                       />
                     )}
-                    <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-[1.2rem] flex items-center justify-center font-black text-lg shadow-inner">
-                      {eleve.prenom[0]}{eleve.nom[0]}
-                    </div>
+                    {eleve.photoUrl ? (
+                      <img src={eleve.photoUrl} alt={`${eleve.prenom} ${eleve.nom}`}
+                        className="w-14 h-14 rounded-[1.2rem] object-cover border border-indigo-100 shadow-inner" />
+                    ) : (
+                      <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-[1.2rem] flex items-center justify-center font-black text-lg shadow-inner">
+                        {eleve.prenom[0]}{eleve.nom[0]}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
-                    <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-[1.2rem] flex items-center justify-center font-black text-lg shadow-inner">
-                      {eleve.prenom[0]}{eleve.nom[0]}
-                    </div>
+                    {eleve.photoUrl ? (
+                      <img src={eleve.photoUrl} alt={`${eleve.prenom} ${eleve.nom}`}
+                        className="w-14 h-14 rounded-[1.2rem] object-cover border border-indigo-100 shadow-inner" />
+                    ) : (
+                      <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-[1.2rem] flex items-center justify-center font-black text-lg shadow-inner">
+                        {eleve.prenom[0]}{eleve.nom[0]}
+                      </div>
+                    )}
                     <div className="flex gap-2 flex-wrap justify-end">
                       <button onClick={() => openView(eleve)} title="Voir la fiche"
                         className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all">
@@ -1277,6 +1305,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   )}
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {eleve.photoUrl ? (
+                        <img src={eleve.photoUrl} alt={`${eleve.prenom} ${eleve.nom}`}
+                          className="w-8 h-8 rounded-lg object-cover border border-indigo-100 shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-[10px] shrink-0">
+                          {eleve.prenom[0]}{eleve.nom[0]}
+                        </div>
+                      )}
                       <span className="font-black text-slate-900">{eleve.prenom} {eleve.nom}</span>
                       {dejaInscrit && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[8px] font-black border border-emerald-200">✓ {anneeActiveToday}</span>}
                       {parentsByEleveId[eleve.id]?.length > 0 && (
@@ -1399,11 +1435,16 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                             }`}
                             onClick={() => selectDossierForInscription(d)}
                           >
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
-                              fromParent ? 'bg-purple-100 text-purple-700' : 'bg-indigo-100 text-indigo-600'
-                            }`}>
-                              {nomEnfant.charAt(0).toUpperCase()}
-                            </div>
+                            {d.photoUrl ? (
+                              <img src={d.photoUrl} alt={nomEnfant}
+                                className="w-10 h-10 rounded-xl object-cover border border-indigo-100 shrink-0" />
+                            ) : (
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
+                                fromParent ? 'bg-purple-100 text-purple-700' : 'bg-indigo-100 text-indigo-600'
+                              }`}>
+                                {nomEnfant.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-black text-slate-900 text-sm uppercase truncate">{nomEnfant}</p>
@@ -1468,6 +1509,51 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                       <GraduationCap size={14} /> Informations de l'élève
                     </h4>
+
+                    {/* Photo de l'élève */}
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="relative flex-shrink-0">
+                        {formData.photoUrl ? (
+                          <>
+                            <img src={formData.photoUrl} alt="Photo de l'élève"
+                              className="w-20 h-20 rounded-2xl object-cover border-2 border-indigo-200 shadow-sm" />
+                            <button type="button" onClick={() => setFormData({ ...formData, photoUrl: '' })}
+                              className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:bg-rose-600 transition">
+                              <X size={12} />
+                            </button>
+                          </>
+                        ) : (
+                          <label className="w-20 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition">
+                            <Camera className="w-6 h-6 text-slate-400 mb-0.5" />
+                            <span className="text-[8px] font-black text-slate-400 uppercase">Photo</span>
+                            <input type="file" accept="image/*" className="hidden"
+                              onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try { setFormData({ ...formData, photoUrl: await compressImageToDataUrl(file) }); }
+                                catch { showToast('Impossible de lire cette image.', 'error'); }
+                              }} />
+                          </label>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Photo de l'élève</p>
+                        <p className="text-xs text-slate-400 mt-1">Photo d'identité récente — visible sur la fiche et les listes.</p>
+                        {formData.photoUrl && (
+                          <label className="inline-block mt-1.5 text-[10px] font-black text-indigo-600 uppercase tracking-widest cursor-pointer hover:text-indigo-800">
+                            Changer
+                            <input type="file" accept="image/*" className="hidden"
+                              onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try { setFormData({ ...formData, photoUrl: await compressImageToDataUrl(file) }); }
+                                catch { showToast('Impossible de lire cette image.', 'error'); }
+                              }} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {([
                         { label: 'Nom *',               key: 'nom',           type: 'text' },
@@ -1605,7 +1691,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                       )}
 
                       <div className="space-y-3 sm:col-span-2">
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 flex-wrap">
                           <label className="flex items-center gap-3 cursor-pointer">
                             <input type="checkbox" checked={!!formData.cantine} onChange={e => setFormData({ ...formData, cantine: e.target.checked })}
                               className="w-5 h-5 rounded accent-indigo-600" />
@@ -1616,6 +1702,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                               className="w-5 h-5 rounded accent-indigo-600" />
                             <span className="text-sm font-black text-slate-700">Transport bus</span>
                           </label>
+                          {/* Garderie : maternelle uniquement (crèche, PS, MS, GS) */}
+                          {NIVEAUX_MATERNELLE.includes(formData.niveau || '') && (
+                            <label className="flex items-center gap-3 cursor-pointer">
+                              <input type="checkbox" checked={!!formData.garderie} onChange={e => setFormData({ ...formData, garderie: e.target.checked })}
+                                className="w-5 h-5 rounded accent-indigo-600" />
+                              <span className="text-sm font-black text-slate-700">Garderie</span>
+                            </label>
+                          )}
                         </div>
                       </div>
 
@@ -1641,6 +1735,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         { label: 'Téléphone', key: 'telephone' },
                         { label: 'WhatsApp',  key: 'whatsapp' },
                         { label: 'Email',     key: 'email' },
+                        { label: 'Profession', key: 'profession' },
+                        { label: "Nom de l'entreprise", key: 'entreprise' },
                       ] as const).map(field => (
                         <div key={field.key} className="space-y-2">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">{field.label}</label>
@@ -1658,6 +1754,36 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                           <option value="PERE">Père</option>
                           <option value="TUTEUR">Tuteur légal</option>
                         </select>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Personne autorisée à venir chercher l'enfant */}
+                  <section>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <UserCheck size={14} className="text-emerald-600" /> Personne autorisée à venir chercher l'enfant
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Nom complet</label>
+                        <input type="text" value={formData.personneAutorisee?.nom || ''}
+                          onChange={e => setFormData({ ...formData, personneAutorisee: { ...(formData.personneAutorisee as any), nom: e.target.value } })}
+                          placeholder="Prénom et nom"
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Téléphone</label>
+                        <input type="tel" value={formData.personneAutorisee?.telephone || ''}
+                          onChange={e => setFormData({ ...formData, personneAutorisee: { ...(formData.personneAutorisee as any), telephone: e.target.value } })}
+                          placeholder="+221 77 xxx xxxx"
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                      </div>
+                      <div className="sm:col-span-2 space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Lien avec l'enfant</label>
+                        <input type="text" value={formData.personneAutorisee?.lien || ''}
+                          onChange={e => setFormData({ ...formData, personneAutorisee: { ...(formData.personneAutorisee as any), lien: e.target.value } })}
+                          placeholder="Grand-frère, nounou, chauffeur…"
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                       </div>
                     </div>
                   </section>
@@ -1889,9 +2015,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
             </div>
             <div className="p-8 space-y-6">
               <div className="flex items-center gap-6">
-                <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-inner">
-                  {selectedEleve.prenom[0]}{selectedEleve.nom[0]}
-                </div>
+                {selectedEleve.photoUrl ? (
+                  <img src={selectedEleve.photoUrl} alt={`${selectedEleve.prenom} ${selectedEleve.nom}`}
+                    className="w-20 h-20 rounded-[1.5rem] object-cover border-2 border-indigo-100 shadow-inner" />
+                ) : (
+                  <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-inner">
+                    {selectedEleve.prenom[0]}{selectedEleve.nom[0]}
+                  </div>
+                )}
                 <div>
                   <h2 className="text-2xl font-black text-slate-900 tracking-tighter">{selectedEleve.prenom} {selectedEleve.nom}</h2>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">{selectedEleve.matricule}</p>
@@ -1910,6 +2041,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                 <InfoRow label="Année scolaire" value={selectedEleve.anneeScolaire} />
                 <InfoRow label="Cantine" value={selectedEleve.cantine ? 'Oui' : 'Non'} />
                 <InfoRow label="Transport bus" value={selectedEleve.transportBus ? 'Oui' : 'Non'} />
+                {NIVEAUX_MATERNELLE.includes(selectedEleve.niveau) && <InfoRow label="Garderie" value={selectedEleve.garderie ? 'Oui' : 'Non'} />}
+                {selectedEleve.personneAutorisee?.nom && (
+                  <InfoRow label="Autorisé à récupérer l'enfant"
+                    value={`${selectedEleve.personneAutorisee.nom}${selectedEleve.personneAutorisee.lien ? ` (${selectedEleve.personneAutorisee.lien})` : ''}${selectedEleve.personneAutorisee.telephone ? ` — ${selectedEleve.personneAutorisee.telephone}` : ''}`}
+                    className="col-span-2" />
+                )}
                 {selectedEleve.remisePct > 0 && <InfoRow label="Remise cas social" value={`${selectedEleve.remisePct}%`} />}
                 {selectedEleve.besoinSpecifique && <InfoRow label="Besoins spécifiques" value={selectedEleve.besoinSpecifique} className="col-span-2" />}
               </div>

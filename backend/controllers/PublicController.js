@@ -58,9 +58,16 @@ export class PublicController {
 
       const {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
-        cantine, transportBus, besoinSpecifique,
-        ficheSanitaire, parent1, parent2, contactUrgence, notes,
+        cantine, transportBus, garderie, besoinSpecifique,
+        ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
+        photoUrl, notes,
       } = req.body;
+
+      // Route publique : la photo est une data-URL compressée côté client — on
+      // plafonne à ~500 Ko pour éviter les abus.
+      if (photoUrl && (typeof photoUrl !== 'string' || photoUrl.length > 500_000)) {
+        return res.status(400).json({ error: 'Photo trop volumineuse. Réessayez avec une image plus petite.' });
+      }
 
       if (!nom?.trim() || !prenom?.trim()) {
         return res.status(400).json({ error: 'Le nom et le prénom de l\'enfant sont requis.' });
@@ -86,11 +93,14 @@ export class PublicController {
         niveau:          niveau         || 'PS',
         cantine:         !!cantine,
         transportBus:    !!transportBus,
+        garderie:        !!garderie,
         besoinSpecifique: besoinSpecifique || null,
         ficheSanitaire:  ficheSanitaire || null,
         parent1:         parent1        || null,
         parent2:         parent2        || null,
         contactUrgence:  contactUrgence || null,
+        personneAutorisee: personneAutorisee || null,
+        photoUrl:        photoUrl       || null,
         anneeScolaire:   anneeResolue,
         statut:          'EN_ATTENTE',
         notes:           notesDossier,

@@ -11,6 +11,10 @@ import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
+import { compressImageToDataUrl } from '../services/photoUtils';
+
+// Niveaux maternelle : la garderie n'est proposée que pour eux
+const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -88,6 +92,8 @@ function normalizeEleve(e: any): any {
     parent1TelDomicile: p1.telDomicile || '',
     parent1TelTravail:  p1.telTravail || '',
     parent1Adresse:     p1.adresse || '',
+    parent1Profession:  p1.profession || '',
+    parent1Entreprise:  p1.entreprise || '',
     // Flat parent2
     parent2Nom:     p2.nom || '',
     parent2Prenom:  p2.prenom || '',
@@ -95,10 +101,16 @@ function normalizeEleve(e: any): any {
     parent2Tel:     p2.telephone || p2.tel || '',
     parent2TelDomicile: p2.telDomicile || '',
     parent2TelTravail:  p2.telTravail || '',
+    parent2Profession:  p2.profession || '',
+    parent2Entreprise:  p2.entreprise || '',
     // Contact urgence
     urgenceNom:  urgence.nom || '',
     urgenceTel:  urgence.telephone || urgence.tel || '',
     urgenceLien: urgence.lien || '',
+    // Personne autorisée à récupérer l'enfant
+    recupNom:  (e.personneAutorisee || {}).nom || '',
+    recupTel:  (e.personneAutorisee || {}).telephone || '',
+    recupLien: (e.personneAutorisee || {}).lien || '',
   };
 }
 
@@ -132,6 +144,8 @@ const emptyDossier = () => ({
   remisePct: 0,
   cantine: false,
   transportBus: false,
+  garderie: false,
+  photoUrl: '',
   besoinSpecifique: '',
   parent1Nom: '',
   parent1Prenom: '',
@@ -142,6 +156,8 @@ const emptyDossier = () => ({
   parent1TelDomicile: '',
   parent1TelTravail: '',
   parent1Adresse: '',
+  parent1Profession: '',
+  parent1Entreprise: '',
   // Parent 2 (conjoint)
   parent2Nom: '',
   parent2Prenom: '',
@@ -149,9 +165,15 @@ const emptyDossier = () => ({
   parent2Tel: '',
   parent2TelDomicile: '',
   parent2TelTravail: '',
+  parent2Profession: '',
+  parent2Entreprise: '',
   urgenceNom: '',
   urgenceTel: '',
   urgenceLien: '',
+  // Personne autorisée à venir chercher l'enfant
+  recupNom: '',
+  recupTel: '',
+  recupLien: '',
   statut: 'EN_ATTENTE' as StatutAdmission,
   dateDepot: new Date().toISOString().split('T')[0],
   notes: '',
@@ -329,6 +351,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     remisePct:      f.remisePct,
     cantine:        f.cantine,
     transportBus:   f.transportBus,
+    garderie:       NIVEAUX_MATERNELLE.includes(f.niveau) && f.garderie,
+    photoUrl:       f.photoUrl || null,
     besoinSpecifique: f.besoinSpecifique,
     dateAdmission:  nd(f.dateDepot),
     anneeScolaire:  ANNEE_COURANTE,
@@ -345,6 +369,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       telDomicile: f.parent1TelDomicile,
       telTravail:  f.parent1TelTravail,
       adresse:     f.parent1Adresse,
+      profession:  f.parent1Profession,
+      entreprise:  f.parent1Entreprise,
     },
     ...(f.parent2Nom || f.parent2Prenom ? {
       parent2: {
@@ -354,6 +380,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
         telephone:  f.parent2Tel,
         telDomicile: f.parent2TelDomicile,
         telTravail:  f.parent2TelTravail,
+        profession:  f.parent2Profession,
+        entreprise:  f.parent2Entreprise,
       },
     } : {}),
     contactUrgence: f.urgenceNom ? {
@@ -362,6 +390,11 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       telephone: f.urgenceTel,
       lien:      f.urgenceLien || undefined,
     } : undefined,
+    personneAutorisee: f.recupNom ? {
+      nom:       f.recupNom,
+      telephone: f.recupTel,
+      lien:      f.recupLien || undefined,
+    } : null,
     ficheSanitaire: {
       vaccDiphterie: f.vaccDiphterie,           vaccDiphterieDate: nd(f.vaccDiphterieDate),
       vaccTetanos:   f.vaccTetanos,             vaccTetanosDate:   nd(f.vaccTetanosDate),
@@ -549,6 +582,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       remisePct:       d.remisePct || 0,
       cantine:         !!d.cantine,
       transportBus:    !!d.transportBus,
+      garderie:        !!d.garderie,
+      photoUrl:        d.photoUrl || '',
       besoinSpecifique: d.besoinSpecifique || '',
       parent1Nom:      d.parent1Nom || '',
       parent1Prenom:   d.parent1Prenom || '',
@@ -559,15 +594,22 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       urgenceNom:      d.urgenceNom || '',
       urgenceTel:      d.urgenceTel || '',
       urgenceLien:     d.urgenceLien || '',
+      recupNom:        d.recupNom || '',
+      recupTel:        d.recupTel || '',
+      recupLien:       d.recupLien || '',
       parent1TelDomicile: d.parent1TelDomicile || '',
       parent1TelTravail:  d.parent1TelTravail || '',
       parent1Adresse:     d.parent1Adresse || '',
+      parent1Profession:  d.parent1Profession || '',
+      parent1Entreprise:  d.parent1Entreprise || '',
       parent2Nom:      d.parent2Nom || '',
       parent2Prenom:   d.parent2Prenom || '',
       parent2Lien:     (d.parent2Lien || 'PERE') as 'PERE' | 'MERE' | 'TUTEUR',
       parent2Tel:      d.parent2Tel || '',
       parent2TelDomicile: d.parent2TelDomicile || '',
       parent2TelTravail:  d.parent2TelTravail || '',
+      parent2Profession:  d.parent2Profession || '',
+      parent2Entreprise:  d.parent2Entreprise || '',
       statut:          getStatut(d),
       dateDepot:       d.dateAdmission || d.dateDepot || (d.createdAt || d.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
       notes:           d.notes || '',
@@ -818,11 +860,16 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 <tr key={d.id} className={`group hover:bg-slate-50/60 transition-all ${fromParent ? 'border-l-2 border-l-purple-400' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
-                        fromParent ? 'bg-purple-100 text-purple-700' : 'bg-indigo-50 text-indigo-600'
-                      }`}>
-                        {nomEnfant.charAt(0).toUpperCase()}
-                      </div>
+                      {d.photoUrl ? (
+                        <img src={d.photoUrl} alt={nomEnfant}
+                          className="w-9 h-9 rounded-xl object-cover border border-indigo-100 shrink-0" />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                          fromParent ? 'bg-purple-100 text-purple-700' : 'bg-indigo-50 text-indigo-600'
+                        }`}>
+                          {nomEnfant.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-black text-slate-900 text-sm uppercase">{nomEnfant}</p>
@@ -868,7 +915,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     <div className="flex items-center justify-center gap-1">
                       {avecCantine && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[8px] font-black border border-emerald-200">Cantine</span>}
                       {avecBus && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[8px] font-black border border-amber-200">Bus</span>}
-                      {!avecCantine && !avecBus && <span className="text-slate-300 text-[9px]">—</span>}
+                      {!!d.garderie && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[8px] font-black border border-indigo-200">Garderie</span>}
+                      {!avecCantine && !avecBus && !d.garderie && <span className="text-slate-300 text-[9px]">—</span>}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -968,6 +1016,51 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Baby size={13} className="text-indigo-500"/> Identité de l'enfant
                   </p>
+
+                  {/* Photo de l'enfant */}
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-shrink-0">
+                      {form.photoUrl ? (
+                        <>
+                          <img src={form.photoUrl} alt="Photo de l'enfant"
+                            className="w-20 h-20 rounded-2xl object-cover border-2 border-indigo-200 shadow-sm" />
+                          <button type="button" onClick={() => setForm({ ...form, photoUrl: '' })}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md hover:bg-rose-600 transition">
+                            <X size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <label className="w-20 h-20 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition">
+                          <Camera className="w-6 h-6 text-slate-400 mb-0.5" />
+                          <span className="text-[8px] font-black text-slate-400 uppercase">Photo</span>
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try { setForm({ ...form, photoUrl: await compressImageToDataUrl(file) }); }
+                              catch { showToast('Impossible de lire cette image.', 'error'); }
+                            }} />
+                        </label>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Photo de l'enfant</p>
+                      <p className="text-xs text-slate-400 mt-1">Photo d'identité récente — visible sur le dossier et la fiche de l'élève.</p>
+                      {form.photoUrl && (
+                        <label className="inline-block mt-1.5 text-[10px] font-black text-indigo-600 uppercase tracking-widest cursor-pointer hover:text-indigo-800">
+                          Changer
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try { setForm({ ...form, photoUrl: await compressImageToDataUrl(file) }); }
+                              catch { showToast('Impossible de lire cette image.', 'error'); }
+                            }} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Prénom <span className="text-rose-500">*</span></label>
@@ -1082,15 +1175,22 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-3 pt-1">
-                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1">
+                  <div className="flex gap-3 pt-1 flex-wrap">
+                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1 min-w-[45%]">
                       <input type="checkbox" checked={form.cantine} onChange={e => setForm({...form, cantine: e.target.checked})} className="w-4 h-4 accent-indigo-600" />
                       <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Cantine</span>
                     </label>
-                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1">
+                    <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1 min-w-[45%]">
                       <input type="checkbox" checked={form.transportBus} onChange={e => setForm({...form, transportBus: e.target.checked})} className="w-4 h-4 accent-indigo-600" />
                       <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Bus scolaire</span>
                     </label>
+                    {/* Garderie : maternelle uniquement (crèche, PS, MS, GS) */}
+                    {NIVEAUX_MATERNELLE.includes(form.niveau) && (
+                      <label className="flex items-center gap-3 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:border-indigo-400 transition-all flex-1 min-w-[45%]">
+                        <input type="checkbox" checked={form.garderie} onChange={e => setForm({...form, garderie: e.target.checked})} className="w-4 h-4 accent-indigo-600" />
+                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Garderie</span>
+                      </label>
+                    )}
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Besoins spécifiques</label>
@@ -1361,6 +1461,16 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <input type="tel" value={form.parent1TelTravail} onChange={e => setForm({...form, parent1TelTravail: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 33 xxx xxxx" />
                     </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Profession</label>
+                      <input type="text" value={form.parent1Profession} onChange={e => setForm({...form, parent1Profession: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Enseignante, commerçant…" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom de l'entreprise</label>
+                      <input type="text" value={form.parent1Entreprise} onChange={e => setForm({...form, parent1Entreprise: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Employeur / société" />
+                    </div>
                     <div className="col-span-2">
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Adresse</label>
                       <input type="text" value={form.parent1Adresse} onChange={e => setForm({...form, parent1Adresse: e.target.value})}
@@ -1407,6 +1517,40 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                         <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. travail</label>
                         <input type="tel" value={form.parent2TelTravail} onChange={e => setForm({...form, parent2TelTravail: e.target.value})}
                           className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 33 xxx xxxx" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Profession</label>
+                        <input type="text" value={form.parent2Profession} onChange={e => setForm({...form, parent2Profession: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom de l'entreprise</label>
+                        <input type="text" value={form.parent2Entreprise} onChange={e => setForm({...form, parent2Entreprise: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personne autorisée à venir chercher l'enfant */}
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                      <UserCheck size={13} className="text-emerald-600"/> Personne autorisée à venir chercher l'enfant
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom complet</label>
+                        <input type="text" value={form.recupNom} onChange={e => setForm({...form, recupNom: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Prénom et nom" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Téléphone</label>
+                        <input type="tel" value={form.recupTel} onChange={e => setForm({...form, recupTel: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="+221 77 xxx xxxx" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Lien avec l'enfant</label>
+                        <input type="text" value={form.recupLien} onChange={e => setForm({...form, recupLien: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Grand-frère, nounou, chauffeur…" />
                       </div>
                     </div>
                   </div>
@@ -1472,6 +1616,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     <div className="flex gap-2">
                       {form.cantine && <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-xl text-[9px] font-black border border-emerald-200">Cantine</span>}
                       {form.transportBus && <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-xl text-[9px] font-black border border-amber-200">Bus</span>}
+                      {NIVEAUX_MATERNELLE.includes(form.niveau) && form.garderie && <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-xl text-[9px] font-black border border-indigo-200">Garderie</span>}
                     </div>
                     {form.besoinSpecifique && (
                       <div className="flex justify-between">
@@ -1678,6 +1823,12 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                     <Baby size={12} className="text-indigo-500"/> Identité de l'enfant
                   </h4>
+                  {selected.photoUrl && (
+                    <div className="mb-3 flex justify-center">
+                      <img src={selected.photoUrl} alt={nomEnfant}
+                        className="w-24 h-24 rounded-3xl object-cover border-2 border-indigo-100 shadow-md" />
+                    </div>
+                  )}
                   <div className="bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <DetailRow label="Nom & Prénom" value={nomEnfant} />
                     <DetailRow label="Sexe" value={selected.sexe === 'M' ? 'Garçon' : selected.sexe === 'F' ? 'Fille' : null} />
@@ -1711,7 +1862,10 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                         {(selected.transportBus || selected.transport_bus) && (
                           <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-black border border-amber-200">Bus scolaire</span>
                         )}
-                        {!selected.cantine && !selected.transportBus && !selected.transport_bus && (
+                        {selected.garderie && (
+                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px] font-black border border-indigo-200">Garderie</span>
+                        )}
+                        {!selected.cantine && !selected.transportBus && !selected.transport_bus && !selected.garderie && (
                           <span className="text-slate-400 text-[9px] font-bold">Aucune option</span>
                         )}
                       </div>
@@ -1858,6 +2012,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     <DetailRow label="Email"
                       value={selected.email && !selected.email.includes('@letoidesanges.sn') ? selected.email : null} />
                     <DetailRow label="Adresse" value={selected.parent1Adresse} />
+                    <DetailRow label="Profession" value={selected.parent1Profession} />
+                    <DetailRow label="Entreprise" value={selected.parent1Entreprise} />
                   </div>
                   {(selected.parent2Nom || selected.parent2Prenom) && (
                     <div className="mt-3 bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -1867,9 +2023,25 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <DetailRow label="Tél. portable" value={selected.parent2Tel} />
                       <DetailRow label="Tél. domicile" value={selected.parent2TelDomicile} />
                       <DetailRow label="Tél. travail" value={selected.parent2TelTravail} />
+                      <DetailRow label="Profession" value={selected.parent2Profession} />
+                      <DetailRow label="Entreprise" value={selected.parent2Entreprise} />
                     </div>
                   )}
                 </section>
+
+                {/* ── Personne autorisée à venir chercher l'enfant ── */}
+                {(selected.recupNom || selected.recupTel) && (
+                  <section>
+                    <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <UserCheck size={12} className="text-emerald-600"/> Personne autorisée à venir chercher l'enfant
+                    </h4>
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      <DetailRow label="Nom complet" value={selected.recupNom} />
+                      <DetailRow label="Téléphone" value={selected.recupTel} />
+                      <DetailRow label="Lien" value={selected.recupLien} />
+                    </div>
+                  </section>
+                )}
 
                 {/* ── Contact urgence ── */}
                 {(selected.urgenceNom || selected.urgenceTel) && (

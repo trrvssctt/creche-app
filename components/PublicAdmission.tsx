@@ -2,9 +2,13 @@ import React, { useEffect, useState } from 'react';
 import {
   Baby, GraduationCap, Stethoscope, Phone, CheckCircle2,
   ChevronLeft, ArrowRight, Loader2, AlertCircle, Save,
-  Shield, Camera, School,
+  Shield, Camera, School, UserCheck, X,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
+import { compressImageToDataUrl } from '../services/photoUtils';
+
+// Niveaux maternelle : la garderie n'est proposée que pour eux
+const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -33,7 +37,8 @@ const STEPS = [
 const EMPTY = {
   nomEnfant: '', prenomEnfant: '', dateNaissance: '', lieuNaissance: '',
   sexe: '' as '' | 'M' | 'F',
-  niveau: 'PS', cantine: false, transportBus: false, besoinSpecifique: '',
+  photoUrl: '',
+  niveau: 'PS', cantine: false, transportBus: false, garderie: false, besoinSpecifique: '',
   vaccDiphterie: false, vaccDiphterieDate: '',
   vaccPolio: false,     vaccPolioDate: '',
   vaccCoqueluche: false,vaccCoquelucheDate: '',
@@ -57,9 +62,12 @@ const EMPTY = {
   parent1Nom: '', parent1Prenom: '', parent1Tel: '', parent1Whatsapp: '',
   parent1Email: '', parent1Lien: 'MERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent1TelDomicile: '', parent1TelTravail: '', parent1Adresse: '',
+  parent1Profession: '', parent1Entreprise: '',
   parent2Nom: '', parent2Prenom: '', parent2Lien: 'PERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent2Tel: '', parent2TelDomicile: '', parent2TelTravail: '',
+  parent2Profession: '', parent2Entreprise: '',
   urgenceNom: '', urgenceTel: '', urgenceLien: '',
+  recupNom: '', recupTel: '', recupLien: '',
   notes: '',
 };
 
@@ -91,6 +99,18 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
 
   const set = (patch: Partial<FormType>) => setForm(f => ({ ...f, ...patch }));
   const niveauLabel = (v: string) => NIVEAUX.find(n => n.value === v)?.label ?? v;
+  const isMaternelle = NIVEAUX_MATERNELLE.includes(form.niveau);
+
+  const handlePhoto = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      set({ photoUrl: dataUrl });
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Impossible de lire cette image.');
+    }
+  };
 
   useEffect(() => {
     apiClient.get('/public/ecole').then((d: any) => {
@@ -119,7 +139,9 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
         nom: form.nomEnfant.trim(), prenom: form.prenomEnfant.trim(),
         dateNaissance: form.dateNaissance || null, lieuNaissance: form.lieuNaissance || null,
         sexe: form.sexe || null, niveau: form.niveau,
+        photoUrl: form.photoUrl || null,
         cantine: form.cantine, transportBus: form.transportBus,
+        garderie: isMaternelle && form.garderie,
         besoinSpecifique: form.besoinSpecifique || null,
         ficheSanitaire: {
           vaccDiphterie: form.vaccDiphterie, vaccDiphterieDate: form.vaccDiphterieDate,
@@ -153,14 +175,19 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
           email: form.parent1Email, lien: form.parent1Lien,
           telDomicile: form.parent1TelDomicile, telTravail: form.parent1TelTravail,
           adresse: form.parent1Adresse,
+          profession: form.parent1Profession, entreprise: form.parent1Entreprise,
         },
         parent2: (form.parent2Nom || form.parent2Tel) ? {
           nom: form.parent2Nom, prenom: form.parent2Prenom,
           telephone: form.parent2Tel, lien: form.parent2Lien,
           telDomicile: form.parent2TelDomicile, telTravail: form.parent2TelTravail,
+          profession: form.parent2Profession, entreprise: form.parent2Entreprise,
         } : null,
         contactUrgence: form.urgenceNom ? {
           nom: form.urgenceNom, telephone: form.urgenceTel, lien: form.urgenceLien,
+        } : null,
+        personneAutorisee: form.recupNom ? {
+          nom: form.recupNom, telephone: form.recupTel, lien: form.recupLien,
         } : null,
         notes: form.notes || null,
       };
@@ -359,6 +386,43 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
             {step === 1 && (
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-4">
+
+                  {/* Photo de l'enfant */}
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-shrink-0">
+                      {form.photoUrl ? (
+                        <>
+                          <img src={form.photoUrl} alt="Photo de l'enfant"
+                            className="w-24 h-24 rounded-3xl object-cover border-2 border-indigo-200 shadow-md" />
+                          <button type="button" onClick={() => set({ photoUrl: '' })}
+                            className="absolute -top-2 -right-2 w-7 h-7 bg-rose-500 text-white rounded-full flex items-center justify-center shadow-md active:scale-90 transition">
+                            <X size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <label className="w-24 h-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer active:bg-slate-100 transition">
+                          <Camera className="w-7 h-7 text-slate-400 mb-1" />
+                          <span className="text-[9px] font-black text-slate-400 uppercase">Photo</span>
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => handlePhoto(e.target.files?.[0])} />
+                        </label>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-black text-slate-700 text-sm">Photo de l'enfant</p>
+                      <p className="text-xs text-slate-400 leading-relaxed mt-1">
+                        Une photo d'identité récente. Elle apparaîtra sur le dossier et la fiche de l'élève.
+                      </p>
+                      {form.photoUrl && (
+                        <label className="inline-block mt-2 text-xs font-bold text-indigo-600 cursor-pointer">
+                          Changer la photo
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => handlePhoto(e.target.files?.[0])} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={lbl}>Prénom <span className="text-rose-500">*</span></label>
@@ -417,6 +481,8 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                       {[
                         { key: 'cantine',     label: 'Cantine scolaire',  desc: 'Repas du midi inclus' },
                         { key: 'transportBus',label: 'Bus scolaire',       desc: 'Transport aller-retour' },
+                        // Garderie : réservée à la maternelle (crèche, PS, MS, GS)
+                        ...(isMaternelle ? [{ key: 'garderie', label: 'Garderie', desc: 'Accueil en dehors des heures de classe' }] : []),
                       ].map(({ key, label, desc }) => {
                         const active = (form as any)[key] as boolean;
                         return (
@@ -668,6 +734,10 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                       <input type="tel" value={form.parent1TelDomicile} onChange={e => set({ parent1TelDomicile: e.target.value })} className={inp} placeholder="+221 33 xxx xxxx" /></div>
                     <div><label className={lbl}>Tél. travail</label>
                       <input type="tel" value={form.parent1TelTravail} onChange={e => set({ parent1TelTravail: e.target.value })} className={inp} /></div>
+                    <div><label className={lbl}>Profession</label>
+                      <input type="text" value={form.parent1Profession} onChange={e => set({ parent1Profession: e.target.value })} className={inp} placeholder="Enseignante, commerçant…" /></div>
+                    <div><label className={lbl}>Nom de l'entreprise</label>
+                      <input type="text" value={form.parent1Entreprise} onChange={e => set({ parent1Entreprise: e.target.value })} className={inp} placeholder="Employeur / société" /></div>
                     <div className="sm:col-span-2"><label className={lbl}>Adresse</label>
                       <input type="text" value={form.parent1Adresse} onChange={e => set({ parent1Adresse: e.target.value })} className={inp} placeholder="Rue, quartier, ville…" autoComplete="street-address" /></div>
                   </div>
@@ -686,6 +756,26 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                       </select></div>
                     <div><label className={lbl}>Téléphone</label>
                       <input type="tel" value={form.parent2Tel} onChange={e => set({ parent2Tel: e.target.value })} className={inp} /></div>
+                    <div><label className={lbl}>Profession</label>
+                      <input type="text" value={form.parent2Profession} onChange={e => set({ parent2Profession: e.target.value })} className={inp} /></div>
+                    <div><label className={lbl}>Nom de l'entreprise</label>
+                      <input type="text" value={form.parent2Entreprise} onChange={e => set({ parent2Entreprise: e.target.value })} className={inp} /></div>
+                  </div>
+                </div>
+
+                {/* Personne autorisée à venir chercher l'enfant */}
+                <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-4">
+                  <p className="font-black text-emerald-700 text-xs uppercase tracking-widest flex items-center gap-2">
+                    <UserCheck size={13} /> Personne autorisée à venir chercher l'enfant
+                  </p>
+                  <p className="text-xs text-slate-400 -mt-2">En dehors des parents, qui peut récupérer l'enfant à la sortie ?</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div><label className={lbl}>Nom complet</label>
+                      <input type="text" value={form.recupNom} onChange={e => set({ recupNom: e.target.value })} className={inp} placeholder="Prénom et nom" /></div>
+                    <div><label className={lbl}>Téléphone</label>
+                      <input type="tel" value={form.recupTel} onChange={e => set({ recupTel: e.target.value })} className={inp} placeholder="+221 77 xxx xxxx" /></div>
+                    <div className="sm:col-span-2"><label className={lbl}>Lien avec l'enfant</label>
+                      <input type="text" value={form.recupLien} onChange={e => set({ recupLien: e.target.value })} className={inp} placeholder="Grand-frère, nounou, chauffeur…" /></div>
                   </div>
                 </div>
 
@@ -713,7 +803,13 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
               <div className="space-y-4">
 
                 <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-3">
-                  <p className="font-black text-slate-700 text-xs uppercase tracking-widest">Enfant</p>
+                  <div className="flex items-center gap-3">
+                    {form.photoUrl && (
+                      <img src={form.photoUrl} alt="Photo"
+                        className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-100 flex-shrink-0" />
+                    )}
+                    <p className="font-black text-slate-700 text-xs uppercase tracking-widest">Enfant</p>
+                  </div>
                   {[
                     { label: 'Nom complet', value: `${form.prenomEnfant} ${form.nomEnfant}` },
                     form.dateNaissance ? { label: 'Naissance', value: `${new Date(form.dateNaissance).toLocaleDateString('fr-FR')}${form.lieuNaissance ? ` — ${form.lieuNaissance}` : ''}` } : null,
@@ -725,10 +821,11 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                       <span className="font-black text-slate-800 text-right">{row!.value}</span>
                     </div>
                   ))}
-                  {(form.cantine || form.transportBus) && (
-                    <div className="flex gap-2 pt-1">
+                  {(form.cantine || form.transportBus || (isMaternelle && form.garderie)) && (
+                    <div className="flex gap-2 pt-1 flex-wrap">
                       {form.cantine && <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-black border border-emerald-200">Cantine</span>}
                       {form.transportBus && <span className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-xl text-xs font-black border border-amber-200">Bus scolaire</span>}
+                      {isMaternelle && form.garderie && <span className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-black border border-indigo-200">Garderie</span>}
                     </div>
                   )}
                 </div>
