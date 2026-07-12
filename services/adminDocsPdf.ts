@@ -292,7 +292,7 @@ function buildFicheInscriptionHtml(eleve: Partial<Eleve>, logoBase64: string): s
   const dossier = `${eleve.matricule || ''}-${(eleve.nom || '').toUpperCase()}-${(eleve.prenom || '').toUpperCase()}-${eleve.niveau || ''}`;
 
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
-    ${pageHeader(logoBase64, "Fiche d'Inscription", ref)}
+    ${pageHeader(logoBase64, "Fiche d'Identité de l'Élève", ref)}
     <div class="dossier-label">Dossier : ${dossier}</div>
 
     <div class="section">
@@ -335,7 +335,7 @@ function buildFicheInscriptionHtml(eleve: Partial<Eleve>, logoBase64: string): s
       <div class="sig">Signature du parent / tuteur</div>
       <div class="sig">Cachet & signature de la Direction</div>
     </div>
-    ${pageFooter("Fiche d'inscription", ref)}
+    ${pageFooter("Fiche d'identité", ref)}
   </body></html>`;
 }
 
@@ -788,28 +788,179 @@ async function htmlToBlob(html: string): Promise<Blob> {
   });
 }
 
+// ── Convention de scolarisation (maternelle & élémentaire) ──────────────────
+
+function buildConventionScolarisationHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
+  const parent = eleve.parent1;
+  const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
+  const niveauLib = NIVEAUX_MAP[eleve.niveau || ''] || eleve.niveau || '—';
+  const ref = `CONV-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
+    ${pageHeader(logoBase64, 'Convention de Scolarisation', ref)}
+    <div class="dossier-label">Élève : ${nomComplet} — ${niveauLib} — Matricule : ${eleve.matricule || '—'}</div>
+
+    <div class="text-block">
+      <p>Entre l'établissement <strong>Le Toit des Anges</strong>, sis au 469 Cité Cheikh Omar TALL, Ouakam, Dakar,
+      représenté par sa Directrice, ci-après désigné « l'Établissement »,</p>
+      <p>et <strong>${v(parentNom, 'M. / Mme ____________________')}</strong>,
+      agissant en qualité de ${parent?.lien === 'MERE' ? 'mère' : parent?.lien === 'PERE' ? 'père' : 'tuteur légal'}
+      de l'enfant <strong>${nomComplet}</strong>, né(e) le <strong>${formatDate(eleve.dateNaissance)}</strong>,
+      ci-après désigné « le Parent »,</p>
+      <p>il est convenu ce qui suit pour l'année scolaire <strong>${getAnnee()}</strong> :</p>
+    </div>
+
+    <div class="section">
+      <h2>Article 1 — Objet</h2>
+      <div class="text-block"><p>La présente convention règle les conditions de scolarisation de l'enfant
+      <strong>${nomComplet}</strong> en classe de <strong>${niveauLib}</strong> au sein de l'Établissement.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>Article 2 — Engagements de l'Établissement</h2>
+      <div class="text-block"><p>L'Établissement s'engage à assurer l'accueil, l'encadrement pédagogique et la
+      sécurité de l'enfant conformément à son projet pédagogique et au règlement intérieur, pendant les jours
+      et horaires d'ouverture communiqués aux familles.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>Article 3 — Engagements du Parent</h2>
+      <div class="text-block"><p>Le Parent s'engage à : respecter le règlement intérieur de l'Établissement ;
+      régler les frais de scolarité selon le tableau des droits et frais en vigueur (frais d'inscription à
+      l'admission, mensualités payables au plus tard le 5 de chaque mois) ; fournir les pièces justificatives
+      demandées au dossier ; signaler tout changement de situation (adresse, téléphone, santé de l'enfant).</p></div>
+    </div>
+
+    <div class="section">
+      <h2>Article 4 — Frais de scolarité</h2>
+      <div class="text-block"><p>Les tarifs applicables sont ceux du tableau des droits et frais de scolarité
+      de l'année ${getAnnee()}, remis au Parent lors de l'inscription. Tout mois entamé est dû.
+      Les frais d'inscription ne sont pas remboursables.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>Article 5 — Résiliation</h2>
+      <div class="text-block"><p>La présente convention peut être résiliée par le Parent par écrit avec un
+      préavis d'un mois. L'Établissement se réserve le droit de mettre fin à la scolarisation en cas de
+      non-paiement persistant ou de manquement grave au règlement intérieur, après notification écrite.</p></div>
+    </div>
+
+    <div style="margin-top: 16px; font-size: 9.5pt; color: #64748b; font-weight: 600;">
+      Fait à Dakar en deux exemplaires, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+    </div>
+
+    <div class="sigs">
+      <div class="sig">Le Parent / Tuteur légal<br><em style="font-weight:400;font-size:8pt">(précédé de « Lu et approuvé »)</em></div>
+      <div class="sig">La Directrice<br><em style="font-weight:400;font-size:8pt">(cachet & signature)</em></div>
+    </div>
+    ${pageFooter('Convention de scolarisation', ref)}
+  </body></html>`;
+}
+
+// ── Règlement intérieur + accusé de réception (crèche) ───────────────────────
+
+function buildReglementInterieurHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
+  const parent = eleve.parent1;
+  const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
+  const ref = `REGL-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
+    ${pageHeader(logoBase64, 'Règlement Intérieur — Crèche', ref)}
+    <div class="dossier-label">Enfant : ${nomComplet} — Matricule : ${eleve.matricule || '—'}</div>
+
+    <div class="section">
+      <h2>1. Horaires et accueil</h2>
+      <div class="text-block"><p>La crèche accueille les enfants du lundi au vendredi selon les horaires
+      communiqués aux familles. Les parents sont priés de respecter les heures d'arrivée et de départ.
+      Tout retard répété à la récupération de l'enfant pourra donner lieu à une facturation complémentaire.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>2. Santé et hygiène</h2>
+      <div class="text-block"><p>Un enfant fiévreux ou présentant une maladie contagieuse ne peut être accueilli.
+      Tout traitement médical doit être signalé et accompagné d'une ordonnance. Les vaccins obligatoires
+      doivent être à jour (fiche sanitaire). La crèche doit être informée immédiatement de toute allergie.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>3. Sécurité et récupération de l'enfant</h2>
+      <div class="text-block"><p>L'enfant ne sera remis qu'à ses parents ou à la personne majeure expressément
+      autorisée dans le dossier d'inscription, sur présentation d'une pièce d'identité. Tout changement de
+      personne autorisée doit être notifié par écrit à la Direction.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>4. Effets personnels</h2>
+      <div class="text-block"><p>Les affaires de l'enfant (change, biberons, doudou…) doivent être marquées à
+      son nom. La crèche décline toute responsabilité en cas de perte d'objets de valeur ou de bijoux.</p></div>
+    </div>
+
+    <div class="section">
+      <h2>5. Paiements</h2>
+      <div class="text-block"><p>Les frais d'inscription sont dus à l'admission et non remboursables.
+      Les mensualités sont payables au plus tard le 5 de chaque mois, selon le tableau des tarifs en vigueur.
+      Tout mois entamé est dû. Le non-paiement persistant peut entraîner la suspension de l'accueil.</p></div>
+    </div>
+
+    <div class="section" style="border:2px solid #4f46e5;border-radius:10px;padding:12px;margin-top:18px">
+      <h2>Accusé de réception</h2>
+      <div class="text-block">
+        <p>Je soussigné(e) <strong>${v(parentNom, 'M. / Mme ____________________')}</strong>,
+        parent / tuteur de l'enfant <strong>${nomComplet}</strong>, reconnais avoir reçu et pris connaissance
+        du présent règlement intérieur de la crèche <strong>Le Toit des Anges</strong> pour l'année
+        <strong>${getAnnee()}</strong>, et m'engage à le respecter.</p>
+        <p style="margin-top:12px">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+      </div>
+      <div class="sigs">
+        <div class="sig">Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
+        <div class="sig">Cachet & signature de la Direction</div>
+      </div>
+    </div>
+    ${pageFooter('Règlement intérieur crèche', ref)}
+  </body></html>`;
+}
+
 // ── API publique ─────────────────────────────────────────────────────────────
 
-export type DocAdminType = 'fiche_inscription' | 'certificat_scolarite' | 'certificat_radiation' | 'fiche_sanitaire' | 'autorisation_sortie';
+export type DocAdminType =
+  | 'fiche_inscription' | 'certificat_scolarite' | 'certificat_radiation'
+  | 'fiche_sanitaire' | 'autorisation_sortie'
+  | 'convention_scolarisation' | 'reglement_interieur';
+
+// Documents applicables selon le cycle de l'élève :
+// - Crèche               → fiche d'identité + règlement intérieur (+ sanitaire)
+// - Maternelle/Élémentaire → fiche d'identité + convention de scolarisation (+ certificat, sanitaire)
+export function docsForNiveau(niveau: string | undefined): DocAdminType[] {
+  if (niveau === 'CRECHE') {
+    return ['fiche_inscription', 'reglement_interieur', 'fiche_sanitaire'];
+  }
+  return ['fiche_inscription', 'convention_scolarisation', 'certificat_scolarite', 'fiche_sanitaire'];
+}
 
 function buildHtml(type: DocAdminType, eleve: Partial<Eleve> & { motifRadiation?: string }, logoBase64: string): string {
   switch (type) {
-    case 'fiche_inscription':     return buildFicheInscriptionHtml(eleve, logoBase64);
-    case 'certificat_scolarite':  return buildCertificatScolariteHtml(eleve, logoBase64);
-    case 'certificat_radiation':  return buildCertificatRadiationHtml(eleve, logoBase64);
-    case 'fiche_sanitaire':       return buildFicheSanitaireHtml(eleve, logoBase64);
-    case 'autorisation_sortie':   return buildAutorisationSortieHtml(eleve, logoBase64);
+    case 'fiche_inscription':          return buildFicheInscriptionHtml(eleve, logoBase64);
+    case 'certificat_scolarite':       return buildCertificatScolariteHtml(eleve, logoBase64);
+    case 'certificat_radiation':       return buildCertificatRadiationHtml(eleve, logoBase64);
+    case 'fiche_sanitaire':            return buildFicheSanitaireHtml(eleve, logoBase64);
+    case 'autorisation_sortie':        return buildAutorisationSortieHtml(eleve, logoBase64);
+    case 'convention_scolarisation':   return buildConventionScolarisationHtml(eleve, logoBase64);
+    case 'reglement_interieur':        return buildReglementInterieurHtml(eleve, logoBase64);
   }
 }
 
 function docFilename(type: DocAdminType, eleve: Partial<Eleve>): string {
   const slug = `${(eleve.nom || '').toUpperCase()}_${(eleve.prenom || '').toUpperCase()}_${eleve.matricule || ''}`;
   const labels: Record<DocAdminType, string> = {
-    fiche_inscription:     'Fiche_Inscription',
-    certificat_scolarite:  'Certificat_Scolarite',
-    certificat_radiation:  'Certificat_Radiation',
-    fiche_sanitaire:       'Fiche_Sanitaire',
-    autorisation_sortie:   'Autorisation_Sortie',
+    fiche_inscription:        'Fiche_Identite',
+    certificat_scolarite:     'Certificat_Scolarite',
+    certificat_radiation:     'Certificat_Radiation',
+    fiche_sanitaire:          'Fiche_Sanitaire',
+    autorisation_sortie:      'Autorisation_Sortie',
+    convention_scolarisation: 'Convention_Scolarisation',
+    reglement_interieur:      'Reglement_Interieur',
   };
   return `${labels[type]}_${slug}.pdf`;
 }
@@ -866,12 +1017,8 @@ export async function downloadAdminDocsZip(eleve: Partial<Eleve>): Promise<void>
   const JSZip = (await import('jszip')).default;
   const logoBase64 = await getLogoBase64();
 
-  const types: DocAdminType[] = [
-    'fiche_inscription',
-    'certificat_scolarite',
-    'fiche_sanitaire',
-    'autorisation_sortie',
-  ];
+  // Documents adaptés au cycle de l'élève (crèche ≠ maternelle/élémentaire)
+  const types: DocAdminType[] = [...docsForNiveau(eleve.niveau), 'autorisation_sortie'];
 
   const zip = new JSZip();
   const folder = zip.folder(`Dossier_${(eleve.nom || '').toUpperCase()}_${(eleve.prenom || '').toUpperCase()}`);

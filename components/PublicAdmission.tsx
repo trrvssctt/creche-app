@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { compressImageToDataUrl } from '../services/photoUtils';
+import { piecesForNiveau } from '../services/piecesJustificatives';
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
 const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
@@ -217,7 +218,22 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
           <p className="text-2xl sm:text-3xl font-black text-indigo-700 tracking-widest">{result.reference}</p>
           <p className="text-xs text-slate-400 mt-2">Conservez ce numéro — il vous sera demandé lors de votre visite</p>
         </div>
-        <p className="text-slate-500 text-sm leading-relaxed mb-6">{result.message}</p>
+        <p className="text-slate-500 text-sm leading-relaxed mb-4">{result.message}</p>
+
+        {/* Pièces justificatives à apporter lors de la visite */}
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-4 mb-6 text-left">
+          <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">
+            Pièces à apporter à l'école
+          </p>
+          <ul className="space-y-1">
+            {piecesForNiveau(form.niveau).map((p, i) => (
+              <li key={i} className="text-xs text-slate-700 font-bold flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>{p.label}{p.obligatoire ? '' : ' (si applicable)'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
         {/* Bouton suivi — lien direct avec la référence pré-remplie */}
         <a href={`/suivi-inscription?ref=${result.reference}`}
           onClick={e => {
@@ -856,6 +872,22 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                     <span className={`text-xs font-black ${form.autorisationSoins ? 'text-emerald-700' : 'text-rose-600'}`}>{form.autorisationSoins ? '✓' : '✗'} Soins urgents</span>
                     <span className={`text-xs font-black ${form.autorisationPhoto ? 'text-emerald-700' : 'text-rose-600'}`}>{form.autorisationPhoto ? '✓' : '✗'} Photos</span>
                   </div>
+                </div>
+
+                {/* Pièces justificatives à préparer */}
+                <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 sm:p-6">
+                  <p className="font-black text-amber-700 text-xs uppercase tracking-widest mb-2">
+                    Pièces justificatives à préparer
+                  </p>
+                  <p className="text-xs text-slate-500 mb-3">Ces documents vous seront demandés lors de votre visite à l'école pour finaliser l'inscription :</p>
+                  <ul className="space-y-1.5">
+                    {piecesForNiveau(form.niveau).map((p, i) => (
+                      <li key={i} className="text-sm text-slate-700 font-bold flex items-start gap-2">
+                        <span className="text-amber-500 mt-0.5">•</span>
+                        <span>{p.label}{p.obligatoire ? '' : ' (si applicable)'}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
                 <div>

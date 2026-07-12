@@ -1,5 +1,6 @@
 import { Op, QueryTypes } from 'sequelize';
 import axios from 'axios';
+import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
 import {
   Eleve, EcheancePaiement, Bulletin, CreneauHoraire,
   Announcement, EleveDocument, Classe, Service, Invoice, InvoiceItem, Sale,
@@ -554,6 +555,14 @@ export class ParentController {
       // Utilise l'année active du tenant pour que le dossier apparaisse dans la vue admin
       const tenant = await Tenant.findOne({ where: { id: tenantId }, attributes: ['anneeActive'] });
       const anneeResolue = anneeScolaire || tenant?.anneeActive || null;
+
+      // Anti-doublon : même enfant déjà soumis pour la même année
+      const dup = await findDuplicateEleve({
+        tenantId, nom, prenom, dateNaissance, anneeScolaire: anneeResolue,
+      });
+      if (dup) {
+        return res.status(409).json({ error: 'Duplicate', message: duplicateMessage(dup) });
+      }
 
       const eleve = await Eleve.create({
         tenantId,

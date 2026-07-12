@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { Tenant, Eleve } from '../models/index.js';
+import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -77,6 +78,14 @@ export class PublicController {
       }
 
       const anneeResolue = tenant.anneeActive || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1);
+
+      // Anti-doublon : même enfant déjà soumis pour la même année
+      const dup = await findDuplicateEleve({
+        tenantId: tenant.id, nom, prenom, dateNaissance, anneeScolaire: anneeResolue,
+      });
+      if (dup) {
+        return res.status(409).json({ error: 'Duplicate', message: duplicateMessage(dup) });
+      }
 
       const notesDossier = [
         'Dossier soumis via le formulaire public en ligne.',

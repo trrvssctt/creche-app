@@ -2,6 +2,7 @@ import { Eleve, Classe, Sale, SaleItem, Payment, Service, AbonnementEleve, Echea
 import { sequelize } from '../config/database.js';
 import { Op } from 'sequelize';
 import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
+import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
 
 // ── Création automatique des abonnements à l'inscription ────────────────────
 // Cherche les offres (MENSUALITE/BUS/CANTINE) applicables au niveau/options de
@@ -175,6 +176,17 @@ export class EleveController {
         payload.matricule = genMatricule(payload.niveau || 'PS');
       }
 
+      // Anti-doublon : même enfant (nom + prénom + date de naissance) déjà présent pour la même année
+      const dup = await findDuplicateEleve({
+        tenantId: req.user.tenantId,
+        nom: payload.nom, prenom: payload.prenom,
+        dateNaissance: payload.dateNaissance,
+        anneeScolaire: payload.anneeScolaire,
+      });
+      if (dup) {
+        return res.status(409).json({ error: 'Duplicate', message: duplicateMessage(dup) });
+      }
+
       if (payload.classeId) {
         const classe = await Classe.findOne({ where: { id: payload.classeId, tenantId: req.user.tenantId } });
         if (classe) {
@@ -272,7 +284,16 @@ export class EleveController {
         return res.status(400).json({ error: 'NoFees', message: 'Aucun frais d\'inscription trouvé dans les services fournis.' });
       }
 
-      const totalHt = feeServices.reduce((s, svc) => s + Number(svc.price), 0);
+      // Remise cas social : CAS_SOCIAL_TOTAL = gratuité complète, sinon remisePct de l'élève
+      // (même logique que les abonnements mensuels dans AbonnementController)
+      const remisePct = eleve.regimeFinancier === 'CAS_SOCIAL_TOTAL'
+        ? 100
+        : parseFloat(eleve.remisePct || 0);
+      const applyRemise = (prix) => remisePct > 0
+        ? Math.round(Number(prix) * (1 - remisePct / 100))
+        : Number(prix);
+
+      const totalHt = feeServices.reduce((s, svc) => s + applyRemise(svc.price), 0);
       const ref = `REC-INSC-${(eleve.matricule || Date.now().toString(36)).replace(/-/g, '').toUpperCase()}`;
 
       // Créer la vente (entièrement réglée)
@@ -290,13 +311,14 @@ export class EleveController {
       }, { transaction: t });
 
       for (const svc of feeServices) {
+        const prixRemise = applyRemise(svc.price);
         await SaleItem.create({
           saleId: sale.id,
           serviceId: svc.id || null,
-          description: svc.name || 'Frais d\'inscription',
           quantity: 1,
-          unitPrice: Number(svc.price),
-          totalPrice: Number(svc.price),
+          unitPrice: prixRemise,
+          taxRate: 0,
+          totalTtc: prixRemise,
         }, { transaction: t });
       }
 

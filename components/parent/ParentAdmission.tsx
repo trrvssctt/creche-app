@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { compressImageToDataUrl } from '../../services/photoUtils';
+import { piecesForNiveau } from '../../services/piecesJustificatives';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -827,6 +828,21 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <CheckCircle2 size={13} className="text-indigo-500" /> Récapitulatif &amp; validation
                   </p>
+
+                  {/* Pièces justificatives à préparer pour la visite à l'école */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">
+                      Pièces justificatives à préparer
+                    </p>
+                    <ul className="space-y-1">
+                      {piecesForNiveau(form.niveau).map((p, i) => (
+                        <li key={i} className="text-xs text-slate-700 font-bold flex items-start gap-2">
+                          <span className="text-amber-500 mt-0.5">•</span>
+                          <span>{p.label}{p.obligatoire ? '' : ' (si applicable)'}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
 
                   <div className="bg-slate-50 rounded-2xl p-5 space-y-3 text-sm">
                     {form.photoUrl && (

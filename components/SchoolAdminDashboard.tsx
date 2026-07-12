@@ -237,14 +237,14 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           </button>
           {nbCandidatures > 0 && (
             <button
-              onClick={() => onNavigate?.('admissions')}
+              onClick={() => onNavigate?.('admission')}
               className="flex items-center gap-1.5 text-[10px] font-black text-white bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 rounded-xl hover:opacity-90 transition-opacity shadow-sm"
             >
               <Globe size={12} /> {nbCandidatures} dossier{nbCandidatures > 1 ? 's' : ''} portail à traiter
             </button>
           )}
           <button
-            onClick={() => onNavigate?.('admissions')}
+            onClick={() => onNavigate?.('admission')}
             className="flex items-center gap-1.5 text-[10px] font-black text-white bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 rounded-xl hover:opacity-90 transition-opacity shadow-sm"
           >
             <UserPlus size={12} /> Nouvelle admission
@@ -335,7 +335,7 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           sub="À inscrire"
           color={enAttente > 0 ? 'bg-amber-500' : 'bg-slate-400'}
           trend={enAttente > 0 ? 'up' : undefined}
-          onClick={() => onNavigate?.('admissions')}
+          onClick={() => onNavigate?.('admission')}
         />
         <KpiCard
           icon={Globe}
@@ -344,7 +344,7 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           sub={nbCandidatures > 0 ? 'dossier(s) soumis en ligne' : 'Aucune candidature en ligne'}
           color={nbCandidatures > 0 ? 'bg-violet-500' : 'bg-slate-400'}
           trend={nbCandidatures > 0 ? 'up' : undefined}
-          onClick={() => onNavigate?.('admissions')}
+          onClick={() => onNavigate?.('admission')}
         />
         <KpiCard
           icon={AlertTriangle}
@@ -482,7 +482,7 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
                 <p className="text-[10px] text-violet-500 font-semibold">{nbCandidatures} dossier{nbCandidatures > 1 ? 's' : ''} soumis en ligne — à instruire</p>
               </div>
             </div>
-            <button onClick={() => onNavigate?.('admissions')}
+            <button onClick={() => onNavigate?.('admission')}
               className="text-[9px] font-black text-violet-700 bg-white px-3 py-1.5 rounded-xl border border-violet-200 hover:bg-violet-50 flex items-center gap-1 transition-colors">
               Traiter <ArrowRight size={10} />
             </button>
@@ -518,7 +518,7 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
             <SectionTitle icon={UserPlus} label="Dernières admissions" color="text-emerald-600" />
-            <button onClick={() => onNavigate?.('admissions')} className="text-[9px] font-black text-emerald-600 flex items-center gap-1 hover:underline">
+            <button onClick={() => onNavigate?.('admission')} className="text-[9px] font-black text-emerald-600 flex items-center gap-1 hover:underline">
               Voir tout <ArrowRight size={9} />
             </button>
           </div>

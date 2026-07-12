@@ -10,6 +10,7 @@ import {
   Loader2, Copy, Camera,
 } from 'lucide-react';
 import { compressImageToDataUrl } from '../services/photoUtils';
+import { piecesForNiveau } from '../services/piecesJustificatives';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
@@ -156,7 +157,15 @@ const InscriptionFactureButton: React.FC<{
     return RECURRING_TYPES.includes(type);
   });
 
-  const totalFees = feeServices.reduce((sum, s) => sum + Number(s.price), 0);
+  // Remise cas social — même logique que le backend (factureInscription)
+  const remisePct = inscritEleve?.regimeFinancier === 'CAS_SOCIAL_TOTAL'
+    ? 100
+    : Number(inscritEleve?.remisePct || 0);
+  const applyRemise = (prix: number) => remisePct > 0
+    ? Math.round(prix * (1 - remisePct / 100))
+    : prix;
+
+  const totalFees = feeServices.reduce((sum, s) => sum + applyRemise(Number(s.price)), 0);
 
   const handleGenerate = async () => {
     if (!inscritEleve?.id || feeServices.length === 0) return;
@@ -181,9 +190,9 @@ const InscriptionFactureButton: React.FC<{
         reference: res?.sale?.reference,
         methodePaiement,
         echeances: feeServices.map(s => ({
-          service: { name: s.name },
+          service: { name: s.name + (remisePct > 0 ? ` (remise ${remisePct}%)` : '') },
           periodeLabel: 'Ponctuel',
-          montant: Number(s.price),
+          montant: applyRemise(Number(s.price)),
           statut: 'PAYE',
           dateEcheance: new Date().toISOString().slice(0, 10),
           description: s.name,
@@ -231,6 +240,7 @@ const InscriptionFactureButton: React.FC<{
       </div>
       <p className="text-[9px] text-emerald-700 font-bold text-center">
         Frais d'inscription : {totalFees.toLocaleString('fr-FR')} {currency}
+        {remisePct > 0 && <span className="text-violet-600"> — remise cas social {remisePct}% appliquée</span>}
       </p>
     </div>
   );
@@ -1758,6 +1768,40 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     </div>
                   </section>
 
+                  {/* Parent 2 / Conjoint(e) */}
+                  <section>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Users size={14} /> Second parent / Conjoint(e) (facultatif)
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {([
+                        { label: 'Nom',       key: 'nom' },
+                        { label: 'Prénom',    key: 'prenom' },
+                        { label: 'Téléphone', key: 'telephone' },
+                        { label: 'Email',     key: 'email' },
+                        { label: 'Profession', key: 'profession' },
+                        { label: "Nom de l'entreprise", key: 'entreprise' },
+                      ] as const).map(field => (
+                        <div key={field.key} className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">{field.label}</label>
+                          <input type="text" value={(formData.parent2 as any)?.[field.key] || ''}
+                            onChange={e => setFormData({ ...formData, parent2: { ...(formData.parent2 as any), [field.key]: e.target.value } })}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                        </div>
+                      ))}
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Lien</label>
+                        <select value={formData.parent2?.lien || 'PERE'}
+                          onChange={e => setFormData({ ...formData, parent2: { ...(formData.parent2 as any), lien: e.target.value } })}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+                          <option value="PERE">Père</option>
+                          <option value="MERE">Mère</option>
+                          <option value="TUTEUR">Tuteur légal</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+
                   {/* Personne autorisée à venir chercher l'enfant */}
                   <section>
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -1925,12 +1969,20 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   </button>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {([
-                      { key: 'fiche_inscription',    type: 'fiche_inscription'    as const, label: "Fiche d'inscription",    desc: "Document de référence de l'inscription" },
-                      { key: 'certificat_scolarite', type: 'certificat_scolarite' as const, label: 'Certificat de scolarité', desc: "Atteste l'inscription pour l'année en cours" },
-                      { key: 'fiche_sanitaire',      type: 'fiche_sanitaire'      as const, label: 'Fiche sanitaire',         desc: 'Informations médicales et contacts urgence' },
-                      { key: 'autorisation_sortie',  type: 'autorisation_sortie'  as const, label: 'Autorisation de sortie',  desc: 'Autorisation annuelle pour les sorties scolaires' },
-                    ] as const).map(doc => (
+                    {/* Documents adaptés au cycle : crèche = fiche identité + règlement intérieur ;
+                        maternelle/élémentaire = fiche identité + convention de scolarisation */}
+                    {(inscritEleve?.niveau === 'CRECHE' ? [
+                      { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité",         desc: "Identité de l'enfant et coordonnées des parents" },
+                      { key: 'reglement_interieur',      type: 'reglement_interieur'      as const, label: 'Règlement intérieur',       desc: 'Règlement de la crèche + accusé de réception à signer' },
+                      { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire',           desc: 'Informations médicales et contacts urgence' },
+                      { key: 'autorisation_sortie',      type: 'autorisation_sortie'      as const, label: 'Autorisation de sortie',    desc: 'Autorisation annuelle pour les sorties' },
+                    ] : [
+                      { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité",         desc: "Identité de l'élève et coordonnées des parents" },
+                      { key: 'convention_scolarisation', type: 'convention_scolarisation' as const, label: 'Convention de scolarisation', desc: 'Contrat entre l\'école et la famille — à signer' },
+                      { key: 'certificat_scolarite',     type: 'certificat_scolarite'     as const, label: 'Certificat de scolarité',   desc: "Atteste l'inscription pour l'année en cours" },
+                      { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire',           desc: 'Informations médicales et contacts urgence' },
+                      { key: 'autorisation_sortie',      type: 'autorisation_sortie'      as const, label: 'Autorisation de sortie',    desc: 'Autorisation annuelle pour les sorties scolaires' },
+                    ]).map(doc => (
                       <button key={doc.key}
                         onClick={async () => {
                           setGenLoading(doc.key);
@@ -1956,6 +2008,27 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <p className="mt-3 text-[10px] text-slate-400 font-bold text-center">
                     Cliquez sur un document pour l'ouvrir et l'imprimer (ou enregistrer en PDF).
                   </p>
+
+                  {/* Pièces justificatives à collecter auprès de la famille */}
+                  <div className="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+                      <ClipboardCheck size={13} /> Pièces justificatives à collecter
+                    </p>
+                    <ul className="space-y-1.5">
+                      {piecesForNiveau(inscritEleve?.niveau).map((p, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
+                          <span className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 ${p.obligatoire ? 'border-amber-400 bg-white' : 'border-slate-300 bg-white'}`} />
+                          <span className="font-bold">
+                            {p.label}
+                            {p.obligatoire
+                              ? <span className="text-rose-500"> *</span>
+                              : <span className="text-slate-400 font-medium"> (si applicable)</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[9px] text-amber-600 font-bold mt-2">* Obligatoire — à joindre au dossier physique de l'élève</p>
+                  </div>
                 </div>
 
                 <button
@@ -2293,12 +2366,18 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                       ? <><RefreshCw size={11} className="animate-spin" /> Génération…</>
                       : <><FolderOpen size={11} /> Dossier complet .zip</>}
                   </button>
-                  {([
-                    { key: 'fiche_inscription',    type: 'fiche_inscription'    as const, label: 'Fiche inscription' },
-                    { key: 'certificat_scolarite', type: 'certificat_scolarite' as const, label: 'Certificat scolarité' },
-                    { key: 'fiche_sanitaire',      type: 'fiche_sanitaire'      as const, label: 'Fiche sanitaire' },
-                    { key: 'autorisation_sortie',  type: 'autorisation_sortie'  as const, label: 'Autorisation sortie' },
-                  ] as const).map(d => (
+                  {(selectedEleve?.niveau === 'CRECHE' ? [
+                    { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité" },
+                    { key: 'reglement_interieur',      type: 'reglement_interieur'      as const, label: 'Règlement intérieur' },
+                    { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire' },
+                    { key: 'autorisation_sortie',      type: 'autorisation_sortie'      as const, label: 'Autorisation sortie' },
+                  ] : [
+                    { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité" },
+                    { key: 'convention_scolarisation', type: 'convention_scolarisation' as const, label: 'Convention de scolarisation' },
+                    { key: 'certificat_scolarite',     type: 'certificat_scolarite'     as const, label: 'Certificat scolarité' },
+                    { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire' },
+                    { key: 'autorisation_sortie',      type: 'autorisation_sortie'      as const, label: 'Autorisation sortie' },
+                  ]).map(d => (
                     <button key={d.key}
                       onClick={async () => {
                         setViewDocLoading(d.key);
