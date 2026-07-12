@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { compressImageToDataUrl } from '../services/photoUtils';
-import { piecesForNiveau } from '../services/piecesJustificatives';
+import { piecesForNiveau, PieceJointe } from '../services/piecesJustificatives';
+import PiecesJointes from './PiecesJointes';
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
 const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
@@ -88,6 +89,7 @@ interface Props  { onBack?: () => void }
 const PublicAdmission: React.FC<Props> = ({ onBack }) => {
   const [step, setStep]       = useState(1);
   const [form, setForm]       = useState<FormType>(EMPTY);
+  const [pieces, setPieces]   = useState<Record<string, PieceJointe>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [result, setResult]   = useState<{ reference: string; message: string } | null>(null);
@@ -190,6 +192,7 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
         personneAutorisee: form.recupNom ? {
           nom: form.recupNom, telephone: form.recupTel, lien: form.recupLien,
         } : null,
+        piecesJointes: Object.values(pieces),
         notes: form.notes || null,
       };
       const res: any = await apiClient.post('/public/admission', payload);
@@ -220,15 +223,18 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
         </div>
         <p className="text-slate-500 text-sm leading-relaxed mb-4">{result.message}</p>
 
-        {/* Pièces justificatives à apporter lors de la visite */}
+        {/* Originaux à présenter lors de la visite */}
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-4 mb-6 text-left">
           <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">
-            Pièces à apporter à l'école
+            Originaux à présenter à l'école
           </p>
+          <p className="text-[11px] text-slate-500 mb-2">Vos pièces jointes ont été versées au dossier. Apportez les originaux lors de votre visite :</p>
           <ul className="space-y-1">
             {piecesForNiveau(form.niveau).map((p, i) => (
               <li key={i} className="text-xs text-slate-700 font-bold flex items-start gap-2">
-                <span className="text-amber-500 mt-0.5">•</span>
+                <span className={pieces[p.code] ? 'text-emerald-500 mt-0.5' : 'text-amber-500 mt-0.5'}>
+                  {pieces[p.code] ? '✓' : '•'}
+                </span>
                 <span>{p.label}{p.obligatoire ? '' : ' (si applicable)'}</span>
               </li>
             ))}
@@ -244,7 +250,7 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
           className="w-full py-4 rounded-2xl bg-emerald-500 active:bg-emerald-600 text-white font-black uppercase tracking-widest transition mb-3 text-sm flex items-center justify-center gap-2">
           <CheckCircle2 className="w-4 h-4" /> Suivre l'avancement de mon dossier
         </a>
-        <button onClick={() => { setResult(null); setForm(EMPTY); setStep(1); }}
+        <button onClick={() => { setResult(null); setForm(EMPTY); setPieces({}); setStep(1); }}
           className="w-full py-4 rounded-2xl border-2 border-slate-200 text-slate-500 font-bold active:bg-slate-100 transition mb-2 text-sm">
           Soumettre un autre dossier
         </button>
@@ -874,21 +880,9 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                   </div>
                 </div>
 
-                {/* Pièces justificatives à préparer */}
-                <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 sm:p-6">
-                  <p className="font-black text-amber-700 text-xs uppercase tracking-widest mb-2">
-                    Pièces justificatives à préparer
-                  </p>
-                  <p className="text-xs text-slate-500 mb-3">Ces documents vous seront demandés lors de votre visite à l'école pour finaliser l'inscription :</p>
-                  <ul className="space-y-1.5">
-                    {piecesForNiveau(form.niveau).map((p, i) => (
-                      <li key={i} className="text-sm text-slate-700 font-bold flex items-start gap-2">
-                        <span className="text-amber-500 mt-0.5">•</span>
-                        <span>{p.label}{p.obligatoire ? '' : ' (si applicable)'}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                {/* Pièces justificatives — à joindre directement au dossier */}
+                <PiecesJointes niveau={form.niveau} value={pieces} onChange={setPieces}
+                  title="Pièces justificatives — joignez vos documents" />
 
                 <div>
                   <label className={lbl}>Message pour l'école (facultatif)</label>

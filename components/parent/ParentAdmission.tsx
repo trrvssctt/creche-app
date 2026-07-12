@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { compressImageToDataUrl } from '../../services/photoUtils';
-import { piecesForNiveau } from '../../services/piecesJustificatives';
+import { PieceJointe } from '../../services/piecesJustificatives';
+import PiecesJointes from '../PiecesJointes';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
   const [showModal, setShowModal] = useState(false);
   const [rejeteId, setRejeteId]   = useState<string | null>(null);
   const [form, setForm]           = useState<FormType>(EMPTY);
+  const [pieces, setPieces]       = useState<Record<string, PieceJointe>>({});
   const [step, setStep]           = useState(1);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -141,7 +143,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
 
   // ── Ouverture modal + pré-remplissage parent ──
   const openModal = () => {
-    setForm(EMPTY); setRejeteId(null); setStep(1); setError(null); setShowModal(true);
+    setForm(EMPTY); setPieces({}); setRejeteId(null); setStep(1); setError(null); setShowModal(true);
     apiClient.get('/parent/me').then((data: any) => {
       const p1 = data.parent1 || {};
       set({
@@ -174,6 +176,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
       garderie:     !!dossier.garderie,
       photoUrl:     dossier.photoUrl || '',
     });
+    setPieces({});
     setRejeteId(dossier.id);
     setStep(1); setError(null); setShowModal(true);
     // Pré-remplir les infos parent
@@ -264,6 +267,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
         personneAutorisee: form.recupNom ? {
           nom: form.recupNom, telephone: form.recupTel, lien: form.recupLien,
         } : null,
+        piecesJointes: Object.values(pieces),
         notes: form.notes,
       };
       if (rejeteId) {
@@ -829,20 +833,9 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                     <CheckCircle2 size={13} className="text-indigo-500" /> Récapitulatif &amp; validation
                   </p>
 
-                  {/* Pièces justificatives à préparer pour la visite à l'école */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                    <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">
-                      Pièces justificatives à préparer
-                    </p>
-                    <ul className="space-y-1">
-                      {piecesForNiveau(form.niveau).map((p, i) => (
-                        <li key={i} className="text-xs text-slate-700 font-bold flex items-start gap-2">
-                          <span className="text-amber-500 mt-0.5">•</span>
-                          <span>{p.label}{p.obligatoire ? '' : ' (si applicable)'}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  {/* Pièces justificatives — à joindre au dossier */}
+                  <PiecesJointes niveau={form.niveau} value={pieces} onChange={setPieces}
+                    title="Pièces justificatives — joignez vos documents" />
 
                   <div className="bg-slate-50 rounded-2xl p-5 space-y-3 text-sm">
                     {form.photoUrl && (

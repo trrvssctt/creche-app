@@ -59,7 +59,8 @@ app.use(cors({
 // Ce middleware doit être AVANT express.json() pour les routes de webhook
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 
-app.use(express.json());
+// Limite relevée : photos d'élèves et pièces justificatives passent en data-URL base64
+app.use(express.json({ limit: '20mb' }));
 
 // Routes API v1
 app.use('/api', apiRoutes);

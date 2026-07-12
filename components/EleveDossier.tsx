@@ -49,12 +49,17 @@ interface Props {
 const TYPES_ADMIN = [
   { value: 'FICHE_SANITAIRE',       label: 'Fiche sanitaire' },
   { value: 'ACTE_NAISSANCE',        label: 'Acte de naissance' },
+  { value: 'EXTRAIT_NAISSANCE',     label: 'Extrait de naissance' },
   { value: 'CARNET_VACCINATION',    label: 'Carnet de vaccination' },
   { value: 'PHOTO_IDENTITE',        label: "Photo d'identité" },
+  { value: 'PHOTOS_IDENTITE',       label: "Photos d'identité" },
+  { value: 'CNI_PARENT',            label: 'Pièce d\'identité parent' },
   { value: 'CONTRAT_SCOLARISATION', label: 'Contrat de scolarisation' },
   { value: 'REGLEMENT_INTERIEUR',   label: 'Règlement intérieur' },
   { value: 'AUTORISATION_SORTIE',   label: 'Autorisation de sortie' },
   { value: 'CERTIFICAT_MEDICAL',    label: 'Certificat médical' },
+  { value: 'ORDONNANCE',            label: 'Ordonnance' },
+  { value: 'LIVRET_SCOLAIRE',       label: 'Livret scolaire' },
   { value: 'AUTRE',                 label: 'Autre' },
 ];
 

@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import { Tenant, Eleve } from '../models/index.js';
-import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
+import { findDuplicateEleve, duplicateMessage, validatePiecesJointes, createPiecesJointes } from '../utils/eleveDedup.js';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -61,7 +61,7 @@ export class PublicController {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
         cantine, transportBus, garderie, besoinSpecifique,
         ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
-        photoUrl, notes,
+        photoUrl, piecesJointes, notes,
       } = req.body;
 
       // Route publique : la photo est une data-URL compressée côté client — on
@@ -69,6 +69,10 @@ export class PublicController {
       if (photoUrl && (typeof photoUrl !== 'string' || photoUrl.length > 500_000)) {
         return res.status(400).json({ error: 'Photo trop volumineuse. Réessayez avec une image plus petite.' });
       }
+
+      // Pièces justificatives jointes (images/PDF en data-URL)
+      const pj = validatePiecesJointes(piecesJointes);
+      if (!pj.ok) return res.status(400).json({ error: pj.error });
 
       if (!nom?.trim() || !prenom?.trim()) {
         return res.status(400).json({ error: 'Le nom et le prénom de l\'enfant sont requis.' });
@@ -114,6 +118,9 @@ export class PublicController {
         statut:          'EN_ATTENTE',
         notes:           notesDossier,
       });
+
+      // Enregistrer les pièces jointes dans le dossier numérique de l'élève
+      if (pj.list.length) await createPiecesJointes(eleve, pj.list);
 
       // Référence lisible : PRE-AAAA-XXXX
       const ref = `PRE-${new Date().getFullYear()}-${eleve.id.slice(0, 6).toUpperCase()}`;

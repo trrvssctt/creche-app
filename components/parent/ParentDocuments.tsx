@@ -29,6 +29,14 @@ const TYPE_LABELS: Record<string, string> = {
   VACCIN:         'Carnet de vaccination',
   JUGEMENT:       'Jugement',
   AUTRE:          'Autre document',
+  // Pièces jointes lors des demandes d'admission
+  EXTRAIT_NAISSANCE:  'Extrait de naissance',
+  CARNET_VACCINATION: 'Carnet de vaccination',
+  PHOTOS_IDENTITE:    "Photos d'identité",
+  CNI_PARENT:         'Pièce d\'identité parent',
+  CERTIFICAT_MEDICAL: 'Certificat médical',
+  ORDONNANCE:         'Ordonnance',
+  LIVRET_SCOLAIRE:    'Livret scolaire',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -38,6 +46,13 @@ const TYPE_COLORS: Record<string, string> = {
   VACCIN:         'bg-emerald-50 text-emerald-700 border-emerald-200',
   JUGEMENT:       'bg-amber-50 text-amber-700 border-amber-200',
   AUTRE:          'bg-gray-50 text-gray-700 border-gray-200',
+  EXTRAIT_NAISSANCE:  'bg-blue-50 text-blue-700 border-blue-200',
+  CARNET_VACCINATION: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  PHOTOS_IDENTITE:    'bg-purple-50 text-purple-700 border-purple-200',
+  CNI_PARENT:         'bg-indigo-50 text-indigo-700 border-indigo-200',
+  CERTIFICAT_MEDICAL: 'bg-rose-50 text-rose-700 border-rose-200',
+  ORDONNANCE:         'bg-rose-50 text-rose-700 border-rose-200',
+  LIVRET_SCOLAIRE:    'bg-amber-50 text-amber-700 border-amber-200',
 };
 
 // Documents générés lors de l'inscription — mêmes gabarits que la direction

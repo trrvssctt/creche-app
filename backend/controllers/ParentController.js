@@ -1,6 +1,6 @@
 import { Op, QueryTypes } from 'sequelize';
 import axios from 'axios';
-import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
+import { findDuplicateEleve, duplicateMessage, validatePiecesJointes, createPiecesJointes } from '../utils/eleveDedup.js';
 import {
   Eleve, EcheancePaiement, Bulletin, CreneauHoraire,
   Announcement, EleveDocument, Classe, Service, Invoice, InvoiceItem, Sale,
@@ -358,9 +358,13 @@ export class ParentController {
       const doc = await EleveDocument.create({
         eleveId,
         tenantId,
+        categorie: 'ADMINISTRATIF', // NOT NULL en BD — l'omission faisait échouer l'upload parent
         typeDoc,
         nom: nom || req.file.originalname,
         fileUrl: url,
+        mimeType: req.file.mimetype || null,
+        fileSize: req.file.size || null,
+        uploadedBy: req.user.id,
       });
       res.status(201).json(doc);
     } catch (err) {
@@ -488,8 +492,12 @@ export class ParentController {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
         regimeFinancier, remisePct, cantine, transportBus, garderie, besoinSpecifique,
         ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
-        photoUrl, notes,
+        photoUrl, piecesJointes, notes,
       } = req.body;
+
+      // Pièces justificatives jointes lors de la resoumission
+      const pj = validatePiecesJointes(piecesJointes);
+      if (!pj.ok) return res.status(400).json({ error: pj.error });
 
       const eleve = await Eleve.findOne({ where: { id, tenantId } });
       if (!eleve) return res.status(404).json({ error: 'Dossier introuvable.' });
@@ -526,6 +534,9 @@ export class ParentController {
         notes:            nouvellesNotes,
       });
 
+      // Nouvelles pièces jointes versées au dossier numérique
+      if (pj.list.length) await createPiecesJointes(eleve, pj.list, userId);
+
       res.json({
         success: true,
         message: 'Dossier corrigé et resoumis. L\'école examinera votre demande.',
@@ -545,12 +556,16 @@ export class ParentController {
         nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
         regimeFinancier, remisePct, cantine, transportBus, garderie, besoinSpecifique,
         ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
-        photoUrl, anneeScolaire, notes,
+        photoUrl, piecesJointes, anneeScolaire, notes,
       } = req.body;
 
       if (!nom || !prenom) {
         return res.status(400).json({ error: 'Nom et prénom requis.' });
       }
+
+      // Pièces justificatives jointes (images/PDF en data-URL)
+      const pj = validatePiecesJointes(piecesJointes);
+      if (!pj.ok) return res.status(400).json({ error: pj.error });
 
       // Utilise l'année active du tenant pour que le dossier apparaisse dans la vue admin
       const tenant = await Tenant.findOne({ where: { id: tenantId }, attributes: ['anneeActive'] });
@@ -588,6 +603,9 @@ export class ParentController {
         statut: 'EN_ATTENTE',
         notes: `${notes || "Inscription soumise via le portail parent."} [parent_user:${req.user.id}]`,
       });
+
+      // Enregistrer les pièces jointes dans le dossier numérique de l'élève
+      if (pj.list.length) await createPiecesJointes(eleve, pj.list, req.user.id);
 
       res.status(201).json({
         success: true,

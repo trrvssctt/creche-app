@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Eleve } from '../models/index.js';
+import { Eleve, EleveDocument } from '../models/index.js';
 
 // Détecte un dossier existant pour le même enfant (même tenant, même année) :
 // même nom + prénom (insensible à la casse) et, si fournie, même date de naissance.
@@ -18,6 +18,57 @@ export async function findDuplicateEleve({ tenantId, nom, prenom, dateNaissance,
   if (excludeId)     where.id = { [Op.ne]: excludeId };
 
   return Eleve.findOne({ where, attributes: ['id', 'nom', 'prenom', 'statut', 'anneeScolaire'] });
+}
+
+// ── Pièces justificatives jointes aux demandes d'admission ───────────────────
+// Chaque pièce : { typeDoc, nom, dataUrl, mimeType, fileSize }
+// Contraintes : max 8 pièces, 3 Mo par fichier (≈4 Mo en base64), images/PDF uniquement.
+
+const PJ_MAX_COUNT = 8;
+const PJ_MAX_DATAURL_LEN = 4_200_000; // ~3 Mo binaire en base64
+const PJ_ALLOWED_PREFIX = /^data:(image\/(jpeg|png|webp)|application\/pdf);base64,/;
+
+export function validatePiecesJointes(pieces) {
+  if (pieces == null) return { ok: true, list: [] };
+  if (!Array.isArray(pieces)) return { ok: false, error: 'piecesJointes doit être une liste.' };
+  if (pieces.length > PJ_MAX_COUNT) return { ok: false, error: `Maximum ${PJ_MAX_COUNT} pièces jointes.` };
+
+  const list = [];
+  for (const p of pieces) {
+    if (!p || typeof p.dataUrl !== 'string' || !p.nom) continue;
+    if (!PJ_ALLOWED_PREFIX.test(p.dataUrl)) {
+      return { ok: false, error: `Format non autorisé pour « ${p.nom} » — images (JPG/PNG/WebP) ou PDF uniquement.` };
+    }
+    if (p.dataUrl.length > PJ_MAX_DATAURL_LEN) {
+      return { ok: false, error: `Le fichier « ${p.nom} » dépasse 3 Mo. Réduisez sa taille et réessayez.` };
+    }
+    list.push({
+      typeDoc:  String(p.typeDoc || 'AUTRE').slice(0, 50),
+      nom:      String(p.nom).slice(0, 255),
+      dataUrl:  p.dataUrl,
+      mimeType: p.dataUrl.slice(5, p.dataUrl.indexOf(';')),
+      fileSize: Math.round(p.dataUrl.length * 0.75),
+    });
+  }
+  return { ok: true, list };
+}
+
+// Crée les EleveDocument (catégorie ADMINISTRATIF) pour un élève donné
+export async function createPiecesJointes(eleve, pieces, uploadedBy = null) {
+  for (const p of pieces) {
+    await EleveDocument.create({
+      tenantId:      eleve.tenantId,
+      eleveId:       eleve.id,
+      categorie:     'ADMINISTRATIF',
+      anneeScolaire: eleve.anneeScolaire || null,
+      typeDoc:       p.typeDoc,
+      nom:           p.nom,
+      fileUrl:       p.dataUrl,
+      mimeType:      p.mimeType,
+      fileSize:      p.fileSize,
+      uploadedBy,
+    });
+  }
 }
 
 export function duplicateMessage(dup) {

@@ -12,6 +12,8 @@ import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
 import { compressImageToDataUrl } from '../services/photoUtils';
+import { PieceJointe } from '../services/piecesJustificatives';
+import PiecesJointes from './PiecesJointes';
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
 const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
@@ -257,6 +259,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [modalMode, setModalMode] = useState<'CREATE' | 'EDIT' | 'VIEW' | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [form, setForm] = useState<DossierForm>(emptyDossier());
+  const [pieces, setPieces] = useState<Record<string, PieceJointe>>({});
   const [showConfirmStatut, setShowConfirmStatut] = useState<{ dossier: any; newStatut: StatutAdmission } | null>(null);
   const [showAnnulInscription, setShowAnnulInscription] = useState<{ dossier: any; motif: string } | null>(null);
   const [showRejetModal, setShowRejetModal] = useState<{ dossier: any; motif: string } | null>(null);
@@ -421,6 +424,28 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     },
   });
 
+  // ── Pièces jointes → dossier numérique de l'élève ─────────────────────────
+  // Les fichiers joints au formulaire sont versés dans eleve_documents
+  // (catégorie ADMINISTRATIF) via la route existante du dossier.
+  const uploadPieces = async (eleveId: string) => {
+    const list: PieceJointe[] = Object.values(pieces);
+    for (const p of list) {
+      try {
+        await apiClient.post(`/eleves/${eleveId}/dossier`, {
+          categorie: 'ADMINISTRATIF',
+          typeDoc: p.typeDoc,
+          nom: p.nom,
+          fileUrl: p.dataUrl,
+          mimeType: p.mimeType,
+          fileSize: p.fileSize,
+        });
+      } catch (e) {
+        console.warn('[Admission] Pièce jointe non enregistrée :', p.nom, e);
+      }
+    }
+    if (list.length) setPieces({});
+  };
+
   // ── Créer un dossier ───────────────────────────────────────────────────────
 
   const handleCreate = async () => {
@@ -432,7 +457,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setActionLoading(true);
     setError(null);
     try {
-      await apiClient.post('/eleves', buildPayload(form));
+      const created: any = await apiClient.post('/eleves', buildPayload(form));
+      if (created?.id) await uploadPieces(created.id);
       showToast('Dossier d\'admission créé.', 'success');
       setModalMode(null);
       setWizardStep(1);
@@ -457,7 +483,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setError(null);
     try {
       const statutEleve: StatutAdmission = ['INSCRIT', 'ACTIF'].includes(form.statut) ? form.statut : 'INSCRIT';
-      await apiClient.post('/eleves', buildPayload({ ...form, statut: statutEleve }));
+      const created: any = await apiClient.post('/eleves', buildPayload({ ...form, statut: statutEleve }));
+      if (created?.id) await uploadPieces(created.id);
       showToast('Élève inscrit et dossier créé avec succès.', 'success');
       setModalMode(null);
       setWizardStep(1);
@@ -482,6 +509,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     setError(null);
     try {
       await apiClient.put(`/eleves/${selected.id}`, buildPayload(form));
+      await uploadPieces(selected.id);
       showToast('Dossier mis à jour.', 'success');
       setModalMode(null);
       setSelected(null);
@@ -563,6 +591,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
 
   const openCreate = () => {
     setForm(emptyDossier());
+    setPieces({});
     setError(null);
     setWizardStep(1);
     setModeInscription(false);
@@ -570,6 +599,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   };
 
   const openEdit = (d: any) => {
+    setPieces({});
     // d is already normalized by normalizeEleve — parent1Nom, parent1Tel, etc. are flat
     setForm({
       nomEnfant:       d.nom || '',
@@ -1687,6 +1717,10 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       </p>
                     </div>
                   </div>
+
+                  {/* Pièces justificatives — versées au dossier numérique après enregistrement */}
+                  <PiecesJointes niveau={form.niveau} value={pieces} onChange={setPieces}
+                    title="Pièces justificatives fournies par la famille" />
 
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-1 block">Notes internes</label>
