@@ -38,3 +38,13 @@ export interface PieceJointe {
   mimeType: string;
   fileSize: number;
 }
+
+// Libellés des pièces obligatoires non encore jointes — vide si tout est fourni
+export function missingRequiredPieces(
+  niveau: string | undefined,
+  value: Record<string, PieceJointe>,
+): string[] {
+  return piecesForNiveau(niveau)
+    .filter(p => p.obligatoire && !value[p.code])
+    .map(p => p.label);
+}

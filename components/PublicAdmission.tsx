@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { compressImageToDataUrl } from '../services/photoUtils';
-import { piecesForNiveau, PieceJointe } from '../services/piecesJustificatives';
+import { piecesForNiveau, missingRequiredPieces, PieceJointe } from '../services/piecesJustificatives';
 import PiecesJointes from './PiecesJointes';
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
@@ -136,6 +136,13 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
   };
 
   const handleSubmit = async () => {
+    // Les pièces obligatoires doivent être jointes avant soumission
+    const manquantes = missingRequiredPieces(form.niveau, pieces);
+    if (manquantes.length) {
+      setError(`Pièces obligatoires manquantes : ${manquantes.join(' · ')}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     setLoading(true); setError(null);
     try {
       const payload = {

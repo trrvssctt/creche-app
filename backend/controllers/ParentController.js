@@ -1,6 +1,9 @@
 import { Op, QueryTypes } from 'sequelize';
 import axios from 'axios';
-import { findDuplicateEleve, duplicateMessage, validatePiecesJointes, createPiecesJointes } from '../utils/eleveDedup.js';
+import {
+  findDuplicateEleve, duplicateMessage,
+  validatePiecesJointes, createPiecesJointes, missingRequiredPieces,
+} from '../utils/eleveDedup.js';
 import {
   Eleve, EcheancePaiement, Bulletin, CreneauHoraire,
   Announcement, EleveDocument, Classe, Service, Invoice, InvoiceItem, Sale,
@@ -566,6 +569,14 @@ export class ParentController {
       // Pièces justificatives jointes (images/PDF en data-URL)
       const pj = validatePiecesJointes(piecesJointes);
       if (!pj.ok) return res.status(400).json({ error: pj.error });
+
+      // Les pièces obligatoires doivent toutes être jointes (nouveau dossier)
+      const manquantes = missingRequiredPieces(pj.list);
+      if (manquantes.length) {
+        return res.status(400).json({
+          error: `Pièces obligatoires manquantes : ${manquantes.join(', ')}.`,
+        });
+      }
 
       // Utilise l'année active du tenant pour que le dossier apparaisse dans la vue admin
       const tenant = await Tenant.findOne({ where: { id: tenantId }, attributes: ['anneeActive'] });

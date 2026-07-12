@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { compressImageToDataUrl } from '../../services/photoUtils';
-import { PieceJointe } from '../../services/piecesJustificatives';
+import { missingRequiredPieces, PieceJointe } from '../../services/piecesJustificatives';
 import PiecesJointes from '../PiecesJointes';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -210,6 +210,15 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
 
   // ── Soumission ──
   const handleSubmit = async () => {
+    // Pièces obligatoires requises pour un nouveau dossier
+    // (à la resoumission d'un dossier rejeté, elles ont déjà été fournies)
+    if (!rejeteId) {
+      const manquantes = missingRequiredPieces(form.niveau, pieces);
+      if (manquantes.length) {
+        setError(`Pièces obligatoires manquantes : ${manquantes.join(' · ')}`);
+        return;
+      }
+    }
     setLoading(true); setError(null);
     try {
       const payload = {

@@ -1,6 +1,9 @@
 import { Op } from 'sequelize';
 import { Tenant, Eleve } from '../models/index.js';
-import { findDuplicateEleve, duplicateMessage, validatePiecesJointes, createPiecesJointes } from '../utils/eleveDedup.js';
+import {
+  findDuplicateEleve, duplicateMessage,
+  validatePiecesJointes, createPiecesJointes, missingRequiredPieces,
+} from '../utils/eleveDedup.js';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -73,6 +76,14 @@ export class PublicController {
       // Pièces justificatives jointes (images/PDF en data-URL)
       const pj = validatePiecesJointes(piecesJointes);
       if (!pj.ok) return res.status(400).json({ error: pj.error });
+
+      // Les pièces obligatoires doivent toutes être jointes
+      const manquantes = missingRequiredPieces(pj.list);
+      if (manquantes.length) {
+        return res.status(400).json({
+          error: `Pièces obligatoires manquantes : ${manquantes.join(', ')}.`,
+        });
+      }
 
       if (!nom?.trim() || !prenom?.trim()) {
         return res.status(400).json({ error: 'Le nom et le prénom de l\'enfant sont requis.' });

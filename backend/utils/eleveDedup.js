@@ -53,6 +53,24 @@ export function validatePiecesJointes(pieces) {
   return { ok: true, list };
 }
 
+// Pièces obligatoires (mêmes codes que services/piecesJustificatives.ts côté front).
+// Le certificat médical est requis pour tous les cycles.
+const REQUIRED_PIECES = {
+  EXTRAIT_NAISSANCE:  'Extrait de naissance',
+  CARNET_VACCINATION: 'Carnet de vaccination',
+  PHOTOS_IDENTITE:    'Photos d\'identité',
+  CNI_PARENT:         'Pièce d\'identité du parent',
+  CERTIFICAT_MEDICAL: 'Certificat médical',
+};
+
+// Libellés des pièces obligatoires absentes de la liste fournie
+export function missingRequiredPieces(list) {
+  const provided = new Set(list.map(p => p.typeDoc));
+  return Object.entries(REQUIRED_PIECES)
+    .filter(([code]) => !provided.has(code))
+    .map(([, label]) => label);
+}
+
 // Crée les EleveDocument (catégorie ADMINISTRATIF) pour un élève donné
 export async function createPiecesJointes(eleve, pieces, uploadedBy = null) {
   for (const p of pieces) {

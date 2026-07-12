@@ -12,7 +12,7 @@ import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
 import { compressImageToDataUrl } from '../services/photoUtils';
-import { PieceJointe } from '../services/piecesJustificatives';
+import { missingRequiredPieces, PieceJointe } from '../services/piecesJustificatives';
 import PiecesJointes from './PiecesJointes';
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
@@ -454,6 +454,13 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       setError('Prénom et nom de l\'enfant sont obligatoires.');
       return;
     }
+    {
+      const manquantes = missingRequiredPieces(form.niveau, pieces);
+      if (manquantes.length) {
+        setError(`Pièces obligatoires manquantes : ${manquantes.join(' · ')}`);
+        return;
+      }
+    }
     setActionLoading(true);
     setError(null);
     try {
@@ -478,6 +485,13 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     if (!form.parent1Tel) {
       setError('Le téléphone du parent est obligatoire.');
       return;
+    }
+    {
+      const manquantes = missingRequiredPieces(form.niveau, pieces);
+      if (manquantes.length) {
+        setError(`Pièces obligatoires manquantes : ${manquantes.join(' · ')}`);
+        return;
+      }
     }
     setActionLoading(true);
     setError(null);
