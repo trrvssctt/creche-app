@@ -271,6 +271,20 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [admissionsLoading, setAdmissionsLoading] = useState(false);
   const [admissionSearch, setAdmissionSearch] = useState('');
   const [inscritEleve, setInscritEleve] = useState<Partial<Eleve> | null>(null);
+  // Codes (typeDoc) des pièces justificatives déjà présentes dans le dossier numérique
+  const [piecesFournies, setPiecesFournies] = useState<Set<string>>(new Set());
+
+  // À l'ouverture de l'étape « Dossier constitué », charger les pièces déjà
+  // versées au dossier numérique (jointes lors de la demande d'admission)
+  useEffect(() => {
+    if (createStep !== 'DOCS' || !inscritEleve?.id) { setPiecesFournies(new Set()); return; }
+    apiClient.get(`/eleves/${inscritEleve.id}/dossier/admin`)
+      .then((docs: any) => {
+        const list = Array.isArray(docs) ? docs : [];
+        setPiecesFournies(new Set(list.map((d: any) => d.typeDoc)));
+      })
+      .catch(() => setPiecesFournies(new Set()));
+  }, [createStep, inscritEleve?.id]);
   const [selectedDossierId, setSelectedDossierId] = useState<string | null>(null);
   const [servicesApplicables, setServicesApplicables] = useState<any[]>([]);
 
@@ -2009,25 +2023,38 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     Cliquez sur un document pour l'ouvrir et l'imprimer (ou enregistrer en PDF).
                   </p>
 
-                  {/* Pièces justificatives à collecter auprès de la famille */}
+                  {/* Pièces justificatives — cochées si déjà versées au dossier numérique */}
                   <div className="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
                     <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-2">
                       <ClipboardCheck size={13} /> Pièces justificatives à collecter
                     </p>
                     <ul className="space-y-1.5">
-                      {piecesForNiveau(inscritEleve?.niveau).map((p, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
-                          <span className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 ${p.obligatoire ? 'border-amber-400 bg-white' : 'border-slate-300 bg-white'}`} />
-                          <span className="font-bold">
-                            {p.label}
-                            {p.obligatoire
-                              ? <span className="text-rose-500"> *</span>
-                              : <span className="text-slate-400 font-medium"> (si applicable)</span>}
-                          </span>
-                        </li>
-                      ))}
+                      {piecesForNiveau(inscritEleve?.niveau).map((p, i) => {
+                        const fournie = piecesFournies.has(p.code);
+                        return (
+                          <li key={i} className="flex items-start gap-2 text-xs">
+                            {fournie ? (
+                              <span className="mt-0.5 w-4 h-4 rounded bg-emerald-500 border-2 border-emerald-500 flex items-center justify-center flex-shrink-0">
+                                <CheckCircle2 size={11} className="text-white" />
+                              </span>
+                            ) : (
+                              <span className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 bg-white ${p.obligatoire ? 'border-amber-400' : 'border-slate-300'}`} />
+                            )}
+                            <span className={`font-bold ${fournie ? 'text-emerald-700' : 'text-slate-700'}`}>
+                              {p.label}
+                              {fournie
+                                ? <span className="text-emerald-500 font-black"> — fournie ✓</span>
+                                : p.obligatoire
+                                  ? <span className="text-rose-500"> *</span>
+                                  : <span className="text-slate-400 font-medium"> (si applicable)</span>}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
-                    <p className="text-[9px] text-amber-600 font-bold mt-2">* Obligatoire — à joindre au dossier physique de l'élève</p>
+                    <p className="text-[9px] text-amber-600 font-bold mt-2">
+                      * Obligatoire — les pièces cochées ont été jointes lors de la demande et sont dans le dossier numérique de l'élève.
+                    </p>
                   </div>
                 </div>
 
