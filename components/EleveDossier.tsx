@@ -102,7 +102,7 @@ interface UploadModalProps {
 }
 
 const UploadModal: React.FC<UploadModalProps> = ({ categorie, annee, onClose, onDone, eleveId }) => {
-  const { showToast } = useToast();
+  const showToast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [nom, setNom] = useState('');
@@ -138,7 +138,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ categorie, annee, onClose, on
         typeDoc,
         nom: nom.trim(),
         fileUrl: up.url,
-        s3Key: up.key,
+        s3Key: up.publicId || up.key || null,
         mimeType: up.mimeType,
         fileSize: up.sizeBytes,
       });
@@ -244,7 +244,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ categorie, annee, onClose, on
 // ─── Composant principal EleveDossier ─────────────────────────────────────────
 
 export const EleveDossier: React.FC<Props> = ({ eleve, onClose }) => {
-  const { showToast } = useToast();
+  const showToast = useToast();
   const [view, setView] = useState<View>({ level: 'ROOT' });
   const [docs, setDocs] = useState<EleveDocumentRecord[]>([]);
   const [annees, setAnnees] = useState<AnneeRow[]>([]);
