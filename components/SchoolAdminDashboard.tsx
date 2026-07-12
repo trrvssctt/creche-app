@@ -653,12 +653,12 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           <SectionTitle icon={Target} label="Actions rapides" />
           <div className="grid grid-cols-3 gap-2.5">
             {[
-              { icon: UserPlus,      label: 'Nouvelle\nadmission',    tab: 'admissions',      color: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-100' },
-              { icon: Receipt,       label: 'Facturation\nscolaire',  tab: 'facturation',     color: 'bg-teal-50 text-teal-700 hover:bg-teal-100 border-teal-100' },
-              { icon: MessageSquare, label: 'Envoyer\nWhatsApp',      tab: 'whatsapp',        color: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-100' },
-              { icon: FileText,      label: 'Bulletins',              tab: 'bulletins',       color: 'bg-violet-50 text-violet-700 hover:bg-violet-100 border-violet-100' },
-              { icon: CalendarDays,  label: 'Emploi\ndu temps',       tab: 'emploi-du-temps', color: 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-100' },
-              { icon: Users,         label: 'Gestion\nRH',            tab: 'rh',              color: 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-100' },
+              { icon: UserPlus,      label: 'Nouvelle\nadmission',    tab: 'admission',     color: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-100' },
+              { icon: Receipt,       label: 'Facturation\nscolaire',  tab: 'facturation',   color: 'bg-teal-50 text-teal-700 hover:bg-teal-100 border-teal-100' },
+              { icon: MessageSquare, label: 'Envoyer\nWhatsApp',      tab: 'whatsapp',      color: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-100' },
+              { icon: FileText,      label: 'Bulletins',              tab: 'bulletins',     color: 'bg-violet-50 text-violet-700 hover:bg-violet-100 border-violet-100' },
+              { icon: CalendarDays,  label: 'Emploi\ndu temps',       tab: 'emploidutemps', color: 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-100' },
+              { icon: Users,         label: 'Gestion\nRH',            tab: 'rh',            color: 'bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-100' },
             ].map(({ icon: Icon, label, tab, color }) => (
               <button
                 key={tab}

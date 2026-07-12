@@ -31,6 +31,7 @@ import AuditLogs from './components/AuditLogs';
 import Settings from './components/Settings';
 import ChatInterface from './components/ChatInterface';
 import Governance from './components/Governance';
+import Subscription from './components/Subscription';
 import HRDashboard from './components/rh/HRDashboard';
 import EmployeeList from './components/rh/EmployeeList';
 import EmployeeProfile from './components/rh/EmployeeProfile';
@@ -462,6 +463,7 @@ const App: React.FC = () => {
       case 'my-leaves':          return <LeaveManagement onNavigate={handleContextualNavigate} user={currentUser} />;
       case 'employee-pointage':  return <EmployeePointage onNavigate={handleContextualNavigate} />;
       case 'governance':         return <Governance tenantId={currentUser.tenantId} />;
+      case 'subscription':       return <Subscription user={currentUser} currency={appSettings.currency} onLogout={handleLogout} />;
       case 'info':               return <Info user={currentUser} />;
       case 'support':            return <Support user={currentUser} />;
       case 'security':           return <SecurityPanel />;

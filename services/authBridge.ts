@@ -33,6 +33,7 @@ const ALL_MODULES = [
   'rh.attendance', 'rh.overtime', 'rh.time-settings',
   'my-leaves', 'employee-pointage',
   'governance', 'security', 'audit',
+  'subscription',
   'info', 'support', 'settings',
   'ai_analysis',
 ];
@@ -104,6 +105,7 @@ const ROLE_MODULES: Record<string, string[]> = {
 
   [UserRole.CHAUFFEUR]: [
     'dashboard',
+    'eleves', // liste transport (accès rapide du portail)
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],

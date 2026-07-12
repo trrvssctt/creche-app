@@ -311,7 +311,6 @@ const TeacherPortal: React.FC<TeacherPortalProps> = ({
             {[
               { icon: Clock,         label: 'Mon\nPointage',   tab: 'employee-pointage', color: 'bg-indigo-50 text-indigo-700' },
               { icon: CalendarDays,  label: 'Mes\nCongés',     tab: 'my-leaves',         color: 'bg-violet-50 text-violet-700' },
-              { icon: FileText,      label: 'Fiches\nde paie', tab: 'my-payslips',        color: 'bg-teal-50 text-teal-700' },
               { icon: Bell,          label: 'Annonces\nécole', tab: 'evenements',        color: 'bg-amber-50 text-amber-700' },
               ...(role === 'INFIRMIERE' ? [
                 { icon: Stethoscope, label: 'Fiches\nsanitaires', tab: 'eleves',  color: 'bg-rose-50 text-rose-700' },
