@@ -3,15 +3,6 @@ import { StatutAnnee, AnneeScolaireConfig } from '../types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildAnneesDisponibles(): string[] {
-  const y = new Date().getFullYear();
-  const list: string[] = [];
-  for (let i = y - 3; i <= y + 2; i++) {
-    list.push(`${i}-${i + 1}`);
-  }
-  return list;
-}
-
 /** Année scolaire en cours selon la date du jour (septembre = début d'année). */
 export function getAnneeActiveToday(): string {
   const now = new Date();
@@ -112,8 +103,6 @@ interface AnneeCtx {
 const AnneeContext = createContext<AnneeCtx | null>(null);
 
 export const AnneeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const anneesDisponibles = useMemo(() => buildAnneesDisponibles(), []);
-
   // anneeActiveToday: ref admin en DB → date du jour (en sautant les clôturées)
   const [anneeActiveToday, setAnneeActiveToday] = useState<string>(computeAnneeActiveToday);
 
@@ -124,7 +113,7 @@ export const AnneeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const cloturees: string[] = JSON.parse(localStorage.getItem(LS_CLOTUREES_KEY) || '[]');
       if (cloturees.includes(saved)) return activeToday;
     } catch { /* ignore */ }
-    return anneesDisponibles.includes(saved) ? saved : activeToday;
+    return saved;
   });
 
   const [anneesCloturees, setAnneesCloturées] = useState<string[]>(() => {
@@ -140,6 +129,21 @@ export const AnneeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return s ? JSON.parse(s) : {};
     } catch { return {}; }
   });
+
+  // Seules les années gérées dans « Gestion des campagnes » apparaissent dans
+  // les sélecteurs : années du cycle de vie (anneeScolaireConfig), années
+  // clôturées (legacy), l'année active et l'année sélectionnée (sécurité).
+  const anneesDisponibles = useMemo(() => {
+    const set = new Set<string>([
+      ...Object.keys(anneeScolaireConfig),
+      ...anneesCloturees,
+      anneeActiveToday,
+      annee,
+    ]);
+    return [...set]
+      .filter(a => /^\d{4}-\d{4}$/.test(a))
+      .sort((a, b) => parseInt(a.slice(0, 4)) - parseInt(b.slice(0, 4)));
+  }, [anneeScolaireConfig, anneesCloturees, anneeActiveToday, annee]);
 
   const setCloturees = useCallback((list: string[]) => {
     setAnneesCloturées(list);
