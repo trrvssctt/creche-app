@@ -572,8 +572,24 @@ export class TenantController {
         dateCloture: new Date().toISOString()
       });
       const existing = Array.isArray(tenant.anneesCloturees) ? tenant.anneesCloturees : [];
+      const updatePayload = {};
       if (!existing.includes(anneeLibelle)) {
-        await tenant.update({ anneesCloturees: [...existing, anneeLibelle] });
+        updatePayload.anneesCloturees = [...existing, anneeLibelle];
+      }
+
+      // Si l'année clôturée était l'année active, basculer sur la prochaine année disponible
+      let nextAnnee = null;
+      if (tenant.anneeActive === anneeLibelle) {
+        const priorities = ['EN_COURS', 'INSCRIPTIONS_OUVERTES', 'PREPARATION'];
+        for (const statut of priorities) {
+          const found = Object.entries(newConfig).find(([k, v]) => k !== anneeLibelle && v.statut === statut);
+          if (found) { nextAnnee = found[0]; break; }
+        }
+        updatePayload.anneeActive = nextAnnee;
+      }
+
+      if (Object.keys(updatePayload).length > 0) {
+        await tenant.update(updatePayload);
       }
 
       await AuditLog.create({
@@ -588,7 +604,8 @@ export class TenantController {
       return res.status(200).json({
         message: `Année scolaire ${anneeLibelle} clôturée.`,
         annee: anneeLibelle,
-        config: newConfig[anneeLibelle]
+        config: newConfig[anneeLibelle],
+        anneeActive: nextAnnee !== undefined ? (nextAnnee || null) : tenant.anneeActive
       });
     } catch (error) {
       return res.status(500).json({ error: 'CloturerAnneeError', message: error.message });

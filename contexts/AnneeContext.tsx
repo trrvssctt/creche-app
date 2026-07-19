@@ -39,7 +39,11 @@ const LS_CONFIG_KEY      = 'tda_annee_scolaire_config';
 function computeAnneeActiveToday(): string {
   try {
     const ref = localStorage.getItem(LS_REF_KEY);
-    if (ref) return ref;
+    if (ref) {
+      // Ne pas retourner une année clôturée comme active
+      const cloturees: string[] = JSON.parse(localStorage.getItem(LS_CLOTUREES_KEY) || '[]');
+      if (!cloturees.includes(ref)) return ref;
+    }
   } catch { /* ignore */ }
 
   const computed = getAnneeActiveToday();

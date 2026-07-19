@@ -3,6 +3,7 @@
 > Transcription de la note manuscrite. Les passages incertains sont signalés par `[?]`.
 
 1. **Recharge de l'année scolaire** : affiche toujours l'année active → dans la partie **Paramètres (Année scolaire)** Lorsque je cloture une ann.
+    - ✅ Fait : après clôture, le backend bascule automatiquement `anneeActive` sur la prochaine année disponible. Le frontend met à jour le contexte + localStorage. Le filet de sécurité dans AnneeContext ignore une année clôturée même si elle est en cache.
 3. **Signature digitale à implementer sur tous les document qui demande signature elle devra etre signer et mis dans l'application** *(urgent)*.
     - ✅ Fait : champ « Signature de la Direction » ajouté dans Paramètres > Assets Visuels (à côté du logo et cachet). Le cachet officiel + la signature sont automatiquement apposés sur tous les documents administratifs (fiche inscription, certificats scolarité/radiation, fiche sanitaire, autorisation sortie, convention de scolarisation, règlement intérieur). Migration BD appliquée (`signature_direction_url` sur tenant).
 5. **Autorisation de soins avec fiche sanitaire elle doit aussi etre generer comme les autres** *(crèche)*.

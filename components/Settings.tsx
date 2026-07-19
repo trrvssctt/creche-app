@@ -415,6 +415,15 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
       const newConfig = { ...anneeScolaireConfig, [annee]: result.config };
       setAnneeScolaireConfig(newConfig);
       setCloturees([...anneesCloturees, annee]);
+
+      // Basculer sur la prochaine année active retournée par le backend
+      const nextAnnee = result.anneeActive || null;
+      if (nextAnnee) {
+        setAnneeDB(nextAnnee); refreshAnneeRef(nextAnnee); setAnnee(nextAnnee);
+      } else if (anneeDB === annee) {
+        setAnneeDB(null); refreshAnneeRef('');
+      }
+
       setCampagneSuccess(`Année scolaire ${annee} clôturée.`);
       setShowCloturerAnneeModal(null);
       setTimeout(() => setCampagneSuccess(null), 5000);
