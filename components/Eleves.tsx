@@ -2058,6 +2058,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                       { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité",         desc: "Identité de l'enfant et coordonnées des parents" },
                       { key: 'reglement_interieur',      type: 'reglement_interieur'      as const, label: 'Règlement intérieur',       desc: 'Règlement de la crèche + accusé de réception à signer' },
                       { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire',           desc: 'Informations médicales et contacts urgence' },
+                      { key: 'autorisation_soins',       type: 'autorisation_soins'       as const, label: 'Autorisation de soins',     desc: 'Autorisation de soins et hospitalisation d\'urgence' },
                       { key: 'autorisation_sortie',      type: 'autorisation_sortie'      as const, label: 'Autorisation de sortie',    desc: 'Autorisation annuelle pour les sorties' },
                     ] : [
                       { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité",         desc: "Identité de l'élève et coordonnées des parents" },
@@ -2466,6 +2467,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité" },
                     { key: 'reglement_interieur',      type: 'reglement_interieur'      as const, label: 'Règlement intérieur' },
                     { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire' },
+                    { key: 'autorisation_soins',       type: 'autorisation_soins'       as const, label: 'Autorisation soins' },
                     { key: 'autorisation_sortie',      type: 'autorisation_sortie'      as const, label: 'Autorisation sortie' },
                   ] : [
                     { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité" },

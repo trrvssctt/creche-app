@@ -863,65 +863,127 @@ function buildConventionScolarisationHtml(eleve: Partial<Eleve>, assets: TenantA
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const parent = eleve.parent1;
   const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
+  const parentAdresse = parent?.adresse || '';
   const niveauLib = NIVEAUX_MAP[eleve.niveau || ''] || eleve.niveau || '—';
   const ref = `CONV-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
+  const annee = getAnnee();
 
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}
+    .article { margin-bottom: 14px; }
+    .article h2 { font-size: 10pt; font-weight: 900; color: #1e293b; margin-bottom: 6px; border-bottom: none; padding-bottom: 0; text-transform: none; letter-spacing: 0; }
+    .article p { font-size: 10.5pt; line-height: 1.8; text-align: justify; margin-bottom: 6px; }
+    .article ul { font-size: 10.5pt; line-height: 1.8; margin-left: 18px; margin-bottom: 6px; }
+    .article ul li { margin-bottom: 3px; }
+    .sub-article { margin-top: 10px; margin-left: 12px; }
+    .sub-article h3 { font-size: 9.5pt; font-weight: 800; color: #334155; margin-bottom: 4px; }
+    .convention-header { font-size: 10.5pt; line-height: 2; margin-bottom: 18px; }
+    .convention-title { font-size: 13pt; font-weight: 900; text-align: center; text-transform: uppercase; letter-spacing: 2px; margin: 16px 0 6px; }
+    .convention-subtitle { text-align: center; font-size: 9.5pt; font-style: italic; color: #64748b; margin-bottom: 20px; }
+  </style></head><body>
     ${pageHeader(logoBase64, 'Convention de Scolarisation', ref)}
-    <div class="dossier-label">Élève : ${nomComplet} — ${niveauLib} — Matricule : ${eleve.matricule || '—'}</div>
+    <div class="convention-subtitle">(en deux exemplaires)</div>
 
-    <div class="text-block">
-      <p>Entre l'établissement <strong>Le Toit des Anges</strong>, sis au 469 Cité Cheikh Omar TALL, Ouakam, Dakar,
-      représenté par sa Directrice, ci-après désigné « l'Établissement »,</p>
-      <p>et <strong>${v(parentNom, 'M. / Mme ____________________')}</strong>,
-      agissant en qualité de ${parent?.lien === 'MERE' ? 'mère' : parent?.lien === 'PERE' ? 'père' : 'tuteur légal'}
-      de l'enfant <strong>${nomComplet}</strong>, né(e) le <strong>${formatDate(eleve.dateNaissance)}</strong>,
-      ci-après désigné « le Parent »,</p>
-      <p>il est convenu ce qui suit pour l'année scolaire <strong>${getAnnee()}</strong> :</p>
+    <div class="convention-header">
+      <p><strong>Entre :</strong><br>
+      Le Toit des Anges situé au 469 Cité Cheikh Omar TALL Ouakam</p>
+      <p style="margin-top:10px"><strong>Et :</strong><br>
+      M. Mme <strong>${v(parentNom, '.........')}</strong><br>
+      Demeurant : <strong>${v(parentAdresse, '.........')}</strong><br>
+      Représentant(s) légal(aux) de l'élève : <strong>${nomComplet}</strong></p>
+      <p style="margin-top:12px"><em>Il est convenu ce qui suit :</em></p>
     </div>
 
-    <div class="section">
-      <h2>Article 1 — Objet</h2>
-      <div class="text-block"><p>La présente convention règle les conditions de scolarisation de l'enfant
-      <strong>${nomComplet}</strong> en classe de <strong>${niveauLib}</strong> au sein de l'Établissement.</p></div>
+    <div class="article">
+      <h2>Article 1 – Objet</h2>
+      <p>La présente convention a pour objet de définir les conditions dans lesquelles l'élève
+      <strong>${nomComplet}</strong> sera scolarisé(e) par le(s) parent(s) au sein de l'école privée
+      « Le Toit des Anges », ainsi que les droits et obligations réciproques de chacune des parties.</p>
     </div>
 
-    <div class="section">
-      <h2>Article 2 — Engagements de l'Établissement</h2>
-      <div class="text-block"><p>L'Établissement s'engage à assurer l'accueil, l'encadrement pédagogique et la
-      sécurité de l'enfant conformément à son projet pédagogique et au règlement intérieur, pendant les jours
-      et horaires d'ouverture communiqués aux familles.</p></div>
+    <div class="article">
+      <h2>Article 2 – Obligation de l'établissement</h2>
+      <p>L'école privée « Le Toit des Anges » s'engage à scolariser l'enfant <strong>${nomComplet}</strong>
+      en classe de <strong>${niveauLib}</strong> pour l'année scolaire ${annee}.
+      L'établissement s'engage à fournir par ailleurs d'autres prestations selon le choix définis par les
+      parents : cantine, garderie, activités périscolaires.</p>
     </div>
 
-    <div class="section">
-      <h2>Article 3 — Engagements du Parent</h2>
-      <div class="text-block"><p>Le Parent s'engage à : respecter le règlement intérieur de l'Établissement ;
-      régler les frais de scolarité selon le tableau des droits et frais en vigueur (frais d'inscription à
-      l'admission, mensualités payables au plus tard le 5 de chaque mois) ; fournir les pièces justificatives
-      demandées au dossier ; signaler tout changement de situation (adresse, téléphone, santé de l'enfant).</p></div>
+    <div class="article">
+      <h2>Article 3 – Obligation des parents</h2>
+      <p>Le(s) parent(s) s'engage(nt) à inscrire l'enfant <strong>${nomComplet}</strong> en classe de
+      <strong>${niveauLib}</strong> pour l'année scolaire ${annee} au sein de l'établissement
+      « Le Toit des Anges », et à respecter l'assiduité scolaire pour leur enfant.</p>
+      <p>Les parents reconnaissent avoir pris connaissance du projet éducatif, du projet d'établissement,
+      du règlement intérieur de l'établissement et acceptent d'y adhérer et mettre tout en œuvre afin de
+      les respecter.</p>
+      <p>Les Parents reconnaissent avoir pris connaissance du coût de la scolarisation de leur enfant au
+      sein de l'école privée « Le Toit des Anges » et s'engagent à en assurer la charge financière.</p>
     </div>
 
-    <div class="section">
-      <h2>Article 4 — Frais de scolarité</h2>
-      <div class="text-block"><p>Les tarifs applicables sont ceux du tableau des droits et frais de scolarité
-      de l'année ${getAnnee()}, remis au Parent lors de l'inscription. Tout mois entamé est dû.
-      Les frais d'inscription ne sont pas remboursables.</p></div>
+    <div class="article">
+      <h2>Article 4 – Coût de la scolarisation</h2>
+      <p>Le coût de la scolarisation comprend plusieurs éléments : les frais d'inscriptions, la scolarité,
+      la cantine, la garderie, les participations à des sorties scolaires,...</p>
     </div>
 
-    <div class="section">
-      <h2>Article 5 — Résiliation</h2>
-      <div class="text-block"><p>La présente convention peut être résiliée par le Parent par écrit avec un
-      préavis d'un mois. L'Établissement se réserve le droit de mettre fin à la scolarisation en cas de
-      non-paiement persistant ou de manquement grave au règlement intérieur, après notification écrite.</p></div>
+    <div class="article">
+      <h2>Article 5 – Modalités de paiement</h2>
+      <p>Les contributions des familles et les prestations annexes choisies par les parents, sont payées :
+      par virement bancaire tous les 5 du mois ou trimestriel (Octobre, janvier et avril). Par espèces tous
+      les 5 du mois ou trimestriel (Octobre, janvier et avril).</p>
+      <p>Lors de l'inscription ou de la réinscription de l'enfant, les frais plus la dernière mensualité
+      sont payables immédiatement. En cas de désistement, ces frais seront conservés par l'établissement.</p>
     </div>
 
-    <div style="margin-top: 16px; font-size: 9.5pt; color: #64748b; font-weight: 600;">
+    <div class="article">
+      <h2>Article 6 – Assurances</h2>
+      <p>Les parents s'engagent à assurer l'enfant pour sa scolarisation et à produire une attestation
+      d'assurance RESPONSABILITE CIVILE et INDIVIDUELLE ACCIDENT avant le 11 septembre ${annee.split('-')[0]}.</p>
+    </div>
+
+    <div class="article">
+      <h2>Article 7 – Dégradations volontaires de matériel</h2>
+      <p>La remise en état ou le remplacement du matériel dégradé par un élève fera l'objet d'une facturation
+      aux parents sur la base du coût incluant les frais de main d'œuvre.</p>
+    </div>
+
+    <div class="article">
+      <h2>Article 8 – Durée et résiliation du contrat</h2>
+      <p>La présente convention est valable pour l'année scolaire ${annee}.</p>
+
+      <div class="sub-article">
+        <h3>8-1 Résiliation en cours d'année scolaire</h3>
+        <p>La présente convention ne peut être résiliée par l'établissement ou par les parents. Toutefois
+        celle-ci peut être résiliée pour des causes réelles et sérieuses telles que :</p>
+        <ul>
+          <li>Déménagement ou tout autre motif légitime accepté expressément par l'établissement,</li>
+          <li>Indiscipline, désaccord relatif aux choix pédagogiques, perte de la confiance entre la famille
+          et l'établissement, impayés.</li>
+        </ul>
+        <p>La rupture du contrat et la radiation de l'élève ne pourront être définitives qu'après entretien
+        entre le chef de l'établissement et les représentants légaux de l'enfant, puis envoi d'un courrier
+        qui témoignera des manquements constatés.</p>
+        <p>Le coût annuel de la scolarisation, au prorata temporis pour la période écoulée (tout mois commencé
+        est dû en entier) reste dû dans tous les cas ainsi que toutes les dépenses ou frais engagés par la famille.</p>
+      </div>
+
+      <div class="sub-article">
+        <h3>8-2 Résiliation au terme d'une année scolaire</h3>
+        <p>Les parents informent l'établissement de la non-réinscription de leur enfant le second trimestre
+        scolaire à l'occasion de la demande qui est faite à tous les parents d'élèves au plus tard le 1er juin.</p>
+        <p>L'établissement s'engage à respecter ce même délai (le 1er juin) pour informer les parents de la
+        non-réinscription de leur enfant, pour une cause réelle et sérieuse (Indiscipline, désaccord relatif
+        aux choix pédagogiques, perte de la confiance entre la famille et l'établissement, impayés).</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; font-size: 9.5pt; color: #64748b; font-weight: 600;">
       Fait à Dakar en deux exemplaires, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
     </div>
 
     <div class="sigs">
       <div class="sig">Le Parent / Tuteur légal<br><em style="font-weight:400;font-size:8pt">(précédé de « Lu et approuvé »)</em></div>
-      <div class="sig">La Directrice<br><em style="font-weight:400;font-size:8pt">(cachet & signature)</em>${assets.cachetBase64 || assets.signatureBase64 ? `<div class="sig-images">${assets.cachetBase64 ? `<img src="${assets.cachetBase64}" alt="Cachet"/>` : ''}${assets.signatureBase64 ? `<img src="${assets.signatureBase64}" alt="Signature"/>` : ''}</div>` : ''}</div>
+      ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Convention de scolarisation', ref)}
   </body></html>`;
@@ -992,19 +1054,93 @@ function buildReglementInterieurHtml(eleve: Partial<Eleve>, assets: TenantAssets
   </body></html>`;
 }
 
+// ── Autorisation de soins (crèche) ──────────────────────────────────────────
+
+function buildAutorisationSoinsHtml(eleve: Partial<Eleve>, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
+  const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
+  const parent = eleve.parent1;
+  const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
+  const ref = `AUT-SOINS-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
+  const urgence = eleve.contactUrgence;
+  const e = eleve as any;
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
+    ${pageHeader(logoBase64, 'Autorisation de Soins', ref)}
+    <div class="dossier-label">Enfant : ${nomComplet} — Matricule : ${eleve.matricule || '—'} — Année scolaire ${getAnnee()}</div>
+
+    <div class="text-block">
+      <p>Je soussigné(e) <strong>${v(parentNom, 'M. / Mme ____________________')}</strong>,
+      agissant en qualité de ${parent?.lien === 'MERE' ? 'mère' : parent?.lien === 'PERE' ? 'père' : 'représentant(e) légal(e)'}
+      de l'enfant <strong>${nomComplet}</strong>, né(e) le <strong>${formatDate(eleve.dateNaissance)}</strong>,
+      inscrit(e) à la crèche <strong>Le Toit des Anges</strong>,</p>
+
+      <p style="margin-top:16px"><strong>AUTORISE</strong> expressément le personnel de l'établissement à :</p>
+    </div>
+
+    <div class="section">
+      <div class="text-block" style="margin-top:8px;line-height:2.4">
+        <p>&#9745; Faire appel aux services d'urgence (SAMU, pompiers) en cas de nécessité ;</p>
+        <p>&#9745; Faire transporter mon enfant vers l'établissement hospitalier le plus proche ;</p>
+        <p>&#9745; Autoriser toute intervention médicale ou chirurgicale d'urgence jugée indispensable
+        par le médecin pour préserver la santé ou la vie de mon enfant ;</p>
+        <p>&#9745; Administrer les premiers soins (désinfection, pansement, prise de température) ;</p>
+        <p>&#9745; Administrer un traitement médical prescrit, à condition qu'une ordonnance en cours de
+        validité soit fournie avec les médicaments dans leur emballage d'origine, au nom de l'enfant.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Informations médicales importantes</h2>
+      <table>
+        <tr><td class="lbl">Allergies connues</td><td>${v(getSani(e, 'allergieAutres') || (getSani(e, 'allergieAlimentaire') ? 'Alimentaire' : '') || (getSani(e, 'allergieMedicament') ? 'Médicamenteuse' : ''), 'Aucune signalée')}</td></tr>
+        <tr><td class="lbl">Traitement en cours</td><td>${v(getSani(e, 'traitementDetail'), 'Aucun')}</td></tr>
+        <tr><td class="lbl">Médecin traitant</td><td>${v(getSani(e, 'medecinNom'), 'Non renseigné')}${getSani(e, 'medecinTel') ? ` — Tél. : <strong>${getSani(e, 'medecinTel')}</strong>` : ''}</td></tr>
+        <tr><td class="lbl">Contre-indications</td><td>${v(eleve.besoinSpecifique, 'Aucune signalée')}</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Contacts en cas d'urgence</h2>
+      <table>
+        <tr><td class="lbl">Parent principal</td><td><strong>${v(parentNom)}</strong> — Tél. : ${v(parent?.telephone)}</td></tr>
+        ${eleve.parent2 ? `<tr><td class="lbl">Second parent</td><td><strong>${v(`${eleve.parent2.prenom || ''} ${eleve.parent2.nom || ''}`.trim())}</strong> — Tél. : ${v(eleve.parent2.telephone)}</td></tr>` : ''}
+        ${urgence ? `<tr><td class="lbl">Contact d'urgence</td><td><strong>${v(`${urgence.prenom || ''} ${urgence.nom || ''}`.trim())}</strong> (${v(urgence.lien)}) — Tél. : ${v(urgence.telephone)}</td></tr>` : ''}
+      </table>
+    </div>
+
+    <div style="margin-top:20px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:9pt;color:#475569;line-height:1.7">
+      <p><strong>Note :</strong> En cas d'impossibilité de joindre les personnes ci-dessus, j'autorise
+      la Direction à prendre toute décision nécessaire dans l'intérêt de la santé de mon enfant.
+      Je m'engage à communiquer tout changement concernant l'état de santé de mon enfant ou
+      les coordonnées des personnes à contacter.</p>
+    </div>
+
+    <div style="margin-top: 16px; font-size: 9.5pt; color: #64748b; font-weight: 600;">
+      Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+    </div>
+
+    <div class="sigs">
+      <div class="sig">Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
+      ${sigDirectionBlock(assets)}
+    </div>
+    ${pageFooter('Autorisation de soins', ref)}
+  </body></html>`;
+}
+
 // ── API publique ─────────────────────────────────────────────────────────────
 
 export type DocAdminType =
   | 'fiche_inscription' | 'certificat_scolarite' | 'certificat_radiation'
-  | 'fiche_sanitaire' | 'autorisation_sortie'
+  | 'fiche_sanitaire' | 'autorisation_sortie' | 'autorisation_soins'
   | 'convention_scolarisation' | 'reglement_interieur';
 
 // Documents applicables selon le cycle de l'élève :
-// - Crèche               → fiche d'identité + règlement intérieur (+ sanitaire)
-// - Maternelle/Élémentaire → fiche d'identité + convention de scolarisation (+ certificat, sanitaire)
+// - Crèche               → fiche d'identité + règlement intérieur + sanitaire + autorisation soins
+// - Maternelle/Élémentaire → fiche d'identité + convention de scolarisation + certificat + sanitaire
 export function docsForNiveau(niveau: string | undefined): DocAdminType[] {
   if (niveau === 'CRECHE') {
-    return ['fiche_inscription', 'reglement_interieur', 'fiche_sanitaire'];
+    return ['fiche_inscription', 'reglement_interieur', 'fiche_sanitaire', 'autorisation_soins'];
   }
   return ['fiche_inscription', 'convention_scolarisation', 'certificat_scolarite', 'fiche_sanitaire'];
 }
@@ -1016,6 +1152,7 @@ function buildHtml(type: DocAdminType, eleve: Partial<Eleve> & { motifRadiation?
     case 'certificat_radiation':       return buildCertificatRadiationHtml(eleve, assets);
     case 'fiche_sanitaire':            return buildFicheSanitaireHtml(eleve, assets);
     case 'autorisation_sortie':        return buildAutorisationSortieHtml(eleve, assets);
+    case 'autorisation_soins':         return buildAutorisationSoinsHtml(eleve, assets);
     case 'convention_scolarisation':   return buildConventionScolarisationHtml(eleve, assets);
     case 'reglement_interieur':        return buildReglementInterieurHtml(eleve, assets);
   }
@@ -1029,6 +1166,7 @@ function docFilename(type: DocAdminType, eleve: Partial<Eleve>): string {
     certificat_radiation:     'Certificat_Radiation',
     fiche_sanitaire:          'Fiche_Sanitaire',
     autorisation_sortie:      'Autorisation_Sortie',
+    autorisation_soins:       'Autorisation_Soins',
     convention_scolarisation: 'Convention_Scolarisation',
     reglement_interieur:      'Reglement_Interieur',
   };

@@ -58,7 +58,7 @@ interface HRStats {
 }
 
 const HRDashboard: React.FC<HRDashboardProps> = ({ onNavigate }) => {
-  const [activeSection, setActiveSection] = useState<'admin' | 'payroll'>('admin');
+  const [activeSection] = useState<'admin' | 'payroll'>('admin');
   const [hrStats, setHrStats] = useState<HRStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -539,21 +539,21 @@ const HRDashboard: React.FC<HRDashboardProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-[2rem] w-fit">
-        <button 
+      {/* Navigation Tabs — Paie désactivée (#16) */}
+      {/* <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-[2rem] w-fit">
+        <button
           onClick={() => setActiveSection('admin')}
           className={`px-4 md:px-8 py-3 rounded-full font-black text-[10px] uppercase tracking-widest transition-all ${activeSection === 'admin' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Administration RH
         </button>
-        <button 
+        <button
           onClick={() => setActiveSection('payroll')}
           className={`px-4 md:px-8 py-3 rounded-full font-black text-[10px] uppercase tracking-widest transition-all ${activeSection === 'payroll' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           Gestion de la Paie
         </button>
-      </div>
+      </div> */}
 
       {/* Modules Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
