@@ -32,7 +32,7 @@ export class ServiceController {
       const {
         name, description, price, isActive, imageUrl,
         typeOffre, niveauxCibles, dureeMois, inclutCantine, fraisInscription,
-        anneeScolaire,
+        anneeScolaire, estRecurrent,
       } = req.body;
       const service = await Service.create({
         tenantId: req.user.tenantId,
@@ -48,6 +48,7 @@ export class ServiceController {
         inclutCantine: inclutCantine ?? false,
         fraisInscription: fraisInscription ?? 0,
         anneeScolaire: anneeScolaire || null,
+        estRecurrent: estRecurrent !== undefined ? estRecurrent : true,
       });
 
       await AuditLog.create({

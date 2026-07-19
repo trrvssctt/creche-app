@@ -42,6 +42,11 @@ Service.init({
     field: 'frais_inscription',
     defaultValue: 0,
   },
+  estRecurrent: {
+    type: DataTypes.BOOLEAN,
+    field: 'est_recurrent',
+    defaultValue: true,
+  },
   anneeScolaire: {
     type: DataTypes.STRING(20),
     field: 'annee_scolaire',

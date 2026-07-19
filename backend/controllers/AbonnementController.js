@@ -547,6 +547,7 @@ export class AbonnementController {
               tenantId: req.user.tenantId,
               status: 'actif',
               typeOffre: { [Op.in]: RECURRING },
+              estRecurrent: true,
               [Op.or]: [
                 { anneeScolaire: eleve.anneeScolaire || null },
                 { anneeScolaire: null },
@@ -618,9 +619,9 @@ export class AbonnementController {
     const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
 
     try {
-      // 1 — Services récurrents actifs du tenant
+      // 1 — Services récurrents actifs du tenant (respecte le flag estRecurrent)
       const services = await Service.findAll({
-        where: { tenantId, status: 'actif', typeOffre: { [Op.in]: RECURRING }, deletedAt: null },
+        where: { tenantId, status: 'actif', typeOffre: { [Op.in]: RECURRING }, estRecurrent: true, deletedAt: null },
       });
 
       if (!services.length)

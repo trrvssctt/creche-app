@@ -18,6 +18,7 @@
 10. **Âge sur la classe** *(afficher l'âge de chaque eleve dans la classe : cet age est calculer automatiquement)*.
     - ✅ Fait : colonne « Âge » calculée automatiquement depuis la date de naissance (mois avant 2 ans, années ensuite).
 11. **Les offres de scolarité s'applique chaque mois alors que je n'ai pas cocher le checkbox** (dans la section Offres de Scolarité) : elle s'applique partout alors que des fois quand je coche pas elle ne doit pas s'appliquer à tous les mois si c'est recurrents ou pas — envoi par mail et WhatsApp.
+    - ✅ Fait : le champ `estRecurrent` est maintenant persisté en BD (migration `est_recurrent` sur table `services`). La génération mensuelle (syncMensuel + factureEleve) filtre désormais sur `estRecurrent: true`. Si la checkbox est décochée, le service n'est plus appliqué automatiquement chaque mois.
 12. **Revoir les bulletins car chaque classe sauf la creche possède deux bulletis : notes et appreciation** (avec les templates du Drive : /home/dianka/Documents/Crèche_project/assets/Drive) → Réproduit à l'identique les bon bulletin *(urgent)*.
     - ✅ Fait : grilles officielles PS/MS/GS (compétences) + CP/CE1/CE2 (notes /20 + compétences EA/A/M), 2 bulletins pour l'élémentaire, onglets Notes/Compétences.
     - ⏳ **Reste à faire : les bulletins CM1 et CM2** (aucun template CM1/CM2 dans le Drive — à fournir ou à décider : reprendre le modèle CE2 ?).
