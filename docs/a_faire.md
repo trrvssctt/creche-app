@@ -4,6 +4,7 @@
 
 1. **Recharge de l'année scolaire** : affiche toujours l'année active → dans la partie **Paramètres (Année scolaire)** Lorsque je cloture une ann.
 3. **Signature digitale à implementer sur tous les document qui demande signature elle devra etre signer et mis dans l'application** *(urgent)*.
+    - ✅ Fait : champ « Signature de la Direction » ajouté dans Paramètres > Assets Visuels (à côté du logo et cachet). Le cachet officiel + la signature sont automatiquement apposés sur tous les documents administratifs (fiche inscription, certificats scolarité/radiation, fiche sanitaire, autorisation sortie, convention de scolarisation, règlement intérieur). Migration BD appliquée (`signature_direction_url` sur tenant).
 5. **Autorisation de soins avec fiche sanitaire elle doit aussi etre generer comme les autres** *(crèche)*.
 6. **Convention de scolarité** *(Élémentaire + Maternelle)* à generer aussi voir les fichier  et signer digitalement : /home/dianka/Documents/Crèche_project/assets/convention_page_1.jpeg et /home/dianka/Documents/Crèche_project/assets/convention_page_2.jpeg.
 7. **Flo Pays [?] de résidence des parents** *(pays de résidence des parents)* o doit avoir ce champs aussi dans la creation du dossier (Admission.tsx, Eleves.tsx, InscriptionParent.tsx etc.. ).

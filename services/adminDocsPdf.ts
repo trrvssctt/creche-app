@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import type { Eleve } from '../types';
+import { apiClient } from './api';
 
 // ── Constantes ──────────────────────────────────────────────────────────────
 
@@ -33,29 +34,68 @@ const REGIMES_MAP: Record<string, string> = {
   CAS_SOCIAL_TOTAL: 'Cas social (total)',
 };
 
-// ── Logo loader ──────────────────────────────────────────────────────────────
+// ── Tenant assets loader (logo, cachet, signature) ──────────────────────────
 
-let _logoBase64Cache: string | null = null;
+interface TenantAssets {
+  logoBase64: string;
+  cachetBase64: string;
+  signatureBase64: string;
+}
 
-async function getLogoBase64(): Promise<string> {
-  if (_logoBase64Cache) return _logoBase64Cache;
+let _assetsCache: TenantAssets | null = null;
+
+async function urlToBase64(url: string): Promise<string> {
+  if (!url) return '';
   try {
-    const logoUrl = new URL('../assets/Image/logo_entreprise.png', import.meta.url).href;
-    const res = await fetch(logoUrl);
-    if (!res.ok) throw new Error('logo fetch failed');
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) return '';
     const blob = await res.blob();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        _logoBase64Cache = reader.result as string;
-        resolve(_logoBase64Cache);
-      };
-      reader.onerror = reject;
+      reader.onloadend = () => resolve(reader.result as string || '');
+      reader.onerror = () => resolve('');
       reader.readAsDataURL(blob);
     });
   } catch {
     return '';
   }
+}
+
+async function getTenantAssets(): Promise<TenantAssets> {
+  if (_assetsCache) return _assetsCache;
+
+  let logoUrl = '';
+  let cachetUrl = '';
+  let signatureUrl = '';
+
+  try {
+    const data = await apiClient.get('/settings');
+    logoUrl = data.logoUrl || '';
+    cachetUrl = data.cachetUrl || '';
+    signatureUrl = data.signatureDirectionUrl || '';
+  } catch {
+    // fallback: pas d'accès API
+  }
+
+  // Fallback logo local si pas en BD
+  if (!logoUrl) {
+    try {
+      logoUrl = new URL('../assets/Image/logo_entreprise.png', import.meta.url).href;
+    } catch { /* ignore */ }
+  }
+
+  const [logoBase64, cachetBase64, signatureBase64] = await Promise.all([
+    urlToBase64(logoUrl),
+    urlToBase64(cachetUrl),
+    urlToBase64(signatureUrl),
+  ]);
+
+  _assetsCache = { logoBase64, cachetBase64, signatureBase64 };
+  return _assetsCache;
+}
+
+export function invalidateAssetsCache() {
+  _assetsCache = null;
 }
 
 // ── CSS partagé ──────────────────────────────────────────────────────────────
@@ -194,8 +234,23 @@ const SHARED_CSS = `
     padding-top: 8px;
     font-size: 8.5pt;
     color: #64748b;
-    height: 80px;
+    min-height: 80px;
     font-weight: 600;
+    text-align: center;
+  }
+  .sig-images {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    min-height: 60px;
+  }
+  .sig-images img {
+    height: 60px;
+    width: auto;
+    object-fit: contain;
+    mix-blend-mode: multiply;
   }
   .footer {
     margin-top: 28px;
@@ -255,6 +310,14 @@ function pageFooter(docName: string, ref: string): string {
     </div>`;
 }
 
+function sigDirectionBlock(assets: TenantAssets): string {
+  const hasImages = assets.cachetBase64 || assets.signatureBase64;
+  if (!hasImages) return '<div class="sig">Cachet & signature de la Direction</div>';
+  const cachetImg = assets.cachetBase64 ? `<img src="${assets.cachetBase64}" alt="Cachet"/>` : '';
+  const sigImg = assets.signatureBase64 ? `<img src="${assets.signatureBase64}" alt="Signature"/>` : '';
+  return `<div class="sig">Cachet & signature de la Direction<div class="sig-images">${cachetImg}${sigImg}</div></div>`;
+}
+
 function v(val: string | undefined | null, fallback = '—'): string {
   const s = (val || '').trim();
   if (!s) return `<span class="empty">${fallback}</span>`;
@@ -282,7 +345,8 @@ function ss(eleve: any, key: string): string  { const v = getSani(eleve, key); r
 
 // ── Builders HTML ────────────────────────────────────────────────────────────
 
-function buildFicheInscriptionHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+function buildFicheInscriptionHtml(eleve: Partial<Eleve>, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const parent = eleve.parent1;
   const niveauLib = NIVEAUX_MAP[eleve.niveau || ''] || eleve.niveau || '—';
@@ -333,13 +397,14 @@ function buildFicheInscriptionHtml(eleve: Partial<Eleve>, logoBase64: string): s
 
     <div class="sigs">
       <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
+      ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter("Fiche d'identité", ref)}
   </body></html>`;
 }
 
-function buildCertificatScolariteHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+function buildCertificatScolariteHtml(eleve: Partial<Eleve>, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const niveauLib = NIVEAUX_MAP[eleve.niveau || ''] || eleve.niveau || '—';
   const ref = `CERT-SCOL-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
@@ -364,13 +429,14 @@ function buildCertificatScolariteHtml(eleve: Partial<Eleve>, logoBase64: string)
 
     <div class="sigs">
       <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
+      ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Certificat de scolarité', ref)}
   </body></html>`;
 }
 
-function buildFicheSanitaireHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+function buildFicheSanitaireHtml(eleve: Partial<Eleve>, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
   const e = eleve as any; // accès aux champs santé normalisés via getSani
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const parent  = eleve.parent1;
@@ -615,13 +681,14 @@ function buildFicheSanitaireHtml(eleve: Partial<Eleve>, logoBase64: string): str
 
     <div class="sigs no-break" style="margin-top:18px">
       <div class="sig">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}<br><br>Signature du parent / tuteur légal</div>
-      <div class="sig">Cachet &amp; signature de la Direction</div>
+      ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Fiche sanitaire de liaison — Le Toit des Anges', ref)}
   </body></html>`;
 }
 
-function buildCertificatRadiationHtml(eleve: Partial<Eleve> & { motifRadiation?: string }, logoBase64: string): string {
+function buildCertificatRadiationHtml(eleve: Partial<Eleve> & { motifRadiation?: string }, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const niveauLib = NIVEAUX_MAP[eleve.niveau || ''] || eleve.niveau || '—';
   const ref = `CERT-RAD-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
@@ -650,7 +717,7 @@ function buildCertificatRadiationHtml(eleve: Partial<Eleve> & { motifRadiation?:
 
     <div class="sigs">
       <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
+      ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Certificat de radiation', ref)}
   </body></html>`;
@@ -658,8 +725,9 @@ function buildCertificatRadiationHtml(eleve: Partial<Eleve> & { motifRadiation?:
 
 function buildAutorisationSortieHtml(
   eleve: Partial<Eleve> & { destinationSortie?: string; dateActiviteSortie?: string },
-  logoBase64: string
+  assets: TenantAssets
 ): string {
+  const logoBase64 = assets.logoBase64;
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const parent = eleve.parent1;
   const niveauLib = NIVEAUX_MAP[eleve.niveau || ''] || eleve.niveau || '—';
@@ -709,7 +777,7 @@ function buildAutorisationSortieHtml(
 
     <div class="sigs" style="margin-top:40px">
       <div class="sig">Fait à Dakar, le ________________<br><br>Signature du parent / tuteur</div>
-      <div class="sig">Cachet & signature de la Direction</div>
+      ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Autorisation de sortie', ref)}
   </body></html>`;
@@ -790,7 +858,8 @@ async function htmlToBlob(html: string): Promise<Blob> {
 
 // ── Convention de scolarisation (maternelle & élémentaire) ──────────────────
 
-function buildConventionScolarisationHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+function buildConventionScolarisationHtml(eleve: Partial<Eleve>, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const parent = eleve.parent1;
   const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
@@ -852,7 +921,7 @@ function buildConventionScolarisationHtml(eleve: Partial<Eleve>, logoBase64: str
 
     <div class="sigs">
       <div class="sig">Le Parent / Tuteur légal<br><em style="font-weight:400;font-size:8pt">(précédé de « Lu et approuvé »)</em></div>
-      <div class="sig">La Directrice<br><em style="font-weight:400;font-size:8pt">(cachet & signature)</em></div>
+      <div class="sig">La Directrice<br><em style="font-weight:400;font-size:8pt">(cachet & signature)</em>${assets.cachetBase64 || assets.signatureBase64 ? `<div class="sig-images">${assets.cachetBase64 ? `<img src="${assets.cachetBase64}" alt="Cachet"/>` : ''}${assets.signatureBase64 ? `<img src="${assets.signatureBase64}" alt="Signature"/>` : ''}</div>` : ''}</div>
     </div>
     ${pageFooter('Convention de scolarisation', ref)}
   </body></html>`;
@@ -860,7 +929,8 @@ function buildConventionScolarisationHtml(eleve: Partial<Eleve>, logoBase64: str
 
 // ── Règlement intérieur + accusé de réception (crèche) ───────────────────────
 
-function buildReglementInterieurHtml(eleve: Partial<Eleve>, logoBase64: string): string {
+function buildReglementInterieurHtml(eleve: Partial<Eleve>, assets: TenantAssets): string {
+  const logoBase64 = assets.logoBase64;
   const nomComplet = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim() || '—';
   const parent = eleve.parent1;
   const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
@@ -915,7 +985,7 @@ function buildReglementInterieurHtml(eleve: Partial<Eleve>, logoBase64: string):
       </div>
       <div class="sigs">
         <div class="sig">Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
-        <div class="sig">Cachet & signature de la Direction</div>
+        ${sigDirectionBlock(assets)}
       </div>
     </div>
     ${pageFooter('Règlement intérieur crèche', ref)}
@@ -939,15 +1009,15 @@ export function docsForNiveau(niveau: string | undefined): DocAdminType[] {
   return ['fiche_inscription', 'convention_scolarisation', 'certificat_scolarite', 'fiche_sanitaire'];
 }
 
-function buildHtml(type: DocAdminType, eleve: Partial<Eleve> & { motifRadiation?: string }, logoBase64: string): string {
+function buildHtml(type: DocAdminType, eleve: Partial<Eleve> & { motifRadiation?: string }, assets: TenantAssets): string {
   switch (type) {
-    case 'fiche_inscription':          return buildFicheInscriptionHtml(eleve, logoBase64);
-    case 'certificat_scolarite':       return buildCertificatScolariteHtml(eleve, logoBase64);
-    case 'certificat_radiation':       return buildCertificatRadiationHtml(eleve, logoBase64);
-    case 'fiche_sanitaire':            return buildFicheSanitaireHtml(eleve, logoBase64);
-    case 'autorisation_sortie':        return buildAutorisationSortieHtml(eleve, logoBase64);
-    case 'convention_scolarisation':   return buildConventionScolarisationHtml(eleve, logoBase64);
-    case 'reglement_interieur':        return buildReglementInterieurHtml(eleve, logoBase64);
+    case 'fiche_inscription':          return buildFicheInscriptionHtml(eleve, assets);
+    case 'certificat_scolarite':       return buildCertificatScolariteHtml(eleve, assets);
+    case 'certificat_radiation':       return buildCertificatRadiationHtml(eleve, assets);
+    case 'fiche_sanitaire':            return buildFicheSanitaireHtml(eleve, assets);
+    case 'autorisation_sortie':        return buildAutorisationSortieHtml(eleve, assets);
+    case 'convention_scolarisation':   return buildConventionScolarisationHtml(eleve, assets);
+    case 'reglement_interieur':        return buildReglementInterieurHtml(eleve, assets);
   }
 }
 
@@ -980,16 +1050,16 @@ export async function getDocHtml(
   type: DocAdminType,
   eleve: Partial<Eleve> & { motifRadiation?: string; destinationSortie?: string; dateActiviteSortie?: string }
 ): Promise<string> {
-  const logoBase64 = await getLogoBase64();
-  return buildHtml(type, eleve, logoBase64);
+  const assets = await getTenantAssets();
+  return buildHtml(type, eleve, assets);
 }
 
 export async function downloadSingleAdminDoc(
   type: DocAdminType,
   eleve: Partial<Eleve> & { motifRadiation?: string }
 ): Promise<void> {
-  const logoBase64 = await getLogoBase64();
-  const html = buildHtml(type, eleve, logoBase64);
+  const assets = await getTenantAssets();
+  const html = buildHtml(type, eleve, assets);
   const w = window.open('', '_blank', 'width=900,height=750');
   if (!w) {
     const blob = await htmlToBlob(html);
@@ -1007,15 +1077,15 @@ export async function downloadAdminDocAsPdf(
   type: DocAdminType,
   eleve: Partial<Eleve> & { motifRadiation?: string }
 ): Promise<void> {
-  const logoBase64 = await getLogoBase64();
-  const html = buildHtml(type, eleve, logoBase64);
+  const assets = await getTenantAssets();
+  const html = buildHtml(type, eleve, assets);
   const blob = await htmlToBlob(html);
   downloadBlob(blob, docFilename(type, eleve));
 }
 
 export async function downloadAdminDocsZip(eleve: Partial<Eleve>): Promise<void> {
   const JSZip = (await import('jszip')).default;
-  const logoBase64 = await getLogoBase64();
+  const assets = await getTenantAssets();
 
   // Documents adaptés au cycle de l'élève (crèche ≠ maternelle/élémentaire)
   const types: DocAdminType[] = [...docsForNiveau(eleve.niveau), 'autorisation_sortie'];
@@ -1024,7 +1094,7 @@ export async function downloadAdminDocsZip(eleve: Partial<Eleve>): Promise<void>
   const folder = zip.folder(`Dossier_${(eleve.nom || '').toUpperCase()}_${(eleve.prenom || '').toUpperCase()}`);
 
   for (const type of types) {
-    const html = buildHtml(type, eleve, logoBase64);
+    const html = buildHtml(type, eleve, assets);
     const blob = await htmlToBlob(html);
     folder!.file(docFilename(type, eleve), blob);
   }

@@ -13,6 +13,7 @@ import {
 import { AppSettings } from '../types';
 import { apiClient } from '../services/api';
 import { uploadFile } from '../services/uploadService';
+import { invalidateAssetsCache } from '../services/adminDocsPdf';
 import { authBridge } from '../services/authBridge';
 import { useAnnee } from '../contexts/AnneeContext';
 import { useNiveaux, NIVEAUX_PALETTES, TEMPLATES, NiveauDef } from '../contexts/NiveauxContext';
@@ -212,9 +213,10 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
     if (!file) return;
     setIsUploading(field);
     try {
-      const folder = field === 'logoUrl' ? 'logos' : field === 'cachetUrl' ? 'cachets' : 'uploads';
+      const folder = field === 'logoUrl' ? 'logos' : field === 'cachetUrl' ? 'cachets' : field === 'signatureDirectionUrl' ? 'signatures' : 'uploads';
       const result = await uploadFile(file, folder);
       setLocalTenant({ ...localTenant, [field]: result.url });
+      if (['logoUrl', 'cachetUrl', 'signatureDirectionUrl'].includes(field)) invalidateAssetsCache();
     } catch (err) {
       console.error('Upload Error:', err);
       alert("Échec de l'envoi de l'image.");
@@ -797,11 +799,29 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
                   </label>
                 </div>
               </div>
+              <div className="space-y-3">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Signature de la Direction</label>
+                <div className="relative group">
+                  <input type="file" id="signature_dir_up_settings" hidden onChange={e => handleFileUpload(e, 'signatureDirectionUrl')} accept="image/*" />
+                  <label htmlFor="signature_dir_up_settings" className={`block w-full p-8 border-4 border-dashed rounded-[2.5rem] text-center cursor-pointer transition-all relative overflow-hidden group ${localTenant.signatureDirectionUrl ? 'border-emerald-100 bg-emerald-50/20' : 'border-slate-100 hover:border-indigo-400 hover:bg-slate-50'}`}>
+                    {isUploading === 'signatureDirectionUrl' ? (
+                      <div className="py-10"><Loader2 className="animate-spin mx-auto text-indigo-600" size={32} /></div>
+                    ) : localTenant.signatureDirectionUrl ? (
+                      <img src={localTenant.signatureDirectionUrl} className="h-24 mx-auto object-contain mix-blend-multiply transition-transform group-hover:scale-105" alt="Signature Direction" />
+                    ) : (
+                      <div className="py-6">
+                        <Stamp className="mx-auto text-slate-300 group-hover:text-indigo-600 transition-colors" size={40} />
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">Importer la signature de la directrice</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+              </div>
             </div>
             <div className="p-6 bg-indigo-50 border border-indigo-100 rounded-3xl flex items-start gap-4">
               <ShieldCheck size={20} className="text-indigo-600 shrink-0" />
               <p className="text-[10px] font-bold text-indigo-800 uppercase leading-relaxed">
-                Le logo et le cachet sont utilisés sur les certificats de scolarité, bulletins, reçus et factures.
+                Le logo, le cachet et la signature sont appliqués automatiquement sur tous les documents administratifs (certificats, conventions, fiches sanitaires, autorisations).
               </p>
             </div>
           </div>

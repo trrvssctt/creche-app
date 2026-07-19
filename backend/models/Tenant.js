@@ -23,7 +23,8 @@ Tenant.init({
   // Branding & UI
   logoUrl: { type: DataTypes.TEXT, field: 'logo_url' },
   primaryColor: { type: DataTypes.STRING(7), defaultValue: '#4f46e5', field: 'primary_color' },
-    cachetUrl: { type: DataTypes.TEXT, field: 'cachet_url' }, // Nouveau
+    cachetUrl: { type: DataTypes.TEXT, field: 'cachet_url' },
+    signatureDirectionUrl: { type: DataTypes.TEXT, field: 'signature_direction_url' },
   // UI preferences persisted per-tenant
   theme: { type: DataTypes.STRING(10), defaultValue: 'light', field: 'theme' },
   fontFamily: { type: DataTypes.STRING, field: 'font_family' },

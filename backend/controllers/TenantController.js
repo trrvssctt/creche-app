@@ -75,7 +75,7 @@ export class TenantController {
         whatsappNumber,
         currency, taxRate, invoicePrefix,
         invoiceFooter, primaryColor,
-        logoUrl, cachetUrl, onboardingCompleted,
+        logoUrl, cachetUrl, signatureDirectionUrl, onboardingCompleted,
         theme, fontFamily, baseFontSize,
         buttonColor, button_color,
         anneeActive
@@ -96,6 +96,7 @@ export class TenantController {
         primaryColor: primaryColor ?? tenant.primaryColor ?? tenant.primary_color ?? DEFAULT_PRIMARY_COLOR,
         logoUrl: logoUrl ?? tenant.logoUrl,
         cachetUrl: cachetUrl ?? tenant.cachetUrl,
+        signatureDirectionUrl: signatureDirectionUrl ?? tenant.signatureDirectionUrl,
         onboardingCompleted: onboardingCompleted ?? tenant.onboardingCompleted,
         theme: theme ?? tenant.theme,
         fontFamily: fontFamily ?? tenant.fontFamily,
