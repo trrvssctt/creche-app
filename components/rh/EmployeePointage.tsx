@@ -84,6 +84,7 @@ const EmployeePointage: React.FC<EmployeePointageProps> = ({ onNavigate }) => {
   const [overtimeSummary,  setOvertimeSummary] = useState<OvertimeSummary | null>(null);
   const [loading,          setLoading]         = useState(true);
   const [noEmployee,       setNoEmployee]      = useState(false);
+  const [hasScheduleToday, setHasScheduleToday] = useState(true);
   const [actionLoading,    setActionLoading]   = useState(false);
   const [toast,            setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
   const [showBilanDetail,  setShowBilanDetail] = useState(false);
@@ -123,6 +124,7 @@ const EmployeePointage: React.FC<EmployeePointageProps> = ({ onNavigate }) => {
       ]);
       setToday(todayRes.attendance);
       setSettings(todayRes.settings);
+      setHasScheduleToday(todayRes.hasScheduleToday !== false);
       setHistory(Array.isArray(histRes) ? histRes : []);
       if (summaryRes) setOvertimeSummary(summaryRes as OvertimeSummary);
       setOtRequests(Array.isArray(otRes) ? otRes : []);
@@ -526,8 +528,23 @@ const EmployeePointage: React.FC<EmployeePointageProps> = ({ onNavigate }) => {
                 </div>
               )}
 
+              {/* Message pas de cours programmé */}
+              {!hasScheduleToday && state !== 'done' && (
+                <div className="flex items-center gap-3 px-5 py-4 bg-slate-100 border border-slate-200 rounded-2xl">
+                  <Calendar size={16} className="text-slate-500 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
+                      Pas de cours programmé aujourd'hui
+                    </p>
+                    <p className="text-[9px] text-slate-500 mt-0.5">
+                      Le pointage n'est pas nécessaire les jours sans emploi du temps.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Message hors heures de travail */}
-              {outsideWorkHours && state !== 'done' && settings && (
+              {hasScheduleToday && outsideWorkHours && state !== 'done' && settings && (
                 <div className="flex items-center gap-3 px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl">
                   <AlertCircle size={16} className="text-amber-500 shrink-0" />
                   <div>
@@ -547,7 +564,7 @@ const EmployeePointage: React.FC<EmployeePointageProps> = ({ onNavigate }) => {
               {state === 'idle' && (
                 <button
                   onClick={handleClockIn}
-                  disabled={actionLoading || outsideWorkHours}
+                  disabled={actionLoading || outsideWorkHours || !hasScheduleToday}
                   className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
                 >
                   {actionLoading ? <Loader2 size={20} className="animate-spin" /> : <LogIn size={20} />}

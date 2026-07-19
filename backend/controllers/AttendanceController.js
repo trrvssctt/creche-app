@@ -1,4 +1,4 @@
-import { Attendance, PayrollSettings } from '../models/index.js';
+import { Attendance, PayrollSettings, CreneauHoraire } from '../models/index.js';
 import { Op } from 'sequelize';
 
 /** Vérifie qu'un instant est dans la plage horaire [workStartTime, workEndTime] */
@@ -8,6 +8,28 @@ function isWithinWorkHours(dateTime, workStartTime, workEndTime) {
   const [eh, em] = workEndTime.split(':').map(Number);
   const cMin = ch * 60 + cm;
   return cMin >= sh * 60 + sm && cMin <= eh * 60 + em;
+}
+
+/**
+ * Retourne la plage horaire de travail de l'employé pour aujourd'hui
+ * basée sur son emploi du temps (CreneauHoraire).
+ * Retourne null si aucun cours n'est programmé ce jour.
+ */
+async function getEmployeeScheduleToday(tenantId, employeeId) {
+  const jsDay = new Date().getDay(); // 0=Dim, 1=Lun…6=Sam
+  const jour = jsDay === 0 ? 6 : jsDay - 1; // 0=Lun…4=Ven, 5=Sam, 6=Dim
+
+  const creneaux = await CreneauHoraire.findAll({
+    where: { tenantId, enseignantId: employeeId, jour },
+    attributes: ['heureDebut', 'heureFin'],
+    raw: true,
+  });
+
+  if (creneaux.length === 0) return null;
+
+  const starts = creneaux.map(c => c.heureDebut || c.heure_debut).sort();
+  const ends   = creneaux.map(c => c.heureFin || c.heure_fin).sort();
+  return { startTime: starts[0], endTime: ends[ends.length - 1] };
 }
 
 export class AttendanceController {
@@ -35,16 +57,18 @@ export class AttendanceController {
       if (!employeeId) return res.status(400).json({ error: 'NoEmployeeLinked', message: 'Aucun employé lié à ce compte' });
 
       const today = new Date().toISOString().split('T')[0];
-      const [record, settings] = await Promise.all([
+      const [record, settings, schedule] = await Promise.all([
         Attendance.findOne({ where: { tenantId, employeeId, date: today } }),
-        PayrollSettings.findOne({ where: { tenantId } })
+        PayrollSettings.findOne({ where: { tenantId } }),
+        getEmployeeScheduleToday(tenantId, employeeId),
       ]);
 
       return res.json({
         attendance: record || null,
+        hasScheduleToday: schedule !== null,
         settings: {
-          workStartTime:       settings?.workStartTime       || '08:00',
-          workEndTime:         settings?.workEndTime         || '17:00',
+          workStartTime:       schedule?.startTime || settings?.workStartTime       || '08:00',
+          workEndTime:         schedule?.endTime   || settings?.workEndTime         || '17:00',
           workingDaysPerMonth: settings?.workingDaysPerMonth || 26,
           deductionEnabled:    settings?.deductionEnabled    || false,
         }
@@ -90,8 +114,18 @@ export class AttendanceController {
       }
 
       const settings      = await PayrollSettings.findOne({ where: { tenantId } });
-      const startTime     = settings?.workStartTime || '08:00';
-      const endTime       = settings?.workEndTime   || '17:00';
+
+      // Vérifier l'emploi du temps de l'employé pour aujourd'hui
+      const schedule = await getEmployeeScheduleToday(tenantId, employeeId);
+      if (schedule === null) {
+        return res.status(400).json({
+          error: 'PasDeCoursProgramme',
+          message: 'Pas de cours programmé aujourd\'hui — pointage non autorisé'
+        });
+      }
+
+      const startTime     = schedule.startTime || settings?.workStartTime || '08:00';
+      const endTime       = schedule.endTime   || settings?.workEndTime   || '17:00';
 
       if (!isWithinWorkHours(now, startTime, endTime)) {
         return res.status(400).json({
@@ -148,8 +182,11 @@ export class AttendanceController {
 
       const now         = new Date();
       const settings    = await PayrollSettings.findOne({ where: { tenantId } });
-      const startTime2  = settings?.workStartTime || '08:00';
-      const endTime     = settings?.workEndTime   || '17:00';
+
+      // Utiliser l'emploi du temps de l'employé si disponible
+      const schedule    = await getEmployeeScheduleToday(tenantId, employeeId);
+      const startTime2  = schedule?.startTime || settings?.workStartTime || '08:00';
+      const endTime     = schedule?.endTime   || settings?.workEndTime   || '17:00';
 
       if (!isWithinWorkHours(now, startTime2, endTime)) {
         return res.status(400).json({
