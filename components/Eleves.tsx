@@ -255,6 +255,9 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [selectedEleve, setSelectedEleve] = useState<Eleve | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<Eleve | null>(null);
   const [formData, setFormData] = useState<Partial<Eleve>>(emptyForm(/* will be set by ANNEE_COURANTE on first use */));
+  // Duplication d'une inscription (fratrie) : identité de l'enfant source à ne pas
+  // recopier telle quelle — l'enregistrement est bloqué tant qu'elle n'a pas changé.
+  const [duplicateSource, setDuplicateSource] = useState<{ nom: string; prenom: string; dateNaissance: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -805,6 +808,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     if (!formData.prenom?.trim())        { setError('Le prénom de l\'élève est obligatoire.'); return; }
     if (!formData.niveau)                { setError('Le niveau scolaire est obligatoire.'); return; }
     if (!formData.dateNaissance)         { setError('La date de naissance est obligatoire.'); return; }
+    // Duplication : interdit de recopier à l'identique l'enfant source (fratrie)
+    if (duplicateSource) {
+      const norm = (s: string) => (s || '').trim().toLowerCase();
+      if (norm(formData.prenom) === norm(duplicateSource.prenom)) {
+        setError('Duplication : modifiez au moins le prénom de l\'enfant (il ne peut pas être identique à celui du dossier dupliqué).');
+        return;
+      }
+    }
     if (showModal === 'CREATE' && !p1Phone) { setError('Le numéro WhatsApp ou téléphone du parent est obligatoire.'); return; }
     setActionLoading(true);
     setError(null);
@@ -877,6 +888,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
 
   const openCreate = () => {
     setFormData(emptyForm(ANNEE_COURANTE));
+    setDuplicateSource(null);
     setError(null);
     setCreateStep('SELECTION');
     setAdmissionSearch('');
@@ -888,8 +900,37 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const openEdit = (e: Eleve) => {
     setSelectedEleve(e);
     setFormData({ ...e });
+    setDuplicateSource(null);
     setError(null);
     setShowModal('EDIT');
+  };
+
+  // Duplication pour une fratrie : on repart de l'élève source en conservant la
+  // famille (parents, contacts, adresse, régime) et en vidant l'identité de l'enfant.
+  const openDuplicate = (e: Eleve) => {
+    setSelectedEleve(null);
+    setInscritEleve(null);
+    setFormData({
+      ...emptyForm(ANNEE_COURANTE),
+      // Famille conservée
+      nom: e.nom,                          // nom de famille (fratrie)
+      parent1: e.parent1 ? { ...e.parent1 } : emptyForm().parent1,
+      parent2: e.parent2 ? { ...e.parent2 } : undefined,
+      contactUrgence: e.contactUrgence ? { ...e.contactUrgence } : undefined,
+      personneAutorisee: (e as any).personneAutorisee ? { ...(e as any).personneAutorisee } : undefined,
+      whatsappPrincipal: e.whatsappPrincipal || '',
+      regimeFinancier: e.regimeFinancier || 'NORMAL',
+      remisePct: e.remisePct || 0,
+      niveau: e.niveau || 'PS',
+      // Identité de l'enfant : à ressaisir (prénom, naissance, sexe, photo…)
+      prenom: '', dateNaissance: '', lieuNaissance: '', sexe: '',
+      photoUrl: '', matricule: '', classeId: undefined,
+      besoinSpecifique: '',
+    });
+    setDuplicateSource({ nom: e.nom || '', prenom: e.prenom || '', dateNaissance: e.dateNaissance || '' });
+    setError(null);
+    setCreateStep('FORM');
+    setShowModal('CREATE');
   };
 
   const openView = (e: Eleve) => {
@@ -907,6 +948,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setCreateStep('SELECTION');
     setSelectedDossierId(null);
     setServicesApplicables([]);
+    setDuplicateSource(null);
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1221,6 +1263,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                           <Edit3 size={16} />
                         </button>
                       )}
+                      {canModify && (
+                        <button onClick={() => openDuplicate(eleve)} title="Dupliquer (fratrie)"
+                          className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-violet-50 text-slate-400 hover:text-violet-600 rounded-xl transition-all">
+                          <Copy size={15} />
+                        </button>
+                      )}
                       {canDelete && (
                         <button onClick={() => setShowDeleteConfirm(eleve)} title="Supprimer"
                           className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all">
@@ -1363,6 +1411,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         <button onClick={() => openView(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all"><Eye size={14} /></button>
                         {canReinscribe && !dejaInscrit && <button onClick={() => openReinscModal(eleve)} title={`Réinscrire → ${anneeActiveToday}`} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all"><Repeat size={13} /></button>}
                         {canModify && <button onClick={() => openEdit(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-lg transition-all"><Edit3 size={14} /></button>}
+                        {canModify && <button onClick={() => openDuplicate(eleve)} title="Dupliquer (fratrie)" className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-violet-50 text-slate-400 hover:text-violet-600 rounded-lg transition-all"><Copy size={13} /></button>}
                         {canDelete && <button onClick={() => setShowDeleteConfirm(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"><Trash2 size={14} /></button>}
                       </div>
                     )}
@@ -1387,7 +1436,9 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <><ClipboardCheck size={20} className="text-indigo-600" /> Dossiers en attente d'inscription</>
                 )}
                 {showModal === 'CREATE' && createStep === 'FORM' && (
-                  <><UserPlus size={20} className="text-indigo-600" /> Inscrire un Élève</>
+                  duplicateSource
+                    ? <><Copy size={20} className="text-violet-600" /> Dupliquer une inscription</>
+                    : <><UserPlus size={20} className="text-indigo-600" /> Inscrire un Élève</>
                 )}
                 {showModal === 'CREATE' && createStep === 'DOCS' && (
                   <><FolderOpen size={20} className="text-emerald-600" /> Dossier constitué</>
@@ -1519,13 +1570,29 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     </div>
                   )}
 
-                  {showModal === 'CREATE' && (
+                  {showModal === 'CREATE' && !duplicateSource && (
                     <button
                       onClick={() => setCreateStep('SELECTION')}
                       className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 text-xs font-black uppercase tracking-widest transition-all"
                     >
                       <ChevronLeft size={14} /> Choisir un autre dossier
                     </button>
+                  )}
+
+                  {/* Bannière duplication (fratrie) */}
+                  {duplicateSource && (
+                    <div className="p-4 bg-violet-50 border border-violet-200 rounded-2xl flex items-start gap-3">
+                      <Copy size={16} className="text-violet-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] font-black text-violet-800 uppercase tracking-wide">
+                          Duplication du dossier de {duplicateSource.prenom} {duplicateSource.nom}
+                        </p>
+                        <p className="text-[11px] text-violet-600 font-medium mt-0.5">
+                          Les informations de la famille (parents, contacts, régime) ont été reprises.
+                          Renseignez l'identité du nouvel enfant — le prénom doit être différent.
+                        </p>
+                      </div>
+                    </div>
                   )}
 
                   {/* Informations élève */}
