@@ -2188,16 +2188,20 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                 })()}
 
                 {/* ── Notes internes ── */}
-                {selected.notes && (
-                  <section>
-                    <div className="bg-amber-50 border border-amber-100 p-5 rounded-2xl">
-                      <h4 className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <Info size={13}/> Notes internes
-                      </h4>
-                      <p className="text-sm text-slate-700 font-medium leading-relaxed whitespace-pre-line">{selected.notes}</p>
-                    </div>
-                  </section>
-                )}
+                {selected.notes && (() => {
+                  const cleanNotes = (selected.notes as string).replace(/\s*\[parent_user:[^\]]*\]/g, '').trim();
+                  if (!cleanNotes) return null;
+                  return (
+                    <section>
+                      <div className="bg-amber-50 border border-amber-100 p-5 rounded-2xl">
+                        <h4 className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <Info size={13}/> Notes internes
+                        </h4>
+                        <p className="text-sm text-slate-700 font-medium leading-relaxed whitespace-pre-line">{cleanNotes}</p>
+                      </div>
+                    </section>
+                  );
+                })()}
 
               </div>
             </div>
