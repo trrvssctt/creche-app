@@ -514,19 +514,30 @@ export class AbonnementController {
       // ── 1. Chercher les échéances déjà enregistrées pour ce mois ────────
       let echeances = await EcheancePaiement.findAll({
         where: { eleveId, tenantId: req.user.tenantId, dateEcheance: { [Op.between]: [from, to] } },
-        include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre'] }],
+        include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre', 'estRecurrent'] }],
         order: [['dateEcheance', 'ASC']],
       });
+
+      // Exclure les écheances de services non récurrents (données polluées pré-fix)
+      if (echeances.length > 0) {
+        echeances = echeances.filter(e => {
+          const svc = e.service || e.dataValues?.service;
+          if (!svc) return true;
+          return svc.estRecurrent !== false;
+        });
+      }
 
       // ── 2. Fallback niveau 2 : aucune échéance → calculer depuis abonnements actifs ──
       if (echeances.length === 0) {
         const abos = await AbonnementEleve.findAll({
           where: { tenantId: req.user.tenantId, eleveId, isActive: true },
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'typeOffre'] }],
+          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'typeOffre', 'estRecurrent'] }],
         });
 
-        if (abos.length > 0) {
-          echeances = abos.map(abo => ({
+        const abosRecurrents = abos.filter(abo => abo.service?.estRecurrent !== false);
+
+        if (abosRecurrents.length > 0) {
+          echeances = abosRecurrents.map(abo => ({
             id: null,
             abonnementId: abo.id,
             eleveId,

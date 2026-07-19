@@ -57,16 +57,9 @@ function buildInvoiceHtml(d: StudentInvoiceData): string {
   const isExonere       = regimeFinancier === 'CAS_SOCIAL_TOTAL';
   const hasRemise       = !isExonere && remisePct > 0;
 
-  // Badge régime affiché dans la box élève
-  const regimeBadge = isExonere
-    ? `<span style="display:inline-block;margin-top:4px;background:#ffe4e6;color:#9f1239;padding:2px 8px;border-radius:999px;font-size:7pt;font-weight:900;text-transform:uppercase">✦ Exonéré total</span>`
-    : hasRemise
-      ? `<span style="display:inline-block;margin-top:4px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-size:7pt;font-weight:900;text-transform:uppercase">Remise ${remisePct}%</span>`
-      : '';
-
   const rows = d.echeances.map(e => {
     const statut  = isRecu ? 'PAYE' : e.statut;
-    const bg      = statut === 'PAYE' ? '#d1fae5' : statut === 'EN_RETARD' ? '#fee2e2' : '#fef3c7';
+    const bg      = statut === 'PAYE' ? '#d1fae5' : statut === 'EN_RETARD' ? '#fee2e2' : '#fef9c4';
     const color   = statut === 'PAYE' ? '#065f46' : statut === 'EN_RETARD' ? '#991b1b' : '#92400e';
     const label   = statut === 'PAYE' ? 'Payé' : statut === 'EN_RETARD' ? 'En retard' : 'En attente';
     const svc     = e.service?.name || e.description || 'Redevance';
@@ -74,28 +67,26 @@ function buildInvoiceHtml(d: StudentInvoiceData): string {
     const dt      = new Date(e.dateEcheance).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
     const mnt     = Number(e.montant);
 
-    // Affichage du montant : si remise → prix barré + prix réduit
     let montantCell: string;
     if (hasRemise && mnt > 0) {
       const original = Math.round(mnt / (1 - remisePct / 100));
-      montantCell = `<span style="text-decoration:line-through;color:#94a3b8;font-size:7.5pt;font-weight:500">${original.toLocaleString('fr-FR')}</span>
-        <span style="font-weight:900;color:#1e293b;margin-left:4px">${mnt.toLocaleString('fr-FR')} ${d.currency}</span>`;
+      montantCell = `<span style="text-decoration:line-through;color:#94a3b8;font-size:8pt">${original.toLocaleString('fr-FR')}</span>
+        <br><strong>${mnt.toLocaleString('fr-FR')} ${d.currency}</strong>`;
     } else if (isExonere) {
-      montantCell = `<span style="color:#94a3b8;font-size:7.5pt;font-style:italic">Exonéré</span>`;
+      montantCell = `<em style="color:#94a3b8">Exonéré</em>`;
     } else {
-      montantCell = `<span style="font-weight:700">${mnt.toLocaleString('fr-FR')} ${d.currency}</span>`;
+      montantCell = `<strong>${mnt.toLocaleString('fr-FR')} ${d.currency}</strong>`;
     }
 
     return `<tr>
       <td>${svc}</td>
-      <td style="text-align:center">${periode}</td>
-      <td style="text-align:center">${dt}</td>
-      <td style="text-align:right">${montantCell}</td>
-      <td style="text-align:center"><span style="background:${bg};color:${color};padding:2px 8px;border-radius:999px;font-size:7.5pt;font-weight:700">${label}</span></td>
+      <td class="c">${periode}</td>
+      <td class="c">${dt}</td>
+      <td class="r">${montantCell}</td>
+      <td class="c"><span class="badge" style="background:${bg};color:${color}">${label}</span></td>
     </tr>`;
   }).join('');
 
-  // Calcul de la remise totale pour la section totaux
   let totalOriginal = 0;
   let totalRemise   = 0;
   if (hasRemise && d.totalDu > 0) {
@@ -105,101 +96,152 @@ function buildInvoiceHtml(d: StudentInvoiceData): string {
 
   const parentNom   = d.parent1?.prenom ? `${d.parent1.prenom} ${d.parent1.nom || ''}`.trim() : '—';
   const parentTel   = d.parent1?.whatsapp || d.parent1?.telephone || d.parent1?.phone || '';
-  const parentEmail = d.parent1?.email || '';
+
+  const dateEmission = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1e293b;padding:22px 34px;background:#fff;width:794px}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e293b;padding-bottom:12px;margin-bottom:14px}
-    .school{font-size:14pt;font-weight:900;color:#4f46e5;text-transform:uppercase}
-    .school-sub{font-size:7.5pt;color:#64748b;margin-top:3px;line-height:1.5}
-    .doc-title{font-size:13pt;font-weight:900;text-align:right}
-    .doc-ref{font-size:7.5pt;font-weight:700;color:#4f46e5;background:#eef2ff;padding:2px 7px;border-radius:4px;display:inline-block;margin-top:2px}
-    .doc-period{font-size:8.5pt;color:#64748b;font-weight:700;margin-top:2px}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
-    .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px}
-    .box h3{font-size:6.5pt;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
-    .box p{font-size:9.5pt;font-weight:700;line-height:1.5}
-    .box .sub{font-size:8.5pt;color:#64748b;font-weight:500}
-    table{width:100%;border-collapse:collapse;margin-bottom:10px}
-    thead tr{background:#1e293b;color:#fff}
-    th{padding:6px 8px;font-size:7.5pt;font-weight:800;text-transform:uppercase}
-    td{padding:6px 8px;font-size:8.5pt;border-bottom:1px solid #f1f5f9}
-    tbody tr:nth-child(even){background:#f8fafc}
-    .totals-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
-    .totals{width:240px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
-    .trow{display:flex;justify-content:space-between;padding:6px 12px;font-size:8.5pt;font-weight:700}
-    .trow.due{background:#f1f5f9;color:#475569}
-    .trow.paid{background:#d1fae5;color:#065f46}
-    .trow.bal{background:#1e293b;color:#fff;font-size:9.5pt;font-weight:900}
-    .sigs{display:flex;justify-content:space-between;margin-top:18px}
-    .sig{border-top:1px solid #cbd5e1;width:180px;padding-top:5px;font-size:7.5pt;color:#94a3b8;text-align:center}
-    .ftr{margin-top:12px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:7pt;color:#94a3b8;font-weight:600}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:9.5pt;color:#1e293b;padding:28px 36px;background:#fff;width:794px}
+    .header{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+    .logo{height:52px;width:auto;object-fit:contain}
+    .school-name{font-size:15pt;font-weight:800;color:#1a3a6b}
+    .school-sub{font-size:8pt;color:#64748b;line-height:1.6}
+    .meta-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+    .ref-box{background:#f0f4fa;border:1px solid #d0daea;border-radius:6px;padding:10px 14px;font-size:8.5pt;line-height:1.8}
+    .ref-box strong{color:#1a3a6b}
+    .client-box{text-align:right;font-size:9.5pt;font-weight:600;line-height:1.6}
+    .summary{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:16px}
+    .summary-left{flex:1}
+    .summary-left h2{font-size:11pt;font-weight:800;color:#1a3a6b;margin-bottom:6px;border-bottom:2px solid #1a3a6b;padding-bottom:4px;display:inline-block}
+    .summary-table{width:100%;max-width:300px}
+    .summary-table td{padding:4px 0;font-size:9pt}
+    .summary-table td:last-child{text-align:right;font-weight:700}
+    .summary-table tr:last-child td{font-size:11pt;font-weight:900;padding-top:6px;border-top:2px solid #1a3a6b}
+    .info-box{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:8.5pt;max-width:220px}
+    .info-box strong{color:#92400e}
+    .eleve-parent{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+    .ep-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px 12px}
+    .ep-box h4{font-size:6.5pt;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px}
+    .ep-box p{font-size:9pt;font-weight:600;line-height:1.5}
+    .ep-box .sub{font-size:8pt;color:#64748b;font-weight:400}
+    table.items{width:100%;border-collapse:collapse;margin-bottom:6px}
+    table.items thead{background:#1a3a6b}
+    table.items th{color:#fff;padding:7px 10px;font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+    table.items td{padding:7px 10px;font-size:8.5pt;border-bottom:1px solid #e8ecf2}
+    table.items tbody tr:nth-child(even){background:#f8fafc}
+    table.items .c{text-align:center}
+    table.items .r{text-align:right}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:7.5pt;font-weight:700}
+    .totals-row{display:flex;justify-content:flex-end;margin:12px 0 16px}
+    .totals-box{width:260px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+    .tot-line{display:flex;justify-content:space-between;padding:7px 14px;font-size:9pt;font-weight:600}
+    .tot-line.sub{background:#f8fafc;color:#64748b;font-size:8.5pt}
+    .tot-line.paid{background:#d1fae5;color:#065f46}
+    .tot-line.total{background:#1a3a6b;color:#fff;font-size:10.5pt;font-weight:900}
+    .sigs{display:flex;justify-content:space-between;margin-top:22px;padding-top:0}
+    .sig{border-top:1px solid #cbd5e1;width:200px;padding-top:6px;font-size:7.5pt;color:#94a3b8;text-align:center}
+    .footer{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:7pt;color:#94a3b8;font-weight:600}
   </style></head><body>
-    <div class="hdr">
-      <div style="display:flex;align-items:center;gap:12px">
-        ${d.tenant?.logoUrl ? `<img src="${d.tenant.logoUrl}" style="height:56px;width:auto;object-fit:contain;flex-shrink:0" alt="Logo" />` : ''}
-        <div>
-          <div class="school">${d.tenant?.name || 'Le Toit des Anges'}</div>
-          <div class="school-sub">${d.tenant?.address ? d.tenant.address + '<br>' : ''}${d.tenant?.phone || ''}${d.tenant?.phone && d.tenant?.email ? ' | ' : ''}${d.tenant?.email || ''}</div>
-        </div>
-      </div>
+
+    <!-- HEADER -->
+    <div class="header">
+      ${d.tenant?.logoUrl ? `<img src="${d.tenant.logoUrl}" class="logo" alt="Logo" />` : ''}
       <div>
-        <div class="doc-title">${isRecu ? 'REÇU DE PAIEMENT' : 'FACTURE MENSUELLE'}</div>
-        <div style="text-align:right"><span class="doc-ref">${ref}</span></div>
-        <div class="doc-period" style="text-align:right">${isRecu ? `Mode : ${METHODE_LABELS[d.methodePaiement || ''] || 'Espèces'}` : `Période : ${d.period}`}</div>
+        <div class="school-name">${d.tenant?.name || 'LE TOIT DES ANGES'}</div>
+        <div class="school-sub">${d.tenant?.address || 'Ouakam, Dakar, Sénégal'}<br>${d.tenant?.phone || ''}${d.tenant?.email ? ' | ' + d.tenant.email : ''}</div>
       </div>
     </div>
 
-    <div class="grid2">
-      <div class="box">
-        <h3>Élève</h3>
-        <p>${nomEleve}</p>
+    <!-- REFERENCE + CLIENT -->
+    <div class="meta-row">
+      <div class="ref-box">
+        Référence de la facture : <strong>${ref}</strong><br>
+        Type de facture : <strong>${isRecu ? 'Reçu de paiement' : 'Facture mensuelle'}</strong><br>
+        Date d'émission : <strong>${dateEmission}</strong><br>
+        ${!isRecu ? `Période : <strong>${d.period}</strong>` : `Mode : <strong>${METHODE_LABELS[d.methodePaiement || ''] || 'Espèces'}</strong>`}
+      </div>
+      <div class="client-box">
+        ${parentNom}<br>
+        ${parentTel ? parentTel + '<br>' : ''}
+        <span style="font-size:8pt;color:#64748b">Parent / Tuteur</span>
+      </div>
+    </div>
+
+    <!-- SUMMARY -->
+    <div class="summary">
+      <div class="summary-left">
+        <h2>${isRecu ? `Reçu ${ref}` : `Facture ${ref}`} du ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</h2>
+        <table class="summary-table">
+          ${isRecu
+            ? `<tr><td>Montant encaissé</td><td>${d.totalPaye.toLocaleString('fr-FR')} ${d.currency}</td></tr>
+               <tr><td><strong>Solde</strong></td><td><strong>0 ${d.currency}</strong></td></tr>`
+            : `${hasRemise ? `<tr><td>Sous-total</td><td>${totalOriginal.toLocaleString('fr-FR')} ${d.currency}</td></tr>
+               <tr><td>Remise (${remisePct}%)</td><td>- ${totalRemise.toLocaleString('fr-FR')} ${d.currency}</td></tr>` : ''}
+               <tr><td>Total dû</td><td>${d.totalDu.toLocaleString('fr-FR')} ${d.currency}</td></tr>
+               <tr><td>Total payé</td><td style="color:#065f46">${d.totalPaye.toLocaleString('fr-FR')} ${d.currency}</td></tr>
+               <tr><td><strong>Solde restant</strong></td><td><strong>${d.solde.toLocaleString('fr-FR')} ${d.currency}</strong></td></tr>`}
+        </table>
+      </div>
+      ${!isRecu && d.solde > 0 ? `<div class="info-box">
+        <strong>Information de paiement :</strong><br>
+        Le montant de <strong>${d.solde.toLocaleString('fr-FR')} ${d.currency}</strong> est à régler avant la fin du mois.<br>
+        Facture payable dès réception.
+      </div>` : ''}
+    </div>
+
+    <!-- ELEVE + PARENT -->
+    <div class="eleve-parent">
+      <div class="ep-box">
+        <h4>Élève</h4>
+        <p><strong>${nomEleve}</strong></p>
         ${d.eleve.matricule ? `<p class="sub">Matricule : ${d.eleve.matricule}</p>` : ''}
         ${d.eleve.classeNom ? `<p class="sub">Classe : ${d.eleve.classeNom}</p>` : ''}
         ${d.eleve.niveau ? `<p class="sub">Niveau : ${d.eleve.niveau}</p>` : ''}
-        ${regimeBadge}
+        ${isExonere ? `<p style="margin-top:3px;font-size:7pt;color:#9f1239;font-weight:700">✦ Exonéré total</p>` : ''}
+        ${hasRemise ? `<p style="margin-top:3px;font-size:7pt;color:#92400e;font-weight:700">Remise ${remisePct}%</p>` : ''}
       </div>
-      <div class="box">
-        <h3>Parent / Tuteur</h3>
-        <p>${parentNom}</p>
+      <div class="ep-box">
+        <h4>Parent / Tuteur</h4>
+        <p><strong>${parentNom}</strong></p>
         ${parentTel ? `<p class="sub">${parentTel}</p>` : ''}
-        ${parentEmail ? `<p class="sub">${parentEmail}</p>` : ''}
       </div>
     </div>
 
-    <table>
+    <!-- TABLEAU DES SERVICES -->
+    <table class="items">
       <thead><tr>
         <th style="text-align:left">Service / Offre</th>
-        <th style="text-align:center">Période</th>
-        <th style="text-align:center">Échéance</th>
+        <th class="c">Période</th>
+        <th class="c">Échéance</th>
         <th style="text-align:right">Montant</th>
-        <th style="text-align:center">Statut</th>
+        <th class="c">Statut</th>
       </tr></thead>
       <tbody>${rows || `<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8">Aucune créance pour cette période</td></tr>`}</tbody>
     </table>
 
-    <div class="totals-wrap">
-      <div class="totals">
+    <!-- TOTAUX -->
+    <div class="totals-row">
+      <div class="totals-box">
         ${isRecu
-          ? `<div class="trow paid" style="font-size:11pt"><span>Montant encaissé</span><span>${d.totalPaye.toLocaleString('fr-FR')} ${d.currency}</span></div>
-             <div class="trow bal" style="background:#065f46"><span>✓ Solde</span><span>0 ${d.currency}</span></div>`
-          : `${hasRemise && totalOriginal > 0
-              ? `<div class="trow due" style="color:#94a3b8"><span>Tarif de base</span><span style="text-decoration:line-through">${totalOriginal.toLocaleString('fr-FR')} ${d.currency}</span></div>
-                 <div class="trow" style="background:#fef3c7;color:#92400e"><span>Remise (${remisePct}%)</span><span>− ${totalRemise.toLocaleString('fr-FR')} ${d.currency}</span></div>`
-              : ''}
-             <div class="trow due"><span>Total dû</span><span>${d.totalDu.toLocaleString('fr-FR')} ${d.currency}</span></div>
-             <div class="trow paid"><span>Total payé</span><span>${d.totalPaye.toLocaleString('fr-FR')} ${d.currency}</span></div>
-             <div class="trow bal"><span>Solde restant</span><span>${d.solde.toLocaleString('fr-FR')} ${d.currency}</span></div>`}
+          ? `<div class="tot-line paid"><span>Montant encaissé</span><span>${d.totalPaye.toLocaleString('fr-FR')} ${d.currency}</span></div>
+             <div class="tot-line total" style="background:#065f46"><span>✓ Solde</span><span>0 ${d.currency}</span></div>`
+          : `${hasRemise ? `<div class="tot-line sub"><span>Sous-total</span><span style="text-decoration:line-through">${totalOriginal.toLocaleString('fr-FR')} ${d.currency}</span></div>
+             <div class="tot-line sub" style="color:#92400e"><span>Remise (${remisePct}%)</span><span>- ${totalRemise.toLocaleString('fr-FR')} ${d.currency}</span></div>` : ''}
+             <div class="tot-line sub"><span>Total dû</span><span>${d.totalDu.toLocaleString('fr-FR')} ${d.currency}</span></div>
+             <div class="tot-line paid"><span>Total payé</span><span>${d.totalPaye.toLocaleString('fr-FR')} ${d.currency}</span></div>
+             <div class="tot-line total"><span>Solde restant</span><span>${d.solde.toLocaleString('fr-FR')} ${d.currency}</span></div>`}
       </div>
     </div>
 
+    <!-- SIGNATURES -->
     <div class="sigs">
       <div class="sig">Signature du parent / tuteur</div>
-      <div class="sig">Cachet &amp; signature de la Direction</div>
+      <div class="sig">Cachet & signature de la Direction</div>
     </div>
-    <div class="ftr">
-      <span>${d.tenant?.name || 'Le Toit des Anges'} — ${isRecu ? 'Reçu' : 'Facture'} généré${isRecu ? '' : 'e'} le ${new Date().toLocaleDateString('fr-FR')}</span>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <span>${d.tenant?.name || 'Le Toit des Anges'} — ${isRecu ? 'Reçu' : 'Facture'} généré${isRecu ? '' : 'e'} le ${dateEmission}</span>
       <span>${ref}</span>
     </div>
   </body></html>`;
