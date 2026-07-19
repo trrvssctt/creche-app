@@ -24,6 +24,13 @@ type TypeEvenement =
 
 type StatutEvenement = 'BROUILLON' | 'PUBLIE' | 'ANNULE';
 
+interface CreneauRdv {
+  eleveId: string;
+  eleveNom: string;
+  heureDebut: string;
+  heureFin: string;
+}
+
 interface Evenement {
   id: string;
   titre: string;
@@ -37,6 +44,7 @@ interface Evenement {
   lieu?: string;
   niveauxCibles: ('TOUS' | NiveauScolaire)[];
   diffuse: boolean;
+  creneaux: CreneauRdv[];
   dateCreation: string;
 }
 
@@ -97,6 +105,7 @@ function rawToEvenement(raw: any): Evenement {
     lieu:          raw.lieu,
     niveauxCibles: niveaux,
     diffuse:       !!raw.diffuse,
+    creneaux:      Array.isArray(raw.creneaux) ? raw.creneaux : [],
     dateCreation:  raw.createdAt || raw.created_at || new Date().toISOString(),
   };
 }
@@ -107,6 +116,7 @@ function toPayload(ev: Omit<Evenement, 'id' | 'dateCreation'>) {
     statut: ev.statut, dateDebut: ev.dateDebut, dateFin: ev.dateFin || null,
     heureDebut: ev.heureDebut || null, heureFin: ev.heureFin || null,
     lieu: ev.lieu || null, niveauxCibles: ev.niveauxCibles, diffuse: ev.diffuse,
+    creneaux: ev.creneaux || [],
   };
 }
 
@@ -162,6 +172,7 @@ const emptyForm = (): Omit<Evenement, 'id' | 'dateCreation'> => ({
   lieu: '',
   niveauxCibles: ['TOUS'],
   diffuse: false,
+  creneaux: [],
 });
 
 // ─── Composant calendrier mensuel ────────────────────────────────────────────
@@ -244,6 +255,97 @@ function CalendrierMensuel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Sous-composant ajout créneau ────────────────────────────────────────────
+
+function CreneauAddRow({
+  eleves,
+  niveauxCibles,
+  existingIds,
+  lastHeureFin,
+  onAdd,
+}: {
+  eleves: any[];
+  niveauxCibles: ('TOUS' | NiveauScolaire)[];
+  existingIds: string[];
+  lastHeureFin: string;
+  onAdd: (cr: CreneauRdv) => void;
+}) {
+  const [eleveId, setEleveId] = useState('');
+  const [hDebut, setHDebut] = useState(lastHeureFin);
+  const [hFin, setHFin] = useState('');
+
+  React.useEffect(() => { setHDebut(lastHeureFin); }, [lastHeureFin]);
+
+  const elevesFiltres = useMemo(() => {
+    return eleves
+      .filter(e => {
+        const statut = e.statut || e.status || 'ACTIF';
+        if (!(statut === 'ACTIF' || e.isActive || e.is_active)) return false;
+        if (existingIds.includes(e.id)) return false;
+        if (niveauxCibles.includes('TOUS')) return true;
+        const niveau = e.niveau || e.niveauScolaire || '';
+        return niveauxCibles.includes(niveau as NiveauScolaire);
+      })
+      .sort((a: any, b: any) => {
+        const na = (a.lastName || a.nom || '').toLowerCase();
+        const nb = (b.lastName || b.nom || '').toLowerCase();
+        return na.localeCompare(nb);
+      });
+  }, [eleves, niveauxCibles, existingIds]);
+
+  const handleAdd = () => {
+    if (!eleveId || !hDebut || !hFin) return;
+    const el = eleves.find(e => e.id === eleveId);
+    if (!el) return;
+    const nom = el.lastName || el.nom
+      ? `${el.lastName || el.nom || ''} ${el.firstName || el.prenom || ''}`.trim()
+      : el.companyName || el.name || 'Élève';
+    onAdd({ eleveId, eleveNom: nom, heureDebut: hDebut, heureFin: hFin });
+    setEleveId('');
+    setHDebut(hFin);
+    setHFin('');
+  };
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+      <div className="flex-1 min-w-[140px]">
+        <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Élève</label>
+        <select
+          value={eleveId}
+          onChange={e => setEleveId(e.target.value)}
+          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">— Choisir —</option>
+          {elevesFiltres.map((el: any) => {
+            const nom = el.lastName || el.nom
+              ? `${el.lastName || el.nom || ''} ${el.firstName || el.prenom || ''}`.trim()
+              : el.companyName || el.name || 'Élève';
+            return <option key={el.id} value={el.id}>{nom}</option>;
+          })}
+        </select>
+      </div>
+      <div className="w-[100px]">
+        <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Début</label>
+        <input type="time" value={hDebut} onChange={e => setHDebut(e.target.value)}
+          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <div className="w-[100px]">
+        <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Fin</label>
+        <input type="time" value={hFin} onChange={e => setHFin(e.target.value)}
+          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <button
+        type="button"
+        onClick={handleAdd}
+        disabled={!eleveId || !hDebut || !hFin}
+        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Plus size={13} className="inline -mt-0.5" /> Ajouter
+      </button>
     </div>
   );
 }
@@ -366,7 +468,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
     setSelected(ev);
     setForm({ titre: ev.titre, typeEvenement: ev.typeEvenement, statut: ev.statut, description: ev.description,
       dateDebut: ev.dateDebut, dateFin: ev.dateFin, heureDebut: ev.heureDebut, heureFin: ev.heureFin,
-      lieu: ev.lieu, niveauxCibles: ev.niveauxCibles, diffuse: ev.diffuse });
+      lieu: ev.lieu, niveauxCibles: ev.niveauxCibles, diffuse: ev.diffuse, creneaux: ev.creneaux || [] });
     setModalMode('EDIT');
   };
 
@@ -653,6 +755,19 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                         {ev.description && (
                           <p className="text-xs text-slate-500 mt-2 line-clamp-2">{ev.description}</p>
                         )}
+                        {ev.typeEvenement === 'REUNION' && ev.creneaux.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="text-[10px] font-semibold text-blue-600">{ev.creneaux.length} créneau(x) :</span>
+                            {ev.creneaux.slice(0, 4).map((cr, i) => (
+                              <span key={i} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                                {cr.eleveNom} ({cr.heureDebut}–{cr.heureFin})
+                              </span>
+                            ))}
+                            {ev.creneaux.length > 4 && (
+                              <span className="text-[10px] text-slate-400">+{ev.creneaux.length - 4} autres</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {/* Actions */}
                       <div className="flex flex-wrap gap-2 shrink-0">
@@ -884,6 +999,45 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                   ))}
                 </div>
               </div>
+
+              {/* Créneaux RDV — uniquement pour REUNION */}
+              {form.typeEvenement === 'REUNION' && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">
+                    Créneaux de rendez-vous
+                  </label>
+                  <p className="text-xs text-slate-400 mb-3">Planifiez un horaire de passage pour chaque élève.</p>
+
+                  {/* Liste des créneaux existants */}
+                  {form.creneaux.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {form.creneaux.map((cr, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                          <Users size={13} className="text-blue-500 shrink-0" />
+                          <span className="text-sm font-medium text-slate-800 flex-1 truncate">{cr.eleveNom}</span>
+                          <span className="text-xs text-slate-500">{cr.heureDebut} – {cr.heureFin}</span>
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, creneaux: f.creneaux.filter((_, i) => i !== idx) }))}
+                            className="p-1 rounded hover:bg-blue-100"
+                          >
+                            <X size={13} className="text-slate-400" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Formulaire ajout créneau */}
+                  <CreneauAddRow
+                    eleves={eleves}
+                    niveauxCibles={form.niveauxCibles}
+                    existingIds={form.creneaux.map(c => c.eleveId)}
+                    lastHeureFin={form.creneaux.length > 0 ? form.creneaux[form.creneaux.length - 1].heureFin : (form.heureDebut || '08:00')}
+                    onAdd={(cr) => setForm(f => ({ ...f, creneaux: [...f.creneaux, cr] }))}
+                  />
+                </div>
+              )}
 
               {/* Statut */}
               <div>

@@ -27,6 +27,7 @@
 13. **CM1 et CM2** à prévoir(voir si tous est ok).
 14. **Créer des templates WhatsApp. Donner acces à creer , modifir et supprimer des templates de whatshapp**
 15. **Rencontre parent–prof. Dans la section Evenement pour la partie evenement de type rencontre parent-prof on doit pouvoir prevoir le calendrier de cet evenement en disant Eleve 1 09H00-12H00, ensuite Enlève 2 12H00-14H00** sous forme de créneaux.
+    - ✅ Fait : pour les événements de type « Réunion parents-profs », un module de créneaux permet d'attribuer un horaire à chaque élève (sélecteur d'élève + heure début/fin). L'heure de début du créneau suivant est pré-remplie avec la fin du précédent. Les créneaux sont affichés dans la liste des événements. Données stockées en JSONB sur `school_events.creneaux`.
 16. **Gestion de la Paie RH** — pas de besoins (desactive le) [?].
     - ✅ Fait : onglet « Gestion de la Paie » masqué dans le dashboard RH (section commentée, module inaccessible).
 17. **Notification RH Pour les demande de congés, etc on doit avoir une noification pour alerter l'admin ou l'employé e question** — congé ou justificatifs d'absence.

@@ -8,7 +8,7 @@ export class SchoolEventController {
       const events = await sequelize.query(
         `SELECT id, tenant_id, titre, description, type_evenement, statut,
                 date_debut, date_fin, heure_debut, heure_fin, lieu,
-                niveaux_cibles, diffuse, created_at, updated_at
+                niveaux_cibles, diffuse, creneaux, created_at, updated_at
          FROM school_events
          WHERE tenant_id = :tenantId
          ORDER BY date_debut ASC`,
@@ -39,6 +39,7 @@ export class SchoolEventController {
         lieu,
         niveauxCibles,
         diffuse,
+        creneaux,
       } = req.body;
 
       if (!titre || !dateDebut) {
@@ -64,6 +65,7 @@ export class SchoolEventController {
                lieu           = :lieu,
                niveaux_cibles = :niveaux,
                diffuse        = :diffuse,
+               creneaux       = :creneaux,
                updated_at     = NOW()
            WHERE id = :id AND tenant_id = :tenantId`,
           {
@@ -75,6 +77,7 @@ export class SchoolEventController {
               lieu:       lieu       || null,
               niveaux,
               diffuse: !!diffuse,
+              creneaux: JSON.stringify(creneaux || []),
               id, tenantId,
             },
             type: QueryTypes.RAW,
@@ -94,11 +97,11 @@ export class SchoolEventController {
         `INSERT INTO school_events
            (id, tenant_id, titre, description, type_evenement, statut,
             date_debut, date_fin, heure_debut, heure_fin, lieu, niveaux_cibles, diffuse,
-            created_at, updated_at)
+            creneaux, created_at, updated_at)
          VALUES
            (:id, :tenantId, :titre, :description, :typeEvenement, :statut,
             :dateDebut, :dateFin, :heureDebut, :heureFin, :lieu, :niveaux, :diffuse,
-            NOW(), NOW())`,
+            :creneaux, NOW(), NOW())`,
         {
           replacements: {
             id: newId, tenantId, titre, description, typeEvenement, statut,
@@ -109,6 +112,7 @@ export class SchoolEventController {
             lieu:       lieu       || null,
             niveaux,
             diffuse: !!diffuse,
+            creneaux: JSON.stringify(creneaux || []),
           },
           type: QueryTypes.RAW,
         }
@@ -157,6 +161,7 @@ function rowToJson(row) {
     lieu:          row.lieu,
     niveauxCibles: row.niveaux_cibles,
     diffuse:       row.diffuse,
+    creneaux:      row.creneaux || [],
     createdAt:     row.created_at,
     updatedAt:     row.updated_at,
   };

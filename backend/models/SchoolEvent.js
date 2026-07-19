@@ -17,6 +17,7 @@ SchoolEvent.init({
   lieu:          { type: DataTypes.STRING(255) },
   niveauxCibles: { type: DataTypes.TEXT, defaultValue: 'TOUS', field: 'niveaux_cibles' },
   diffuse:       { type: DataTypes.BOOLEAN, defaultValue: false },
+  creneaux:      { type: DataTypes.JSONB, defaultValue: [] },
 }, {
   sequelize,
   modelName: 'school_event',
