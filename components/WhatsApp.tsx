@@ -15,29 +15,21 @@ import { User, NiveauScolaire } from '../types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type TemplateId =
-  | 'RECU_PROVISOIRE'
-  | 'RECU_DEFINITIF'
-  | 'FACTURE_MENSUELLE'
-  | 'RELANCE'
-  | 'BULLETIN'
-  | 'ADMISSION_CONFIRMEE'
-  | 'RETARD_GARDE';
-
 interface Template {
-  id: TemplateId;
+  id: string;
   label: string;
   description: string;
   color: string;
   icon: string;
   body: string;
   variables: string[];
+  isCustom?: boolean;
 }
 
 interface HistoriqueEntry {
   id: string;
   timestamp: string;
-  templateId: TemplateId;
+  templateId: string;
   templateLabel: string;
   eleveNom: string;
   niveau: string;
@@ -194,38 +186,68 @@ Ce montant sera ajouté à votre prochaine facture.
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const LS_TEMPLATES_KEY = 'wa_templates';
+const LS_CUSTOM_TEMPLATES_KEY = 'wa_custom_templates';
 const LS_HISTORIQUE_KEY = 'wa_historique';
 
 function loadTemplates(): Template[] {
   try {
     const raw = localStorage.getItem(LS_TEMPLATES_KEY);
-    if (!raw) return DEFAULT_TEMPLATES;
-    const saved: Partial<Record<TemplateId, string>> = JSON.parse(raw);
-    return DEFAULT_TEMPLATES.map(t => ({
+    const saved: Record<string, string> = raw ? JSON.parse(raw) : {};
+    const defaults = DEFAULT_TEMPLATES.map(t => ({
       ...t,
       body: saved[t.id] ?? t.body,
     }));
+    const customRaw = localStorage.getItem(LS_CUSTOM_TEMPLATES_KEY);
+    const customs: Template[] = customRaw ? JSON.parse(customRaw) : [];
+    return [...defaults, ...customs.map(c => ({ ...c, isCustom: true }))];
   } catch {
     return DEFAULT_TEMPLATES;
   }
 }
 
-function saveTemplateBody(id: TemplateId, body: string) {
+function saveTemplateBody(id: string, body: string) {
   try {
-    const raw = localStorage.getItem(LS_TEMPLATES_KEY);
-    const saved = raw ? JSON.parse(raw) : {};
-    saved[id] = body;
-    localStorage.setItem(LS_TEMPLATES_KEY, JSON.stringify(saved));
+    const customRaw = localStorage.getItem(LS_CUSTOM_TEMPLATES_KEY);
+    const customs: Template[] = customRaw ? JSON.parse(customRaw) : [];
+    const customIdx = customs.findIndex(c => c.id === id);
+    if (customIdx >= 0) {
+      customs[customIdx].body = body;
+      localStorage.setItem(LS_CUSTOM_TEMPLATES_KEY, JSON.stringify(customs));
+    } else {
+      const raw = localStorage.getItem(LS_TEMPLATES_KEY);
+      const saved = raw ? JSON.parse(raw) : {};
+      saved[id] = body;
+      localStorage.setItem(LS_TEMPLATES_KEY, JSON.stringify(saved));
+    }
   } catch {}
 }
 
-function resetTemplateBody(id: TemplateId) {
+function resetTemplateBody(id: string) {
   try {
     const raw = localStorage.getItem(LS_TEMPLATES_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
     delete saved[id];
     localStorage.setItem(LS_TEMPLATES_KEY, JSON.stringify(saved));
+  } catch {}
+}
+
+function saveCustomTemplate(template: Template) {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM_TEMPLATES_KEY);
+    const customs: Template[] = raw ? JSON.parse(raw) : [];
+    const idx = customs.findIndex(c => c.id === template.id);
+    if (idx >= 0) customs[idx] = template;
+    else customs.push(template);
+    localStorage.setItem(LS_CUSTOM_TEMPLATES_KEY, JSON.stringify(customs));
+  } catch {}
+}
+
+function deleteCustomTemplate(id: string) {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM_TEMPLATES_KEY);
+    const customs: Template[] = raw ? JSON.parse(raw) : [];
+    localStorage.setItem(LS_CUSTOM_TEMPLATES_KEY, JSON.stringify(customs.filter(c => c.id !== id)));
   } catch {}
 }
 
@@ -306,21 +328,23 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
   const [historique, setHistorique] = useState<HistoriqueEntry[]>(loadHistorique);
 
   // --- état onglet Templates
-  const [editingId, setEditingId] = useState<TemplateId | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
-  const [previewId, setPreviewId] = useState<TemplateId | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({ label: '', description: '', body: '', icon: '📝', color: 'blue', variables: '' });
 
   // --- état onglet Envoyer
   const [eleves, setEleves] = useState<any[]>([]);
   const [loadingEleves, setLoadingEleves] = useState(false);
   const [searchEleve, setSearchEleve] = useState('');
   const [selectedEleve, setSelectedEleve] = useState<any | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<TemplateId | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [customVars, setCustomVars] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
 
   // --- état onglet Envoi groupé
-  const [groupeTemplateId, setGroupeTemplateId] = useState<TemplateId>('FACTURE_MENSUELLE');
+  const [groupeTemplateId, setGroupeTemplateId] = useState<string>('FACTURE_MENSUELLE');
   const [groupeNiveau, setGroupeNiveau] = useState('ALL');
   const [groupeVars, setGroupeVars] = useState<Record<string, string>>({
     mois: MOIS_LABELS[new Date().getMonth()],
@@ -417,20 +441,62 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
   };
 
   const handleSaveTemplate = () => {
-    if (!editingId) return;
-    saveTemplateBody(editingId, editBody);
-    setTemplates(prev => prev.map(t => t.id === editingId ? { ...t, body: editBody } : t));
-    setEditingId(null);
-    showToast('Modèle sauvegardé.', 'success');
+    handleUpdateCustomTemplate();
   };
 
-  const handleResetTemplate = (id: TemplateId) => {
+  const handleResetTemplate = (id: string) => {
     const def = DEFAULT_TEMPLATES.find(t => t.id === id);
     if (!def) return;
     resetTemplateBody(id);
     setTemplates(prev => prev.map(t => t.id === id ? { ...t, body: def.body } : t));
     if (editingId === id) { setEditBody(def.body); }
     showToast('Modèle réinitialisé.', 'info');
+  };
+
+  const handleCreateTemplate = () => {
+    if (!newTemplate.label.trim() || !newTemplate.body.trim()) {
+      showToast('Le nom et le corps du message sont obligatoires.', 'error');
+      return;
+    }
+    const id = `CUSTOM_${Date.now().toString(36).toUpperCase()}`;
+    const vars = newTemplate.variables.split(',').map(v => v.trim()).filter(Boolean);
+    const tmpl: Template = {
+      id,
+      label: newTemplate.label.trim(),
+      description: newTemplate.description.trim() || 'Template personnalisé',
+      body: newTemplate.body,
+      icon: newTemplate.icon || '📝',
+      color: newTemplate.color || 'blue',
+      variables: vars,
+      isCustom: true,
+    };
+    saveCustomTemplate(tmpl);
+    setTemplates(prev => [...prev, tmpl]);
+    setShowCreateForm(false);
+    setNewTemplate({ label: '', description: '', body: '', icon: '📝', color: 'blue', variables: '' });
+    showToast('Modèle créé avec succès.', 'success');
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    deleteCustomTemplate(id);
+    setTemplates(prev => prev.filter(t => t.id !== id));
+    showToast('Modèle supprimé.', 'info');
+  };
+
+  const handleUpdateCustomTemplate = () => {
+    if (!editingId) return;
+    const tmpl = templates.find(t => t.id === editingId);
+    if (!tmpl) return;
+    if (tmpl.isCustom) {
+      const updated = { ...tmpl, body: editBody };
+      saveCustomTemplate(updated);
+      setTemplates(prev => prev.map(t => t.id === editingId ? updated : t));
+    } else {
+      saveTemplateBody(editingId, editBody);
+      setTemplates(prev => prev.map(t => t.id === editingId ? { ...t, body: editBody } : t));
+    }
+    setEditingId(null);
+    showToast('Modèle sauvegardé.', 'success');
   };
 
   // ── Handler Envoyer ────────────────────────────────────────────────────────
@@ -587,7 +653,104 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
       {/* ── ONGLET MODÈLES ──────────────────────────────────────────────────── */}
       {activeTab === 'templates' && (
         <div className="space-y-4">
-          {editingId ? (
+          {showCreateForm ? (
+            /* Formulaire de création */
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="font-bold text-slate-800">Créer un nouveau modèle</h2>
+                <button onClick={() => setShowCreateForm(false)} className="p-1 rounded-lg hover:bg-slate-100">
+                  <X size={18} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">Nom du modèle *</label>
+                    <input
+                      type="text"
+                      value={newTemplate.label}
+                      onChange={e => setNewTemplate(p => ({ ...p, label: e.target.value }))}
+                      placeholder="Ex: Rappel sortie scolaire"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">Description</label>
+                    <input
+                      type="text"
+                      value={newTemplate.description}
+                      onChange={e => setNewTemplate(p => ({ ...p, description: e.target.value }))}
+                      placeholder="Ex: Rappel aux parents pour une sortie"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">Icône</label>
+                    <input
+                      type="text"
+                      value={newTemplate.icon}
+                      onChange={e => setNewTemplate(p => ({ ...p, icon: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">Couleur</label>
+                    <select
+                      value={newTemplate.color}
+                      onChange={e => setNewTemplate(p => ({ ...p, color: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      {Object.keys(COLOR_MAP).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">Variables (séparées par ,)</label>
+                    <input
+                      type="text"
+                      value={newTemplate.variables}
+                      onChange={e => setNewTemplate(p => ({ ...p, variables: e.target.value }))}
+                      placeholder="prenom_parent, date, montant"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1">Corps du message *</label>
+                  <textarea
+                    value={newTemplate.body}
+                    onChange={e => setNewTemplate(p => ({ ...p, body: e.target.value }))}
+                    rows={8}
+                    placeholder={`Bonjour {prenom_parent},\n\nVotre message ici...\n\n— Le Toit des Anges`}
+                    className="w-full rounded-xl border border-slate-200 p-3 text-sm font-mono text-slate-700 resize-y focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Utilisez {'{variable}'} pour les données dynamiques. Ex: {'{prenom_parent}'}, {'{montant}'}</p>
+                </div>
+                {newTemplate.body && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Aperçu</p>
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                      <div className="bg-white rounded-xl p-3 shadow-sm text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                        {renderTemplate(newTemplate.body, SAMPLE_VARS)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="px-5 pb-5 flex justify-end gap-2">
+                <button onClick={() => setShowCreateForm(false)} className="px-4 py-2 rounded-xl text-sm border border-slate-200 hover:bg-slate-50">
+                  Annuler
+                </button>
+                <button
+                  onClick={handleCreateTemplate}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
+                >
+                  <Save size={15} /> Créer le modèle
+                </button>
+              </div>
+            </div>
+          ) : editingId ? (
             /* Mode édition */
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
@@ -603,12 +766,14 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Corps du message</label>
-                    <button
-                      onClick={() => handleResetTemplate(editingId!)}
-                      className="text-xs text-slate-400 hover:text-rose-500 flex items-center gap-1"
-                    >
-                      <RefreshCw size={11} /> Réinitialiser
-                    </button>
+                    {!templates.find(t => t.id === editingId)?.isCustom && (
+                      <button
+                        onClick={() => handleResetTemplate(editingId!)}
+                        className="text-xs text-slate-400 hover:text-rose-500 flex items-center gap-1"
+                      >
+                        <RefreshCw size={11} /> Réinitialiser
+                      </button>
+                    )}
                   </div>
                   <textarea
                     value={editBody}
@@ -656,51 +821,73 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
             </div>
           ) : (
             /* Liste des modèles */
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {templates.map(t => {
-                const c = COLOR_MAP[t.color] ?? COLOR_MAP.blue;
-                const isPreview = previewId === t.id;
-                return (
-                  <div key={t.id} className={`rounded-2xl border overflow-hidden transition-shadow hover:shadow-md ${c.border}`}>
-                    <div className={`p-4 ${c.bg}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{t.icon}</span>
-                          <div>
-                            <p className="font-bold text-slate-800 text-sm">{t.label}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>
+            <>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowCreateForm(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
+                >
+                  <FileText size={15} /> Créer un modèle
+                </button>
+              </div>
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {templates.map(t => {
+                  const c = COLOR_MAP[t.color] ?? COLOR_MAP.blue;
+                  const isPreview = previewId === t.id;
+                  return (
+                    <div key={t.id} className={`rounded-2xl border overflow-hidden transition-shadow hover:shadow-md ${c.border}`}>
+                      <div className={`p-4 ${c.bg}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{t.icon}</span>
+                            <div>
+                              <p className="font-bold text-slate-800 text-sm">{t.label}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {t.isCustom && (
+                              <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                Perso
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${c.badge}`}>
-                          {t.id.replace(/_/g, ' ')}
-                        </span>
                       </div>
-                    </div>
-                    <div className="p-4 bg-white space-y-3">
-                      {isPreview && (
-                        <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 whitespace-pre-wrap leading-relaxed border border-slate-100">
-                          {renderTemplate(t.body, SAMPLE_VARS)}
+                      <div className="p-4 bg-white space-y-3">
+                        {isPreview && (
+                          <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 whitespace-pre-wrap leading-relaxed border border-slate-100">
+                            {renderTemplate(t.body, SAMPLE_VARS)}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setPreviewId(isPreview ? null : t.id)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <Eye size={13} /> {isPreview ? 'Masquer' : 'Aperçu'}
+                          </button>
+                          <button
+                            onClick={() => handleStartEdit(t)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <Edit3 size={13} /> Modifier
+                          </button>
+                          {t.isCustom && (
+                            <button
+                              onClick={() => handleDeleteTemplate(t.id)}
+                              className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg border border-rose-200 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setPreviewId(isPreview ? null : t.id)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                        >
-                          <Eye size={13} /> {isPreview ? 'Masquer' : 'Aperçu'}
-                        </button>
-                        <button
-                          onClick={() => handleStartEdit(t)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                        >
-                          <Edit3 size={13} /> Modifier
-                        </button>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       )}

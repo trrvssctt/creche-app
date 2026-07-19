@@ -26,6 +26,7 @@
     - ⏳ Reste aussi : impression pixel-perfect (blocs « Bilan périodique / signatures » par trimestre) ; bulletin de compétences côté portail parent.
 13. **CM1 et CM2** à prévoir(voir si tous est ok).
 14. **Créer des templates WhatsApp. Donner acces à creer , modifir et supprimer des templates de whatshapp**
+    - ✅ Fait : CRUD complet des templates WhatsApp. Bouton « Créer un modèle » dans l'onglet Modèles — formulaire avec nom, description, icône, couleur, variables personnalisées, corps du message avec aperçu live. Modification du body pour tous les templates (natifs + personnalisés). Suppression possible uniquement pour les templates personnalisés (badge « Perso »). Réinitialisation vers le texte par défaut pour les templates natifs. Stockage localStorage (clé `wa_custom_templates`).
 15. **Rencontre parent–prof. Dans la section Evenement pour la partie evenement de type rencontre parent-prof on doit pouvoir prevoir le calendrier de cet evenement en disant Eleve 1 09H00-12H00, ensuite Enlève 2 12H00-14H00** sous forme de créneaux.
     - ✅ Fait : pour les événements de type « Réunion parents-profs », un module de créneaux permet d'attribuer un horaire à chaque élève (sélecteur d'élève + heure début/fin). L'heure de début du créneau suivant est pré-remplie avec la fin du précédent. Les créneaux sont affichés dans la liste des événements. Données stockées en JSONB sur `school_events.creneaux`.
 16. **Gestion de la Paie RH** — pas de besoins (desactive le) [?].
