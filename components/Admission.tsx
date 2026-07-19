@@ -96,6 +96,7 @@ function normalizeEleve(e: any): any {
     parent1Adresse:     p1.adresse || '',
     parent1Profession:  p1.profession || '',
     parent1Entreprise:  p1.entreprise || '',
+    parent1PaysResidence: p1.paysResidence || '',
     // Flat parent2
     parent2Nom:     p2.nom || '',
     parent2Prenom:  p2.prenom || '',
@@ -105,6 +106,7 @@ function normalizeEleve(e: any): any {
     parent2TelTravail:  p2.telTravail || '',
     parent2Profession:  p2.profession || '',
     parent2Entreprise:  p2.entreprise || '',
+    parent2PaysResidence: p2.paysResidence || '',
     // Contact urgence
     urgenceNom:  urgence.nom || '',
     urgenceTel:  urgence.telephone || urgence.tel || '',
@@ -160,6 +162,7 @@ const emptyDossier = () => ({
   parent1Adresse: '',
   parent1Profession: '',
   parent1Entreprise: '',
+  parent1PaysResidence: '',
   // Parent 2 (conjoint)
   parent2Nom: '',
   parent2Prenom: '',
@@ -169,6 +172,7 @@ const emptyDossier = () => ({
   parent2TelTravail: '',
   parent2Profession: '',
   parent2Entreprise: '',
+  parent2PaysResidence: '',
   urgenceNom: '',
   urgenceTel: '',
   urgenceLien: '',
@@ -374,6 +378,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       adresse:     f.parent1Adresse,
       profession:  f.parent1Profession,
       entreprise:  f.parent1Entreprise,
+      paysResidence: f.parent1PaysResidence,
     },
     ...(f.parent2Nom || f.parent2Prenom ? {
       parent2: {
@@ -385,6 +390,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
         telTravail:  f.parent2TelTravail,
         profession:  f.parent2Profession,
         entreprise:  f.parent2Entreprise,
+        paysResidence: f.parent2PaysResidence,
       },
     } : {}),
     contactUrgence: f.urgenceNom ? {
@@ -646,6 +652,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       parent1Adresse:     d.parent1Adresse || '',
       parent1Profession:  d.parent1Profession || '',
       parent1Entreprise:  d.parent1Entreprise || '',
+      parent1PaysResidence: d.parent1PaysResidence || '',
       parent2Nom:      d.parent2Nom || '',
       parent2Prenom:   d.parent2Prenom || '',
       parent2Lien:     (d.parent2Lien || 'PERE') as 'PERE' | 'MERE' | 'TUTEUR',
@@ -654,6 +661,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       parent2TelTravail:  d.parent2TelTravail || '',
       parent2Profession:  d.parent2Profession || '',
       parent2Entreprise:  d.parent2Entreprise || '',
+      parent2PaysResidence: d.parent2PaysResidence || '',
       statut:          getStatut(d),
       dateDepot:       d.dateAdmission || d.dateDepot || (d.createdAt || d.created_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
       notes:           d.notes || '',
@@ -1515,6 +1523,11 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <input type="text" value={form.parent1Entreprise} onChange={e => setForm({...form, parent1Entreprise: e.target.value})}
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Employeur / société" />
                     </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Pays de résidence</label>
+                      <input type="text" value={form.parent1PaysResidence} onChange={e => setForm({...form, parent1PaysResidence: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Sénégal" />
+                    </div>
                     <div className="col-span-2">
                       <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Adresse</label>
                       <input type="text" value={form.parent1Adresse} onChange={e => setForm({...form, parent1Adresse: e.target.value})}
@@ -1571,6 +1584,11 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                         <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Nom de l'entreprise</label>
                         <input type="text" value={form.parent2Entreprise} onChange={e => setForm({...form, parent2Entreprise: e.target.value})}
                           className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Pays de résidence</label>
+                        <input type="text" value={form.parent2PaysResidence} onChange={e => setForm({...form, parent2PaysResidence: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="Sénégal" />
                       </div>
                     </div>
                   </div>
@@ -2062,6 +2080,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     <DetailRow label="Adresse" value={selected.parent1Adresse} />
                     <DetailRow label="Profession" value={selected.parent1Profession} />
                     <DetailRow label="Entreprise" value={selected.parent1Entreprise} />
+                    <DetailRow label="Pays de résidence" value={selected.parent1PaysResidence} />
                   </div>
                   {(selected.parent2Nom || selected.parent2Prenom) && (
                     <div className="mt-3 bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -2073,6 +2092,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       <DetailRow label="Tél. travail" value={selected.parent2TelTravail} />
                       <DetailRow label="Profession" value={selected.parent2Profession} />
                       <DetailRow label="Entreprise" value={selected.parent2Entreprise} />
+                      <DetailRow label="Pays de résidence" value={selected.parent2PaysResidence} />
                     </div>
                   )}
                 </section>

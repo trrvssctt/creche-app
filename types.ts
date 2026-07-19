@@ -475,6 +475,7 @@ export interface ContactParent {
   adresse?: string;
   profession?: string;
   entreprise?: string;
+  paysResidence?: string;
 }
 
 // Personne autorisée à venir chercher l'enfant à la sortie

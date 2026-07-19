@@ -1828,6 +1828,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         { label: 'Email',     key: 'email' },
                         { label: 'Profession', key: 'profession' },
                         { label: "Nom de l'entreprise", key: 'entreprise' },
+                        { label: 'Pays de résidence', key: 'paysResidence' },
                       ] as const).map(field => (
                         <div key={field.key} className="space-y-2">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">{field.label}</label>
@@ -1862,6 +1863,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         { label: 'Email',     key: 'email' },
                         { label: 'Profession', key: 'profession' },
                         { label: "Nom de l'entreprise", key: 'entreprise' },
+                        { label: 'Pays de résidence', key: 'paysResidence' },
                       ] as const).map(field => (
                         <div key={field.key} className="space-y-2">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">{field.label}</label>

@@ -23,6 +23,20 @@ const MATIERES_DEFAUT = ['Cours', 'Travaux Pratiques', 'Projet', 'Évaluation'];
 const STATUTS_INSCRITS: StatutAdmission[] = ['INSCRIT', 'ACTIF'];
 const STATUTS_CANDIDATURES: StatutAdmission[] = ['EN_ATTENTE', 'ADMIS'];
 
+// Âge calculé automatiquement à partir de la date de naissance.
+// Avant 2 ans (crèche) on affiche en mois, sinon en années.
+function ageFromDate(dateNaissance?: string): string {
+  if (!dateNaissance) return '—';
+  const d = new Date(dateNaissance);
+  if (isNaN(d.getTime())) return '—';
+  const now = new Date();
+  let mois = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+  if (now.getDate() < d.getDate()) mois -= 1;
+  if (mois < 0) return '—';
+  if (mois < 24) return `${mois} mois`;
+  return `${Math.floor(mois / 12)} ans`;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface EnseignantMatiere {
@@ -219,9 +233,16 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const detailDef = selectedNiveau ? NIVEAUX_DEF.find(n => n.value === selectedNiveau)! : null;
   const elevesNiveau = selectedNiveau ? eleves.filter(e => e.niveau === selectedNiveau) : [];
   const classesNiveau = selectedNiveau ? classes.filter(c => c.niveau === selectedNiveau) : [];
-  const filteredEleves = detailSearch
+  const filteredEleves = (detailSearch
     ? elevesNiveau.filter(e => `${e.nom} ${e.prenom}`.toLowerCase().includes(detailSearch.toLowerCase()))
-    : elevesNiveau;
+    : elevesNiveau
+  )
+    // Tri alphabétique par nom de famille, puis prénom (#9)
+    .slice()
+    .sort((a, b) =>
+      (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }) ||
+      (a.prenom || '').localeCompare(b.prenom || '', 'fr', { sensitivity: 'base' })
+    );
 
   // ── VUE PRINCIPALE (GRILLE DES NIVEAUX) ───────────────────────────────────
 
@@ -336,6 +357,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
                 <tr className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                   <th className="px-6 py-4 text-left">Élève</th>
                   <th className="px-6 py-4 text-left">Sexe</th>
+                  <th className="px-6 py-4 text-left">Âge</th>
                   <th className="px-6 py-4 text-left">Matricule</th>
                   <th className="px-6 py-4 text-left">Statut</th>
                   <th className="px-6 py-4 text-left">Classe Affectée</th>
@@ -344,12 +366,13 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
               <tbody className="divide-y divide-slate-50">
                 {filteredEleves.map(e => (
                   <tr key={e.id} className="hover:bg-slate-50 transition-all">
-                    <td className="px-6 py-4 font-black text-slate-800">{e.prenom} {e.nom}</td>
+                    <td className="px-6 py-4 font-black text-slate-800">{e.nom} {e.prenom}</td>
                     <td className="px-6 py-4">
                       {e.sexe === 'M' && <span className="px-2 py-0.5 bg-sky-50 text-sky-700 rounded-full text-[9px] font-black border border-sky-100">♂ G</span>}
                       {e.sexe === 'F' && <span className="px-2 py-0.5 bg-pink-50 text-pink-600 rounded-full text-[9px] font-black border border-pink-100">♀ F</span>}
                       {!e.sexe && <span className="text-slate-300 text-[9px]">—</span>}
                     </td>
+                    <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{ageFromDate(e.dateNaissance)}</td>
                     <td className="px-6 py-4 text-[10px] font-bold text-slate-400 font-mono">{e.matricule}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border ${STATUTS_INSCRITS.includes(e.statut) ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400'}`}>

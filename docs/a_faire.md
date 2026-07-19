@@ -7,10 +7,13 @@
 5. **Autorisation de soins avec fiche sanitaire elle doit aussi etre generer comme les autres** *(crèche)*.
 6. **Convention de scolarité** *(Élémentaire + Maternelle)* à generer aussi voir les fichier  et signer digitalement : /home/dianka/Documents/Crèche_project/assets/convention_page_1.jpeg et /home/dianka/Documents/Crèche_project/assets/convention_page_2.jpeg.
 7. **Flo Pays [?] de résidence des parents** *(pays de résidence des parents)* o doit avoir ce champs aussi dans la creation du dossier (Admission.tsx, Eleves.tsx, InscriptionParent.tsx etc.. ).
+    - ✅ Fait : champ « Pays de résidence » ajouté pour parent 1 et parent 2 dans les 4 formulaires (Admission admin, Eleves admin, formulaire public /inscription, portail parent) + affiché dans la vue détail.
 8. **Duplicata il doi etre possible de dupliquer une inscription (un eleve dans Eleves de telle sorte pour les parents qui on plusieurs enfannt on en instcits un et o le duplique en modifier les element necessaire(la modification est obligatoire))** *(urgent)*.
     - ✅ Fait : bouton « Dupliquer » (icône copie) sur chaque élève (vue cartes + tableau). Reprend la famille (parents, contacts, adresse, régime, nom de famille), vide l'identité de l'enfant (prénom, naissance, sexe, photo, matricule, classe). Enregistrement bloqué si le prénom reste identique à l'élève source. Garde-fou backend anti-doublon déjà en place.
 9. **Liste par ordre alphabétique** en commençant par le nom de famille dans la partie Classe.tsx pour chaque class.
+    - ✅ Fait : la liste des élèves d'une classe est triée par nom de famille (puis prénom), affichage « NOM Prénom ».
 10. **Âge sur la classe** *(afficher l'âge de chaque eleve dans la classe : cet age est calculer automatiquement)*.
+    - ✅ Fait : colonne « Âge » calculée automatiquement depuis la date de naissance (mois avant 2 ans, années ensuite).
 11. **Reçus** (dans la section Offres de Scolarité) : elle s'applique partout — envoi par mail et WhatsApp.
 12. **Revoir les bulletins car chaque classe sauf la creche possède deux bulletis : notes et appreciation** (avec les templates du Drive : /home/dianka/Documents/Crèche_project/assets/Drive) → Réproduit à l'identique les bon bulletin *(urgent)*.
     - ✅ Fait : grilles officielles PS/MS/GS (compétences) + CP/CE1/CE2 (notes /20 + compétences EA/A/M), 2 bulletins pour l'élémentaire, onglets Notes/Compétences.

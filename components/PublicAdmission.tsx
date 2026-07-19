@@ -64,10 +64,10 @@ const EMPTY = {
   parent1Nom: '', parent1Prenom: '', parent1Tel: '', parent1Whatsapp: '',
   parent1Email: '', parent1Lien: 'MERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent1TelDomicile: '', parent1TelTravail: '', parent1Adresse: '',
-  parent1Profession: '', parent1Entreprise: '',
+  parent1Profession: '', parent1Entreprise: '', parent1PaysResidence: '',
   parent2Nom: '', parent2Prenom: '', parent2Lien: 'PERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent2Tel: '', parent2TelDomicile: '', parent2TelTravail: '',
-  parent2Profession: '', parent2Entreprise: '',
+  parent2Profession: '', parent2Entreprise: '', parent2PaysResidence: '',
   urgenceNom: '', urgenceTel: '', urgenceLien: '',
   recupNom: '', recupTel: '', recupLien: '',
   notes: '',
@@ -186,12 +186,14 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
           telDomicile: form.parent1TelDomicile, telTravail: form.parent1TelTravail,
           adresse: form.parent1Adresse,
           profession: form.parent1Profession, entreprise: form.parent1Entreprise,
+          paysResidence: form.parent1PaysResidence,
         },
         parent2: (form.parent2Nom || form.parent2Tel) ? {
           nom: form.parent2Nom, prenom: form.parent2Prenom,
           telephone: form.parent2Tel, lien: form.parent2Lien,
           telDomicile: form.parent2TelDomicile, telTravail: form.parent2TelTravail,
           profession: form.parent2Profession, entreprise: form.parent2Entreprise,
+          paysResidence: form.parent2PaysResidence,
         } : null,
         contactUrgence: form.urgenceNom ? {
           nom: form.urgenceNom, telephone: form.urgenceTel, lien: form.urgenceLien,
@@ -767,6 +769,8 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                       <input type="text" value={form.parent1Profession} onChange={e => set({ parent1Profession: e.target.value })} className={inp} placeholder="Enseignante, commerçant…" /></div>
                     <div><label className={lbl}>Nom de l'entreprise</label>
                       <input type="text" value={form.parent1Entreprise} onChange={e => set({ parent1Entreprise: e.target.value })} className={inp} placeholder="Employeur / société" /></div>
+                    <div><label className={lbl}>Pays de résidence</label>
+                      <input type="text" value={form.parent1PaysResidence} onChange={e => set({ parent1PaysResidence: e.target.value })} className={inp} placeholder="Sénégal" /></div>
                     <div className="sm:col-span-2"><label className={lbl}>Adresse</label>
                       <input type="text" value={form.parent1Adresse} onChange={e => set({ parent1Adresse: e.target.value })} className={inp} placeholder="Rue, quartier, ville…" autoComplete="street-address" /></div>
                   </div>
@@ -789,6 +793,8 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                       <input type="text" value={form.parent2Profession} onChange={e => set({ parent2Profession: e.target.value })} className={inp} /></div>
                     <div><label className={lbl}>Nom de l'entreprise</label>
                       <input type="text" value={form.parent2Entreprise} onChange={e => set({ parent2Entreprise: e.target.value })} className={inp} /></div>
+                    <div><label className={lbl}>Pays de résidence</label>
+                      <input type="text" value={form.parent2PaysResidence} onChange={e => set({ parent2PaysResidence: e.target.value })} className={inp} placeholder="Sénégal" /></div>
                   </div>
                 </div>
 
