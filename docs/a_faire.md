@@ -12,6 +12,9 @@
 10. **Âge sur la classe** *(afficher l'âge de chaque eleve dans la classe : cet age est calculer automatiquement)*.
 11. **Reçus** (dans la section Offres de Scolarité) : elle s'applique partout — envoi par mail et WhatsApp.
 12. **Revoir les bulletins car chaque classe sauf la creche possède deux bulletis : notes et appreciation** (avec les templates du Drive : /home/dianka/Documents/Crèche_project/assets/Drive) → Réproduit à l'identique les bon bulletin *(urgent)*.
+    - ✅ Fait : grilles officielles PS/MS/GS (compétences) + CP/CE1/CE2 (notes /20 + compétences EA/A/M), 2 bulletins pour l'élémentaire, onglets Notes/Compétences.
+    - ⏳ **Reste à faire : les bulletins CM1 et CM2** (aucun template CM1/CM2 dans le Drive — à fournir ou à décider : reprendre le modèle CE2 ?).
+    - ⏳ Reste aussi : impression pixel-perfect (blocs « Bilan périodique / signatures » par trimestre) ; bulletin de compétences côté portail parent.
 13. **CM1 et CM2** à prévoir(voir si tous est ok).
 14. **Créer des templates WhatsApp. Donner acces à creer , modifir et supprimer des templates de whatshapp**
 15. **Rencontre parent–prof. Dans la section Evenement pour la partie evenement de type rencontre parent-prof on doit pouvoir prevoir le calendrier de cet evenement en disant Eleve 1 09H00-12H00, ensuite Enlève 2 12H00-14H00** sous forme de créneaux.
