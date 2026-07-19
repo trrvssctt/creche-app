@@ -202,11 +202,11 @@ export class ContractController {
           });
         }
 
-        // CDD et STAGE doivent avoir une date de fin
-        if ((updateData.type === 'CDD' || updateData.type === 'STAGE') && 
+        // CDD, STAGE et PRESTATION doivent avoir une date de fin
+        if ((updateData.type === 'CDD' || updateData.type === 'STAGE' || updateData.type === 'PRESTATION') &&
             !updateData.endDate && !contract.endDate) {
-          return res.status(400).json({ 
-            error: `Un contrat de type ${updateData.type} doit avoir une date de fin` 
+          return res.status(400).json({
+            error: `Un contrat de type ${updateData.type} doit avoir une date de fin`
           });
         }
       }
@@ -446,9 +446,9 @@ export class ContractController {
         });
       }
       
-      if ((newType === 'CDD' || newType === 'STAGE') && !newEndDate) {
-        return res.status(400).json({ 
-          error: `Une date de fin est obligatoire pour un contrat de type ${newType}` 
+      if ((newType === 'CDD' || newType === 'STAGE' || newType === 'PRESTATION') && !newEndDate) {
+        return res.status(400).json({
+          error: `Une date de fin est obligatoire pour un contrat de type ${newType}`
         });
       }
 

@@ -32,5 +32,6 @@
     - ✅ Fait : onglet « Gestion de la Paie » masqué dans le dashboard RH (section commentée, module inaccessible).
 17. **Notification RH Pour les demande de congés, etc on doit avoir une noification pour alerter l'admin ou l'employé e question** — congé ou justificatifs d'absence.
 18. **Type de contrat ** (Standard, prestation).
+    - ✅ Fait : types « STANDARD » et « PRESTATION » ajoutés aux options de contrat. STANDARD = contrat sans date de fin obligatoire avec période d'essai max 3 mois. PRESTATION = prestation de services avec date de fin obligatoire, pas de période d'essai. Modèle Sequelize passé de ENUM à STRING pour supporter de nouveaux types sans migration. Validations backend + frontend à jour.
 19. **Pas de pointage en cas de non boulot** *(prendre en compte l'emploi du temps du prof)*.
     - ✅ Fait : le pointage vérifie désormais l'emploi du temps de l'employé. Si aucun créneau n'est programmé pour le jour courant (lundi=0…vendredi=4), le clock-in est refusé avec « Pas de cours programmé aujourd'hui ». Les horaires autorisés sont ceux de l'emploi du temps personnel (min heureDebut → max heureFin) au lieu des horaires globaux. Le bouton est grisé côté frontend avec un message explicatif.

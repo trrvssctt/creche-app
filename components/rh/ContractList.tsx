@@ -118,7 +118,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
   });
   const [isEditing, setIsEditing] = useState(false);
 
-  const contractTypes = ['All', 'CDI', 'CDD', 'STAGE', 'FREELANCE'];
+  const contractTypes = ['All', 'CDI', 'CDD', 'STAGE', 'FREELANCE', 'STANDARD', 'PRESTATION'];
 
   const safeJSONParse = (jsonString: string | null) => {
     if (!jsonString) return null;
@@ -160,6 +160,18 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
           maxTrialPeriod: 0,
           maxDuration: 6,
           helpText: 'STAGE : Stage limité à 6 mois maximum. Pas de période d\'essai.'
+        };
+      case 'STANDARD':
+        return {
+          needsEndDate: false,
+          maxTrialPeriod: 3,
+          helpText: 'STANDARD : Contrat de travail standard. Date de fin optionnelle.'
+        };
+      case 'PRESTATION':
+        return {
+          needsEndDate: true,
+          maxTrialPeriod: 0,
+          helpText: 'PRESTATION : Contrat de prestation de services. Date de fin obligatoire.'
         };
       default:
         return { needsEndDate: true, maxTrialPeriod: 4, helpText: 'Sélectionnez un type de contrat pour voir les règles.' };
@@ -247,6 +259,14 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
     }
     if (newType === 'FREELANCE') {
       updatedForm.maxRenewals = '';
+    }
+    if (newType === 'STANDARD') {
+      updatedForm.endDate = '';
+      updatedForm.maxRenewals = '';
+    }
+    if (newType === 'PRESTATION') {
+      updatedForm.trialPeriodEnd = '';
+      updatedForm.maxRenewals = '0';
     }
     setContractForm(updatedForm);
   };
@@ -393,7 +413,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
       return;
     }
 
-    if ((contractForm.type === 'CDD' || contractForm.type === 'STAGE') && !contractForm.endDate) {
+    if ((contractForm.type === 'CDD' || contractForm.type === 'STAGE' || contractForm.type === 'PRESTATION') && !contractForm.endDate) {
       setError(`Une date de fin est obligatoire pour un contrat de type ${contractForm.type}`);
       return;
     }
@@ -448,10 +468,12 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
 
       const maxTrialMonths = contractForm.type === 'CDI' ? 4 :
         contractForm.type === 'CDD' ? 1 :
-          contractForm.type === 'STAGE' ? 0 : 2;
+          contractForm.type === 'STAGE' ? 0 :
+            contractForm.type === 'STANDARD' ? 3 :
+              contractForm.type === 'PRESTATION' ? 0 : 2;
 
       if (maxTrialMonths === 0) {
-        setError('Les stages ne peuvent pas avoir de période d\'essai');
+        setError(`Les contrats de type ${contractForm.type} ne peuvent pas avoir de période d'essai`);
         return;
       }
 
@@ -875,7 +897,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
       return;
     }
 
-    if ((renewalForm.newType === 'CDD' || renewalForm.newType === 'STAGE') && !renewalForm.newEndDate) {
+    if ((renewalForm.newType === 'CDD' || renewalForm.newType === 'STAGE' || renewalForm.newType === 'PRESTATION') && !renewalForm.newEndDate) {
       setError(`Une date de fin est obligatoire pour un contrat de type ${renewalForm.newType}`);
       return;
     }
@@ -1618,7 +1640,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
                 type="date"
                 value={contractForm.endDate}
                 onChange={(e) => setContractForm({ ...contractForm, endDate: e.target.value })}
-                required={contractForm.type === 'CDD' || contractForm.type === 'STAGE'}
+                required={contractForm.type === 'CDD' || contractForm.type === 'STAGE' || contractForm.type === 'PRESTATION'}
                 disabled={creating || contractForm.type === 'CDI'}
                 className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm disabled:opacity-30"
               />
@@ -1628,7 +1650,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {contractForm.type !== 'STAGE' && (
+          {contractForm.type !== 'STAGE' && contractForm.type !== 'PRESTATION' && (
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fin de Période d'Essai</label>
               <input
@@ -1749,7 +1771,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
               disabled={isEditing}
               className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm disabled:opacity-50"
             >
-              {['CDI', 'CDD', 'STAGE', 'FREELANCE'].map(type => (
+              {['CDI', 'CDD', 'STAGE', 'FREELANCE', 'STANDARD', 'PRESTATION'].map(type => (
                 <option key={type} value={type}>{type}</option>
               ))}
             </select>
@@ -2281,7 +2303,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  Nouvelle Date de Fin {(renewalForm.newType === 'CDD' || renewalForm.newType === 'STAGE') ? '*' : '(Optionnelle)'}
+                  Nouvelle Date de Fin {(renewalForm.newType === 'CDD' || renewalForm.newType === 'STAGE' || renewalForm.newType === 'PRESTATION') ? '*' : '(Optionnelle)'}
                 </label>
                 <input
                   type="date"

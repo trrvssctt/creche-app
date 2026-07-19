@@ -8,7 +8,8 @@ Contract.init({
   tenantId: { type: DataTypes.UUID, allowNull: false, field: 'tenant_id' },
   employeeId: { type: DataTypes.UUID, allowNull: false, field: 'employee_id' },
   type: {
-    type: DataTypes.ENUM('CDI', 'CDD', 'STAGE', 'FREELANCE'),
+    type: DataTypes.STRING(50),
+    defaultValue: 'CDI',
     field: 'contract_type'
   },
   startDate: { type: DataTypes.DATE, field: 'start_date' },
