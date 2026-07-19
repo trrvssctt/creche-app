@@ -272,16 +272,16 @@ static async login(req, res) {
         return res.status(403).json({ error: 'AccessBlocked', message: 'Instance désactivée. Contactez le support.' });
       }
 
-      // If payments are not up-to-date, allow ADMIN or SUPER_ADMIN to login (for remediation), block others
+      // If payments are not up-to-date, allow ADMIN/SUPER_ADMIN/PARENT to login, block others
       if (!isUpToDate) {
-        const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || 'EMPLOYEE'];
-        if (!(userRoles.includes('ADMIN') || userRoles.includes('SUPER_ADMIN'))) {
-          return res.status(403).json({ 
-            error: 'AccessBlocked', 
-            message: 'Accès suspendu : Votre abonnement n’est pas à jour ou l’instance a été verrouillée. Veuillez régulariser votre situation dans l’onglet Paiement.' 
+        const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || ‘EMPLOYEE’];
+        const canBypass = userRoles.includes(‘ADMIN’) || userRoles.includes(‘SUPER_ADMIN’) || userRoles.includes(‘PARENT’) || userRoles.includes(‘TUTEUR’);
+        if (!canBypass) {
+          return res.status(403).json({
+            error: ‘AccessBlocked’,
+            message: ‘Accès suspendu : Votre abonnement n’est pas à jour ou l’instance a été verrouillée. Veuillez régulariser votre situation dans l’onglet Paiement.’
           });
         }
-        // Admins are allowed to proceed
       }
 
       // 3. Récupération du Plan / Subscription depuis la table Subscription
@@ -1261,7 +1261,8 @@ static async login(req, res) {
   static async createParentAccount(req, res) {
     try {
       const tenantId = req.user.tenantId;
-      const { email, nom, prenom, eleveIds = [], motDePasseTemporaire } = req.body;
+      const { email: rawEmail, nom, prenom, eleveIds = [], motDePasseTemporaire } = req.body;
+      const email = (rawEmail || '').toLowerCase().trim();
 
       if (!email || !nom || !prenom) {
         return res.status(400).json({ error: 'BadRequest', message: 'email, nom et prenom sont requis.' });

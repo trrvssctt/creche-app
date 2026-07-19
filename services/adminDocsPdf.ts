@@ -318,6 +318,12 @@ function sigDirectionBlock(assets: TenantAssets): string {
   return `<div class="sig">Cachet & signature de la Direction<div class="sig-images">${cachetImg}${sigImg}</div></div>`;
 }
 
+function sigParentBlock(eleve: any): string {
+  const sigUrl = eleve?._parentSignatureUrl;
+  if (!sigUrl) return '<div class="sig">Signature du parent / tuteur</div>';
+  return `<div class="sig">Signature du parent / tuteur<div class="sig-images"><img src="${sigUrl}" alt="Signature parent" style="max-height:50px;margin-top:6px"/></div></div>`;
+}
+
 function v(val: string | undefined | null, fallback = '—'): string {
   const s = (val || '').trim();
   if (!s) return `<span class="empty">${fallback}</span>`;
@@ -396,7 +402,7 @@ function buildFicheInscriptionHtml(eleve: Partial<Eleve>, assets: TenantAssets):
     </div>` : ''}
 
     <div class="sigs">
-      <div class="sig">Signature du parent / tuteur</div>
+      ${sigParentBlock(eleve)}
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter("Fiche d'identité", ref)}
@@ -428,7 +434,7 @@ function buildCertificatScolariteHtml(eleve: Partial<Eleve>, assets: TenantAsset
     </div>
 
     <div class="sigs">
-      <div class="sig">Signature du parent / tuteur</div>
+      ${sigParentBlock(eleve)}
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Certificat de scolarité', ref)}
@@ -680,7 +686,7 @@ function buildFicheSanitaireHtml(eleve: Partial<Eleve>, assets: TenantAssets): s
     </div>
 
     <div class="sigs no-break" style="margin-top:18px">
-      <div class="sig">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}<br><br>Signature du parent / tuteur légal</div>
+      <div class="sig">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}<br><br>${eleve?._parentSignatureUrl ? `<img src="${eleve._parentSignatureUrl}" alt="Signature parent" style="max-height:50px;margin-top:4px"/>` : 'Signature du parent / tuteur légal'}</div>
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Fiche sanitaire de liaison — Le Toit des Anges', ref)}
@@ -716,7 +722,7 @@ function buildCertificatRadiationHtml(eleve: Partial<Eleve> & { motifRadiation?:
     </div>
 
     <div class="sigs">
-      <div class="sig">Signature du parent / tuteur</div>
+      ${sigParentBlock(eleve)}
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Certificat de radiation', ref)}
@@ -776,7 +782,7 @@ function buildAutorisationSortieHtml(
     </table>
 
     <div class="sigs" style="margin-top:40px">
-      <div class="sig">Fait à Dakar, le ________________<br><br>Signature du parent / tuteur</div>
+      <div class="sig">Fait à Dakar, le ________________<br><br>${eleve?._parentSignatureUrl ? `<img src="${eleve._parentSignatureUrl}" alt="Signature parent" style="max-height:50px;margin-top:4px"/>` : 'Signature du parent / tuteur'}</div>
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Autorisation de sortie', ref)}
@@ -1046,7 +1052,7 @@ function buildReglementInterieurHtml(eleve: Partial<Eleve>, assets: TenantAssets
         <p style="margin-top:12px">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
       </div>
       <div class="sigs">
-        <div class="sig">Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
+        <div class="sig">${eleve?._parentSignatureUrl ? `<img src="${eleve._parentSignatureUrl}" alt="Signature parent" style="max-height:50px;margin-bottom:4px"/><br>` : ''}Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
         ${sigDirectionBlock(assets)}
       </div>
     </div>

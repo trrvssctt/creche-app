@@ -78,7 +78,11 @@ export class ParentController {
         include: [{ model: Classe, as: 'classe', attributes: ['id', 'nom', 'niveau'] }],
       });
       if (!eleve) return res.status(404).json({ error: 'Élève introuvable.' });
-      res.json(eleve);
+
+      const result = eleve.toJSON();
+      const user = await User.findByPk(req.user.id, { attributes: ['signatureUrl'] });
+      if (user?.signatureUrl) result._parentSignatureUrl = user.signatureUrl;
+      res.json(result);
     } catch (err) {
       console.error('[ParentController] getMesEnfantById:', err.message);
       res.status(500).json({ error: 'Erreur serveur', message: err.message });
@@ -625,6 +629,136 @@ export class ParentController {
       });
     } catch (err) {
       console.error('[ParentController] soumettreAdmission:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // ─── SIGNATURE DIGITALE ─────────────────────────────────────────────────────
+
+  // POST /api/parent/signature — enregistrer la signature du parent (base64 data URL)
+  static async enregistrerSignature(req, res) {
+    try {
+      const { signatureDataUrl } = req.body;
+      if (!signatureDataUrl || !signatureDataUrl.startsWith('data:image/')) {
+        return res.status(400).json({ error: 'Format de signature invalide.' });
+      }
+
+      // Upload vers Cloudinary
+      const result = await uploadToCloudinary(
+        Buffer.from(signatureDataUrl.split(',')[1], 'base64'),
+        `signatures/parent_${req.user.id}`,
+        'image/png'
+      );
+      const url = result?.secure_url || result?.url || signatureDataUrl;
+
+      await User.update(
+        { signatureUrl: url },
+        { where: { id: req.user.id } }
+      );
+
+      res.json({ success: true, signatureUrl: url });
+    } catch (err) {
+      console.error('[ParentController] enregistrerSignature:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // GET /api/parent/signature — récupérer la signature actuelle
+  static async getSignature(req, res) {
+    try {
+      const user = await User.findByPk(req.user.id, { attributes: ['signatureUrl', 'documentsSignes'] });
+      res.json({
+        signatureUrl: user?.signatureUrl || null,
+        documentsSignes: user?.documentsSignes || [],
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // GET /api/parent/documents-a-signer — liste les documents en attente de signature
+  static async getDocumentsASigner(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const eleveIds = await resolveAllEleveIds(req.user.id, tenantId, req.user.eleveIds || []);
+
+      if (!eleveIds.length) return res.json([]);
+
+      const eleves = await Eleve.findAll({
+        where: { id: eleveIds, tenantId, statut: { [Op.in]: ['INSCRIT', 'ACTIF'] } },
+        attributes: ['id', 'nom', 'prenom', 'niveau', 'anneeScolaire'],
+        include: [{ model: Classe, as: 'classe', attributes: ['nom', 'niveau'] }],
+      });
+
+      const user = await User.findByPk(req.user.id, { attributes: ['documentsSignes'] });
+      const signes = user?.documentsSignes || [];
+      const signeSet = new Set(signes.map(d => `${d.eleveId}:${d.typeDoc}`));
+
+      const DOCS_A_SIGNER = [
+        'fiche_inscription',
+        'convention_scolarite',
+        'autorisation_sortie',
+        'fiche_sanitaire',
+        'autorisation_soins',
+        'reglement_interieur',
+      ];
+
+      const docs = [];
+      for (const eleve of eleves) {
+        for (const typeDoc of DOCS_A_SIGNER) {
+          const key = `${eleve.id}:${typeDoc}`;
+          docs.push({
+            eleveId: eleve.id,
+            eleveNom: `${eleve.prenom} ${eleve.nom}`,
+            eleveNiveau: eleve.classe?.nom || eleve.niveau || '',
+            typeDoc,
+            signe: signeSet.has(key),
+            dateSigne: signes.find(d => d.eleveId === eleve.id && d.typeDoc === typeDoc)?.date || null,
+          });
+        }
+      }
+
+      res.json(docs);
+    } catch (err) {
+      console.error('[ParentController] getDocumentsASigner:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // POST /api/parent/signer-document — signer un document spécifique
+  static async signerDocument(req, res) {
+    try {
+      const { eleveId, typeDoc } = req.body;
+      if (!eleveId || !typeDoc) {
+        return res.status(400).json({ error: 'eleveId et typeDoc sont requis.' });
+      }
+
+      const tenantId = req.user.tenantId;
+      const eleveIds = await resolveAllEleveIds(req.user.id, tenantId, req.user.eleveIds || []);
+      if (!eleveIds.includes(eleveId)) {
+        return res.status(403).json({ error: 'Accès refusé à cet élève.' });
+      }
+
+      const user = await User.findByPk(req.user.id, { attributes: ['id', 'signatureUrl', 'documentsSignes'] });
+      if (!user?.signatureUrl) {
+        return res.status(400).json({ error: 'Veuillez d\'abord enregistrer votre signature.' });
+      }
+
+      const signes = user.documentsSignes || [];
+      const existing = signes.find(d => d.eleveId === eleveId && d.typeDoc === typeDoc);
+      if (existing) {
+        return res.json({ success: true, message: 'Document déjà signé.', alreadySigned: true });
+      }
+
+      signes.push({ eleveId, typeDoc, date: new Date().toISOString() });
+      await User.update(
+        { documentsSignes: signes },
+        { where: { id: req.user.id } }
+      );
+
+      res.json({ success: true, message: 'Document signé avec succès.' });
+    } catch (err) {
+      console.error('[ParentController] signerDocument:', err.message);
       res.status(500).json({ error: 'Erreur serveur', message: err.message });
     }
   }

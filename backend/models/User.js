@@ -65,6 +65,16 @@ User.init({
     type: DataTypes.ARRAY(DataTypes.UUID),
     defaultValue: [],
     field: 'eleve_ids'
+  },
+  signatureUrl: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'signature_url'
+  },
+  documentsSignes: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    field: 'documents_signes'
   }
 }, { 
   sequelize, 

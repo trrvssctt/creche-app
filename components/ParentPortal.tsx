@@ -9,14 +9,15 @@ import ParentPlanning   from './parent/ParentPlanning';
 import ParentDocuments  from './parent/ParentDocuments';
 import ParentActualites from './parent/ParentActualites';
 import ParentAdmission  from './parent/ParentAdmission';
+import ParentSignature  from './parent/ParentSignature';
 import {
-  Baby, CreditCard, BookOpen, Calendar, Folder, Bell, UserPlus,
+  Baby, CreditCard, BookOpen, Calendar, Folder, Bell, UserPlus, PenTool,
   LogOut, Menu, X, AlertTriangle,
 } from 'lucide-react';
 
 interface Props { user: User; onLogout: () => void; }
 
-type Section = 'enfants' | 'factures' | 'bulletins' | 'planning' | 'documents' | 'actualites' | 'admission';
+type Section = 'enfants' | 'factures' | 'bulletins' | 'planning' | 'documents' | 'signature' | 'actualites' | 'admission';
 
 const NAV: { id: Section; label: string; icon: React.FC<any>; color: string }[] = [
   { id: 'enfants',    label: 'Mes enfants',       icon: Baby,       color: 'text-rose-500' },
@@ -24,6 +25,7 @@ const NAV: { id: Section; label: string; icon: React.FC<any>; color: string }[] 
   { id: 'bulletins',  label: 'Bulletins',          icon: BookOpen,   color: 'text-indigo-500' },
   { id: 'planning',   label: 'Emploi du temps',    icon: Calendar,   color: 'text-emerald-500' },
   { id: 'documents',  label: 'Documents',          icon: Folder,     color: 'text-blue-500' },
+  { id: 'signature',  label: 'Signature',          icon: PenTool,    color: 'text-indigo-500' },
   { id: 'actualites', label: 'Actualités',         icon: Bell,       color: 'text-purple-500' },
   { id: 'admission',  label: 'Inscrire un enfant', icon: UserPlus,   color: 'text-orange-500' },
 ];
@@ -93,6 +95,7 @@ const ParentPortal: React.FC<Props> = ({ user, onLogout }) => {
       case 'bulletins':  return <ParentBulletins bulletins={bulletins} />;
       case 'planning':   return <ParentPlanning creneaux={creneaux} />;
       case 'documents':  return <ParentDocuments documents={documents} enfants={enfants} echeances={echeances} ecole={ecole} onRefresh={fetchAll} />;
+      case 'signature':  return <ParentSignature onRefresh={fetchAll} />;
       case 'actualites': return <ParentActualites annonces={annonces} />;
       case 'admission':  return <ParentAdmission onSuccess={fetchAll} />;
     }

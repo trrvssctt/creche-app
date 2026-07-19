@@ -2,6 +2,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { Op } from 'sequelize';
 import { User, Session } from '../models/index.js';
 
 // Utilisation d'une clé unique partagée par tout le Kernel AlwaysData
@@ -12,7 +13,9 @@ export class AuthService {
    * Valide les identifiants email/password via bcrypt
    */
   static async validateCredentials(email, password) {
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({
+      where: { email: { [Op.iLike]: email } }
+    });
     if (!user) return null;
 
     const isValid = await bcrypt.compare(password, user.password);

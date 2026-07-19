@@ -31,4 +31,10 @@ router.post('/paiement/demander',    ParentController.demanderPaiement);
 router.post('/admission',            ParentController.soumettreAdmission);
 router.put('/admission/:id',         ParentController.resoumettreAdmission);
 
+// Signature digitale
+router.get('/signature',             ParentController.getSignature);
+router.post('/signature',            ParentController.enregistrerSignature);
+router.get('/documents-a-signer',    ParentController.getDocumentsASigner);
+router.post('/signer-document',      ParentController.signerDocument);
+
 export default router;
