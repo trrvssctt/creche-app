@@ -4,7 +4,11 @@ import {
   Loader2, AlertCircle, Download,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
-import { downloadAdminDocAsPdf, type DocAdminType } from '../../services/adminDocsPdf';
+import {
+  downloadAdminDocAsPdf, generateDocPreviewImage, downloadSignedDocPdf,
+  type DocAdminType,
+} from '../../services/adminDocsPdf';
+import SignaturePlacer from './SignaturePlacer';
 
 interface Props {
   onRefresh?: () => void;
@@ -46,6 +50,12 @@ const ParentSignature: React.FC<Props> = ({ onRefresh }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [signing, setSigning] = useState<string | null>(null);
+  const [placerState, setPlacerState] = useState<{
+    doc: DocASigner;
+    previewUrl: string;
+    eleveData: any;
+  } | null>(null);
+  const [placerLoading, setPlacerLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -154,17 +164,36 @@ const ParentSignature: React.FC<Props> = ({ onRefresh }) => {
     const key = `${doc.eleveId}:${doc.typeDoc}`;
     setSigning(key);
     try {
+      const eleve = await apiClient.get(`/parent/enfants/${doc.eleveId}`);
+      if (!eleve) throw new Error('Élève introuvable');
+      delete eleve._parentSignatureUrl;
+      const previewUrl = await generateDocPreviewImage(doc.typeDoc as DocAdminType, eleve);
+      setPlacerState({ doc, previewUrl, eleveData: eleve });
+    } catch (err: any) {
+      alert(err?.message || 'Erreur lors de la génération de l\'aperçu.');
+    } finally {
+      setSigning(null);
+    }
+  };
+
+  const handlePlacerConfirm = async (position: { xPercent: number; yPercent: number }) => {
+    if (!placerState || !signatureUrl) return;
+    const { doc, eleveData } = placerState;
+    setPlacerLoading(true);
+    try {
+      await downloadSignedDocPdf(doc.typeDoc as DocAdminType, eleveData, signatureUrl, position);
       await apiClient.post('/parent/signer-document', { eleveId: doc.eleveId, typeDoc: doc.typeDoc });
       setDocs(prev => prev.map(d =>
         d.eleveId === doc.eleveId && d.typeDoc === doc.typeDoc
           ? { ...d, signe: true, dateSigne: new Date().toISOString() }
           : d
       ));
+      setPlacerState(null);
       onRefresh?.();
     } catch (err: any) {
-      alert(err?.response?.data?.error || 'Erreur lors de la signature.');
+      alert(err?.response?.data?.error || err?.message || 'Erreur lors de la signature.');
     } finally {
-      setSigning(null);
+      setPlacerLoading(false);
     }
   };
 
@@ -383,6 +412,17 @@ const ParentSignature: React.FC<Props> = ({ onRefresh }) => {
           <p className="text-slate-600 font-medium">Aucun document en attente</p>
           <p className="text-xs text-slate-400 mt-1">Tous les documents seront listés ici après l'inscription de votre enfant.</p>
         </div>
+      )}
+
+      {placerState && signatureUrl && (
+        <SignaturePlacer
+          docImageUrl={placerState.previewUrl}
+          signatureUrl={signatureUrl}
+          docLabel={DOC_LABELS[placerState.doc.typeDoc] || placerState.doc.typeDoc}
+          onConfirm={handlePlacerConfirm}
+          onCancel={() => setPlacerState(null)}
+          loading={placerLoading}
+        />
       )}
     </div>
   );

@@ -791,17 +791,7 @@ function buildAutorisationSortieHtml(
 
 // ── Générateur PDF ───────────────────────────────────────────────────────────
 
-async function htmlToBlob(html: string): Promise<Blob> {
-  const container = document.createElement('div');
-  Object.assign(container.style, {
-    position: 'fixed',
-    left: '-9999px',
-    top: '0',
-    width: '794px',
-    background: '#fff',
-    zIndex: '-1',
-  });
-
+async function htmlToCanvas(html: string): Promise<HTMLCanvasElement> {
   const iframe = document.createElement('iframe');
   Object.assign(iframe.style, {
     position: 'fixed',
@@ -824,8 +814,7 @@ async function htmlToBlob(html: string): Promise<Blob> {
 
         await new Promise(r => setTimeout(r, 300));
 
-        const body = doc.body;
-        const canvas = await html2canvas(body, {
+        const canvas = await html2canvas(doc.body, {
           scale: 2,
           useCORS: true,
           backgroundColor: '#ffffff',
@@ -834,25 +823,8 @@ async function htmlToBlob(html: string): Promise<Blob> {
           windowWidth: 794,
         });
 
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        const pageW = pdf.internal.pageSize.getWidth();
-        const pageH = pdf.internal.pageSize.getHeight();
-        const imgH = (canvas.height * pageW) / canvas.width;
-
-        if (imgH <= pageH) {
-          pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
-        } else {
-          let posY = 0;
-          while (posY < imgH) {
-            if (posY > 0) pdf.addPage();
-            pdf.addImage(imgData, 'PNG', 0, -posY, pageW, imgH);
-            posY += pageH;
-          }
-        }
-
         document.body.removeChild(iframe);
-        resolve(pdf.output('blob') as unknown as Blob);
+        resolve(canvas);
       } catch (err) {
         document.body.removeChild(iframe);
         reject(err);
@@ -860,6 +832,42 @@ async function htmlToBlob(html: string): Promise<Blob> {
     };
     iframe.src = 'about:blank';
   });
+}
+
+function canvasToPdfBlob(canvas: HTMLCanvasElement): Blob {
+  const imgData = canvas.toDataURL('image/png');
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgH = (canvas.height * pageW) / canvas.width;
+
+  if (imgH <= pageH) {
+    pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
+  } else {
+    let posY = 0;
+    while (posY < imgH) {
+      if (posY > 0) pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, -posY, pageW, imgH);
+      posY += pageH;
+    }
+  }
+
+  return pdf.output('blob') as unknown as Blob;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function htmlToBlob(html: string): Promise<Blob> {
+  const canvas = await htmlToCanvas(html);
+  return canvasToPdfBlob(canvas);
 }
 
 // ── Convention de scolarisation (maternelle & élémentaire) ──────────────────
@@ -1254,4 +1262,40 @@ export async function downloadAdminDocsZip(eleve: Partial<Eleve>): Promise<void>
   const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   const zipName = `Documents_Administratifs_${(eleve.nom || '').toUpperCase()}_${(eleve.prenom || '').toUpperCase()}_${getAnnee().replace('/', '-')}.zip`;
   downloadBlob(zipBlob, zipName);
+}
+
+export async function generateDocPreviewImage(
+  type: DocAdminType,
+  eleve: Partial<Eleve> & Record<string, any>
+): Promise<string> {
+  const cleanEleve = { ...eleve };
+  delete cleanEleve._parentSignatureUrl;
+  const assets = await getTenantAssets();
+  const html = buildHtml(type, cleanEleve, assets);
+  const canvas = await htmlToCanvas(html);
+  return canvas.toDataURL('image/png');
+}
+
+export async function downloadSignedDocPdf(
+  type: DocAdminType,
+  eleve: Partial<Eleve> & Record<string, any>,
+  signatureUrl: string,
+  position: { xPercent: number; yPercent: number }
+): Promise<void> {
+  const cleanEleve = { ...eleve };
+  delete cleanEleve._parentSignatureUrl;
+  const assets = await getTenantAssets();
+  const html = buildHtml(type, cleanEleve, assets);
+  const canvas = await htmlToCanvas(html);
+
+  const sigImg = await loadImage(signatureUrl);
+  const ctx = canvas.getContext('2d')!;
+  const sigW = 160;
+  const sigH = 60;
+  const x = (position.xPercent / 100) * canvas.width - sigW / 2;
+  const y = (position.yPercent / 100) * canvas.height - sigH / 2;
+  ctx.drawImage(sigImg, x, y, sigW, sigH);
+
+  const blob = canvasToPdfBlob(canvas);
+  downloadBlob(blob, docFilename(type, eleve));
 }
