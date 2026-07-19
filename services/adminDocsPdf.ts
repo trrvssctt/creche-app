@@ -1004,7 +1004,11 @@ function buildReglementInterieurHtml(eleve: Partial<Eleve>, assets: TenantAssets
   const parentNom = parent ? `${parent.prenom || ''} ${parent.nom || ''}`.trim() : '';
   const ref = `REGL-${(eleve.matricule || '').replace(/-/g, '')}-${new Date().getFullYear()}`;
 
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}
+    .regl-body .section { margin-bottom: 10px; }
+    .regl-body .text-block p { font-size: 9.5pt; line-height: 1.5; }
+    .regl-body .sigs { margin-top: 20px; }
+  </style></head><body class="regl-body">
     ${pageHeader(logoBase64, 'Règlement Intérieur — Crèche', ref)}
     <div class="dossier-label">Enfant : ${nomComplet} — Matricule : ${eleve.matricule || '—'}</div>
 
@@ -1042,14 +1046,14 @@ function buildReglementInterieurHtml(eleve: Partial<Eleve>, assets: TenantAssets
       Tout mois entamé est dû. Le non-paiement persistant peut entraîner la suspension de l'accueil.</p></div>
     </div>
 
-    <div class="section" style="border:2px solid #4f46e5;border-radius:10px;padding:12px;margin-top:18px">
+    <div class="section" style="border:2px solid #4f46e5;border-radius:10px;padding:10px;margin-top:10px">
       <h2>Accusé de réception</h2>
       <div class="text-block">
         <p>Je soussigné(e) <strong>${v(parentNom, 'M. / Mme ____________________')}</strong>,
         parent / tuteur de l'enfant <strong>${nomComplet}</strong>, reconnais avoir reçu et pris connaissance
         du présent règlement intérieur de la crèche <strong>Le Toit des Anges</strong> pour l'année
         <strong>${getAnnee()}</strong>, et m'engage à le respecter.</p>
-        <p style="margin-top:12px">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+        <p style="margin-top:8px">Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
       </div>
       <div class="sigs">
         <div class="sig">${(eleve as any)?._parentSignatureUrl ? `<img src="${(eleve as any)._parentSignatureUrl}" alt="Signature parent" style="max-height:50px;margin-bottom:4px"/><br>` : ''}Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
@@ -1071,7 +1075,11 @@ function buildAutorisationSoinsHtml(eleve: Partial<Eleve>, assets: TenantAssets)
   const urgence = eleve.contactUrgence;
   const e = eleve as any;
 
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}
+    .soins-body .section { margin-bottom: 12px; }
+    .soins-body .text-block p { font-size: 9.5pt; line-height: 1.5; }
+    .soins-body .sigs { margin-top: 20px; }
+  </style></head><body class="soins-body">
     ${pageHeader(logoBase64, 'Autorisation de Soins', ref)}
     <div class="dossier-label">Enfant : ${nomComplet} — Matricule : ${eleve.matricule || '—'} — Année scolaire ${getAnnee()}</div>
 
@@ -1081,11 +1089,11 @@ function buildAutorisationSoinsHtml(eleve: Partial<Eleve>, assets: TenantAssets)
       de l'enfant <strong>${nomComplet}</strong>, né(e) le <strong>${formatDate(eleve.dateNaissance)}</strong>,
       inscrit(e) à la crèche <strong>Le Toit des Anges</strong>,</p>
 
-      <p style="margin-top:16px"><strong>AUTORISE</strong> expressément le personnel de l'établissement à :</p>
+      <p style="margin-top:10px"><strong>AUTORISE</strong> expressément le personnel de l'établissement à :</p>
     </div>
 
     <div class="section">
-      <div class="text-block" style="margin-top:8px;line-height:2.4">
+      <div class="text-block" style="margin-top:6px;line-height:1.8">
         <p>&#9745; Faire appel aux services d'urgence (SAMU, pompiers) en cas de nécessité ;</p>
         <p>&#9745; Faire transporter mon enfant vers l'établissement hospitalier le plus proche ;</p>
         <p>&#9745; Autoriser toute intervention médicale ou chirurgicale d'urgence jugée indispensable
@@ -1115,19 +1123,19 @@ function buildAutorisationSoinsHtml(eleve: Partial<Eleve>, assets: TenantAssets)
       </table>
     </div>
 
-    <div style="margin-top:20px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:9pt;color:#475569;line-height:1.7">
+    <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:8.5pt;color:#475569;line-height:1.6">
       <p><strong>Note :</strong> En cas d'impossibilité de joindre les personnes ci-dessus, j'autorise
       la Direction à prendre toute décision nécessaire dans l'intérêt de la santé de mon enfant.
       Je m'engage à communiquer tout changement concernant l'état de santé de mon enfant ou
       les coordonnées des personnes à contacter.</p>
     </div>
 
-    <div style="margin-top: 16px; font-size: 9.5pt; color: #64748b; font-weight: 600;">
+    <div style="margin-top: 12px; font-size: 9.5pt; color: #64748b; font-weight: 600;">
       Fait à Dakar, le ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
     </div>
 
     <div class="sigs">
-      <div class="sig">Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
+      <div class="sig">${(eleve as any)?._parentSignatureUrl ? `<img src="${(eleve as any)._parentSignatureUrl}" alt="Signature parent" style="max-height:50px;margin-bottom:4px"/><br>` : ''}Signature du parent / tuteur<br><em style="font-weight:400;font-size:8pt">(précédée de « Lu et approuvé »)</em></div>
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Autorisation de soins', ref)}

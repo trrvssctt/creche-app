@@ -116,6 +116,11 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
     setPdf(key, true);
     try {
       const full = await withFullEleve(enfant);
+      const signes: string[] = full._documentsSignes || [];
+      const isSigned = signes.some((s: any) => s.eleveId === enfant.id && s.typeDoc === type);
+      if (!isSigned) {
+        delete full._parentSignatureUrl;
+      }
       await downloadAdminDocAsPdf(type, full);
     } catch (e) {
       console.error('PDF doc:', e);

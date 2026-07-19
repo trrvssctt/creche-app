@@ -21,7 +21,7 @@ interface DocASigner {
 
 const DOC_LABELS: Record<string, string> = {
   fiche_inscription: "Fiche d'inscription",
-  convention_scolarite: 'Convention de scolarité',
+  convention_scolarisation: 'Convention de scolarité',
   autorisation_sortie: 'Autorisation de sortie',
   fiche_sanitaire: 'Fiche sanitaire',
   autorisation_soins: 'Autorisation de soins',
@@ -30,7 +30,7 @@ const DOC_LABELS: Record<string, string> = {
 
 const DOC_COLORS: Record<string, string> = {
   fiche_inscription: 'border-blue-200 bg-blue-50',
-  convention_scolarite: 'border-indigo-200 bg-indigo-50',
+  convention_scolarisation: 'border-indigo-200 bg-indigo-50',
   autorisation_sortie: 'border-amber-200 bg-amber-50',
   fiche_sanitaire: 'border-emerald-200 bg-emerald-50',
   autorisation_soins: 'border-rose-200 bg-rose-50',
@@ -172,6 +172,9 @@ const ParentSignature: React.FC<Props> = ({ onRefresh }) => {
     try {
       const eleve = await apiClient.get(`/parent/enfants/${doc.eleveId}`);
       if (eleve) {
+        if (!doc.signe) {
+          delete eleve._parentSignatureUrl;
+        }
         await downloadAdminDocAsPdf(doc.typeDoc as DocAdminType, eleve);
       }
     } catch {

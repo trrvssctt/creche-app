@@ -80,8 +80,9 @@ export class ParentController {
       if (!eleve) return res.status(404).json({ error: 'Élève introuvable.' });
 
       const result = eleve.toJSON();
-      const user = await User.findByPk(req.user.id, { attributes: ['signatureUrl'] });
+      const user = await User.findByPk(req.user.id, { attributes: ['signatureUrl', 'documentsSignes'] });
       if (user?.signatureUrl) result._parentSignatureUrl = user.signatureUrl;
+      result._documentsSignes = user?.documentsSignes || [];
       res.json(result);
     } catch (err) {
       console.error('[ParentController] getMesEnfantById:', err.message);
@@ -696,7 +697,7 @@ export class ParentController {
 
       const DOCS_A_SIGNER = [
         'fiche_inscription',
-        'convention_scolarite',
+        'convention_scolarisation',
         'autorisation_sortie',
         'fiche_sanitaire',
         'autorisation_soins',
