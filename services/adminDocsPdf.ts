@@ -835,33 +835,47 @@ async function htmlToCanvas(html: string): Promise<HTMLCanvasElement> {
 }
 
 function canvasToPdfBlob(canvas: HTMLCanvasElement): Blob {
-  const imgData = canvas.toDataURL('image/png');
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const imgH = (canvas.height * pageW) / canvas.width;
 
   if (imgH <= pageH) {
+    const imgData = canvas.toDataURL('image/png');
     pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
   } else {
-    let posY = 0;
-    while (posY < imgH) {
-      if (posY > 0) pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, -posY, pageW, imgH);
-      posY += pageH;
+    const totalPages = Math.ceil(imgH / pageH);
+    const pxPerPage = (pageH / imgH) * canvas.height;
+
+    for (let i = 0; i < totalPages; i++) {
+      if (i > 0) pdf.addPage();
+      const startY = Math.floor(i * pxPerPage);
+      const sliceH = Math.min(Math.floor(pxPerPage), canvas.height - startY);
+
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceH;
+      const ctx = pageCanvas.getContext('2d')!;
+      ctx.drawImage(canvas, 0, startY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+      const pageImg = pageCanvas.toDataURL('image/png');
+      const sliceHMm = (sliceH * pageW) / canvas.width;
+      pdf.addImage(pageImg, 'PNG', 0, 0, pageW, sliceHMm);
     }
   }
 
   return pdf.output('blob') as unknown as Blob;
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+async function fetchAsDataUrl(url: string): Promise<string> {
+  if (url.startsWith('data:')) return url;
+  const res = await fetch(url);
+  const blob = await res.blob();
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -883,16 +897,17 @@ function buildConventionScolarisationHtml(eleve: Partial<Eleve>, assets: TenantA
   const annee = getAnnee();
 
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${SHARED_CSS}
-    .article { margin-bottom: 14px; }
-    .article h2 { font-size: 10pt; font-weight: 900; color: #1e293b; margin-bottom: 6px; border-bottom: none; padding-bottom: 0; text-transform: none; letter-spacing: 0; }
-    .article p { font-size: 10.5pt; line-height: 1.8; text-align: justify; margin-bottom: 6px; }
-    .article ul { font-size: 10.5pt; line-height: 1.8; margin-left: 18px; margin-bottom: 6px; }
-    .article ul li { margin-bottom: 3px; }
-    .sub-article { margin-top: 10px; margin-left: 12px; }
-    .sub-article h3 { font-size: 9.5pt; font-weight: 800; color: #334155; margin-bottom: 4px; }
-    .convention-header { font-size: 10.5pt; line-height: 2; margin-bottom: 18px; }
+    .article { margin-bottom: 10px; }
+    .article h2 { font-size: 10pt; font-weight: 900; color: #1e293b; margin-bottom: 4px; border-bottom: none; padding-bottom: 0; text-transform: none; letter-spacing: 0; }
+    .article p { font-size: 9.5pt; line-height: 1.6; text-align: justify; margin-bottom: 4px; }
+    .article ul { font-size: 9.5pt; line-height: 1.6; margin-left: 18px; margin-bottom: 4px; }
+    .article ul li { margin-bottom: 2px; }
+    .sub-article { margin-top: 8px; margin-left: 12px; }
+    .sub-article h3 { font-size: 9pt; font-weight: 800; color: #334155; margin-bottom: 3px; }
+    .convention-header { font-size: 9.5pt; line-height: 1.7; margin-bottom: 14px; }
     .convention-title { font-size: 13pt; font-weight: 900; text-align: center; text-transform: uppercase; letter-spacing: 2px; margin: 16px 0 6px; }
-    .convention-subtitle { text-align: center; font-size: 9.5pt; font-style: italic; color: #64748b; margin-bottom: 20px; }
+    .convention-subtitle { text-align: center; font-size: 9.5pt; font-style: italic; color: #64748b; margin-bottom: 16px; }
+    .sigs { margin-top: 20px; }
   </style></head><body>
     ${pageHeader(logoBase64, 'Convention de Scolarisation', ref)}
     <div class="convention-subtitle">(en deux exemplaires)</div>
@@ -996,7 +1011,7 @@ function buildConventionScolarisationHtml(eleve: Partial<Eleve>, assets: TenantA
     </div>
 
     <div class="sigs">
-      <div class="sig">Le Parent / Tuteur légal<br><em style="font-weight:400;font-size:8pt">(précédé de « Lu et approuvé »)</em></div>
+      <div class="sig">${(eleve as any)?._parentSignatureUrl ? `<img src="${(eleve as any)._parentSignatureUrl}" alt="Signature parent" style="max-height:50px;margin-bottom:4px"/><br>` : ''}Le Parent / Tuteur légal<br><em style="font-weight:400;font-size:8pt">(précédé de « Lu et approuvé »)</em></div>
       ${sigDirectionBlock(assets)}
     </div>
     ${pageFooter('Convention de scolarisation', ref)}
@@ -1288,14 +1303,45 @@ export async function downloadSignedDocPdf(
   const html = buildHtml(type, cleanEleve, assets);
   const canvas = await htmlToCanvas(html);
 
-  const sigImg = await loadImage(signatureUrl);
-  const ctx = canvas.getContext('2d')!;
-  const sigW = 160;
-  const sigH = 60;
-  const x = (position.xPercent / 100) * canvas.width - sigW / 2;
-  const y = (position.yPercent / 100) * canvas.height - sigH / 2;
-  ctx.drawImage(sigImg, x, y, sigW, sigH);
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgH = (canvas.height * pageW) / canvas.width;
+  const pxPerPage = (pageH / imgH) * canvas.height;
+  const totalPages = Math.max(1, Math.ceil(imgH / pageH));
 
-  const blob = canvasToPdfBlob(canvas);
+  if (imgH <= pageH) {
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
+  } else {
+    for (let i = 0; i < totalPages; i++) {
+      if (i > 0) pdf.addPage();
+      const startY = Math.floor(i * pxPerPage);
+      const sliceH = Math.min(Math.floor(pxPerPage), canvas.height - startY);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceH;
+      const ctx = pageCanvas.getContext('2d')!;
+      ctx.drawImage(canvas, 0, startY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      const sliceHMm = (sliceH * pageW) / canvas.width;
+      pdf.addImage(pageCanvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, sliceHMm);
+    }
+  }
+
+  const sigDataUrl = await fetchAsDataUrl(signatureUrl);
+  const sigYInDoc = (position.yPercent / 100) * imgH;
+  const sigPageIdx = Math.min(Math.floor(sigYInDoc / pageH), totalPages - 1);
+  const sigYOnPage = sigYInDoc - sigPageIdx * pageH;
+  const sigXOnPage = (position.xPercent / 100) * pageW;
+  const sigWMm = 30;
+  const sigHMm = 12;
+
+  pdf.setPage(sigPageIdx + 1);
+  pdf.addImage(sigDataUrl, 'PNG',
+    Math.max(0, sigXOnPage - sigWMm / 2),
+    Math.max(0, sigYOnPage - sigHMm / 2),
+    sigWMm, sigHMm);
+
+  const blob = pdf.output('blob') as unknown as Blob;
   downloadBlob(blob, docFilename(type, eleve));
 }
