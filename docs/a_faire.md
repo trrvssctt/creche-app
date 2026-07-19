@@ -31,6 +31,7 @@
 16. **Gestion de la Paie RH** — pas de besoins (desactive le) [?].
     - ✅ Fait : onglet « Gestion de la Paie » masqué dans le dashboard RH (section commentée, module inaccessible).
 17. **Notification RH Pour les demande de congés, etc on doit avoir une noification pour alerter l'admin ou l'employé e question** — congé ou justificatifs d'absence.
+    - ✅ Fait : notifications automatiques créées lors des événements de congé. 1) Demande de congé ou justification d'absence → notification broadcast aux admins/RH (type LEAVE, lien vers /rh?tab=conges). 2) Approbation ou refus → notification ciblée à l'employé concerné avec le motif de refus si applicable. Utilise le système de notifications in-app existant (table `notifications` + lecture/non-lu).
 18. **Type de contrat ** (Standard, prestation).
     - ✅ Fait : types « STANDARD » et « PRESTATION » ajoutés aux options de contrat. STANDARD = contrat sans date de fin obligatoire avec période d'essai max 3 mois. PRESTATION = prestation de services avec date de fin obligatoire, pas de période d'essai. Modèle Sequelize passé de ENUM à STRING pour supporter de nouveaux types sans migration. Validations backend + frontend à jour.
 19. **Pas de pointage en cas de non boulot** *(prendre en compte l'emploi du temps du prof)*.

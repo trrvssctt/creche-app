@@ -1,7 +1,44 @@
-import { Leave, Employee, Department } from '../models/index.js';
+import { Leave, Employee, Department, Notification, User } from '../models/index.js';
 import { Op } from 'sequelize';
 import multer from 'multer';
 import { uploadToCloudinary } from '../services/CloudinaryService.js';
+
+const LEAVE_TYPE_LABELS = {
+  PAID: 'Congé payé', SICK: 'Maladie', MATERNITY: 'Maternité',
+  UNPAID: 'Sans solde', ANNUAL: 'Congé annuel'
+};
+
+async function notifyLeaveRequest(tenantId, employee, leave) {
+  try {
+    const typeLabel = LEAVE_TYPE_LABELS[leave.type] || leave.type;
+    const nom = `${employee.firstName} ${employee.lastName}`;
+    await Notification.create({
+      tenantId,
+      targetUserId: null,
+      title: `Demande de congé — ${nom}`,
+      body: `${nom} demande un ${typeLabel} du ${new Date(leave.startDate).toLocaleDateString('fr-FR')} au ${new Date(leave.endDate).toLocaleDateString('fr-FR')} (${leave.daysCount} jour(s)).${leave.reason ? ' Motif : ' + leave.reason : ''}`,
+      type: 'LEAVE',
+      actionLink: '/rh?tab=conges',
+    });
+  } catch (e) { console.error('[notifyLeaveRequest]', e.message); }
+}
+
+async function notifyLeaveDecision(tenantId, employeeId, leave, approved) {
+  try {
+    const user = await User.findOne({ where: { tenantId, employeeId }, attributes: ['id'] });
+    if (!user) return;
+    const typeLabel = LEAVE_TYPE_LABELS[leave.type] || leave.type;
+    const statusLabel = approved ? 'approuvé' : 'refusé';
+    await Notification.create({
+      tenantId,
+      targetUserId: user.id,
+      title: `Congé ${statusLabel}`,
+      body: `Votre demande de ${typeLabel} du ${new Date(leave.startDate).toLocaleDateString('fr-FR')} au ${new Date(leave.endDate).toLocaleDateString('fr-FR')} a été ${statusLabel}.${!approved && leave.rejectionReason ? ' Motif : ' + leave.rejectionReason : ''}`,
+      type: 'LEAVE',
+      actionLink: '/pointage',
+    });
+  } catch (e) { console.error('[notifyLeaveDecision]', e.message); }
+}
 
 // Configuration multer pour l'upload de fichiers (mémoire → S3)
 const upload = multer({
@@ -292,14 +329,14 @@ export class LeaveController {
       }
       
       const leave = await Leave.create(payload);
-      
+
       // Retourner avec les informations de l'employé
       const createdLeave = await Leave.findOne({
         where: { id: leave.id },
         include: [
-          { 
-            model: Employee, 
-            as: 'employee', 
+          {
+            model: Employee,
+            as: 'employee',
             attributes: ['id', 'firstName', 'lastName', 'position'],
             include: [
               {
@@ -311,7 +348,9 @@ export class LeaveController {
           }
         ]
       });
-      
+
+      notifyLeaveRequest(req.user.tenantId, employee, createdLeave);
+
       return res.status(201).json(createdLeave);
     } catch (error) {
       console.error('LeaveController.create error:', error);
@@ -532,19 +571,26 @@ export class LeaveController {
       const leave = await Leave.findOne({
         where: { id },
         include: [
-          { 
-            model: Employee, 
-            as: 'employee', 
+          {
+            model: Employee,
+            as: 'employee',
             attributes: ['id', 'firstName', 'lastName', 'position']
           },
-          { 
-            model: Employee, 
-            as: 'approver', 
-            attributes: ['id', 'firstName', 'lastName'] 
+          {
+            model: Employee,
+            as: 'approver',
+            attributes: ['id', 'firstName', 'lastName']
           }
         ]
       });
-      
+
+      notifyLeaveDecision(
+        req.user.tenantId,
+        existingLeave.employeeId,
+        leave,
+        !rejectionReason
+      );
+
       return res.status(200).json(leave);
     } catch (error) {
       console.error('LeaveController.approve error:', error);
@@ -645,6 +691,8 @@ export class LeaveController {
           { model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName', 'position'] }
         ]
       });
+
+      notifyLeaveRequest(req.user.tenantId, employee, created);
 
       return res.status(201).json(created);
     } catch (error) {
