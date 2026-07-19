@@ -274,12 +274,12 @@ static async login(req, res) {
 
       // If payments are not up-to-date, allow ADMIN/SUPER_ADMIN/PARENT to login, block others
       if (!isUpToDate) {
-        const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || ‘EMPLOYEE’];
-        const canBypass = userRoles.includes(‘ADMIN’) || userRoles.includes(‘SUPER_ADMIN’) || userRoles.includes(‘PARENT’) || userRoles.includes(‘TUTEUR’);
+        const userRolesCheck = Array.isArray(user.roles) ? user.roles : [user.role || 'EMPLOYEE'];
+        const canBypass = userRolesCheck.includes('ADMIN') || userRolesCheck.includes('SUPER_ADMIN') || userRolesCheck.includes('PARENT') || userRolesCheck.includes('TUTEUR');
         if (!canBypass) {
           return res.status(403).json({
-            error: ‘AccessBlocked’,
-            message: ‘Accès suspendu : Votre abonnement n’est pas à jour ou l’instance a été verrouillée. Veuillez régulariser votre situation dans l’onglet Paiement.’
+            error: 'AccessBlocked',
+            message: "Acces suspendu. Veuillez regulariser votre abonnement."
           });
         }
       }
