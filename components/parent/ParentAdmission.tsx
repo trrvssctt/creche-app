@@ -3,7 +3,7 @@ import {
   Baby, GraduationCap, Stethoscope, Phone, CheckCircle2,
   ChevronLeft, ArrowRight, Loader2, AlertCircle, Save,
   Shield, Camera, X, Plus, Clock, UserCheck, Ban,
-  RefreshCw, FileText,
+  RefreshCw, FileText, Users,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { compressImageToDataUrl } from '../../services/photoUtils';
@@ -73,6 +73,7 @@ const EMPTY = {
   parent1Email: '', parent1Lien: 'MERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent1TelDomicile: '', parent1TelTravail: '', parent1Adresse: '',
   parent1Profession: '', parent1Entreprise: '', parent1PaysResidence: '',
+  parentsMemeResidence: null as boolean | null, situationMatrimoniale: '',
   parent2Nom: '', parent2Prenom: '', parent2Lien: 'PERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent2Tel: '', parent2TelDomicile: '', parent2TelTravail: '',
   parent2Profession: '', parent2Entreprise: '', parent2PaysResidence: '',
@@ -230,6 +231,8 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
         cantine: form.cantine, transportBus: form.transportBus,
         garderie: isMaternelle && form.garderie,
         besoinSpecifique: form.besoinSpecifique,
+        parentsMemeResidence: form.parentsMemeResidence,
+        situationMatrimoniale: form.situationMatrimoniale || null,
         ficheSanitaire: {
           vaccDiphterie: form.vaccDiphterie, vaccDiphterieDate: form.vaccDiphterieDate,
           vaccPolio: form.vaccPolio, vaccPolioDate: form.vaccPolioDate,
@@ -749,6 +752,45 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
               {/* ── Étape 4 : Parents ── */}
               {step === 4 && (
                 <div className="space-y-5">
+                  {/* Situation familiale */}
+                  <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-4">
+                    <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+                      <Users size={13} /> Situation familiale
+                    </p>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">Situation matrimoniale</label>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { v: 'MARIE', l: 'Marié(e)' },
+                          { v: 'DIVORCE', l: 'Divorcé(e)' },
+                          { v: 'SEPARE', l: 'Séparé(e)' },
+                          { v: 'CELIBATAIRE', l: 'Célibataire' },
+                          { v: 'VEUF', l: 'Veuf(ve)' },
+                          { v: 'UNION_LIBRE', l: 'Union libre' },
+                        ] as const).map(opt => (
+                          <button key={opt.v} type="button"
+                            onClick={() => set({ situationMatrimoniale: form.situationMatrimoniale === opt.v ? '' : opt.v } as any)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${form.situationMatrimoniale === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          >{opt.l}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">Les parents résident-ils dans le même pays ?</label>
+                      <div className="flex gap-3">
+                        {([
+                          { v: true, l: 'Oui' },
+                          { v: false, l: 'Non' },
+                        ] as const).map(opt => (
+                          <button key={String(opt.v)} type="button"
+                            onClick={() => set({ parentsMemeResidence: form.parentsMemeResidence === opt.v ? null : opt.v } as any)}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold border transition-all ${form.parentsMemeResidence === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          >{opt.l}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Parent principal */}
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">

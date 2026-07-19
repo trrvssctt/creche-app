@@ -4,7 +4,7 @@ import {
   X, AlertCircle, Loader2, ArrowRight, UserCheck, UserX,
   Clock, GraduationCap, Baby, Phone, Mail, Save,
   Info, ChevronLeft, Edit3, MapPin, Heart, Shield, Stethoscope, Camera, Ban, UserPlus, Copy,
-  Globe, Building2,
+  Globe, Building2, Users,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -97,6 +97,8 @@ function normalizeEleve(e: any): any {
     parent1Profession:  p1.profession || '',
     parent1Entreprise:  p1.entreprise || '',
     parent1PaysResidence: p1.paysResidence || '',
+    parentsMemeResidence: e.parentsMemeResidence ?? null,
+    situationMatrimoniale: e.situationMatrimoniale || '',
     // Flat parent2
     parent2Nom:     p2.nom || '',
     parent2Prenom:  p2.prenom || '',
@@ -163,6 +165,8 @@ const emptyDossier = () => ({
   parent1Profession: '',
   parent1Entreprise: '',
   parent1PaysResidence: '',
+  parentsMemeResidence: null as boolean | null,
+  situationMatrimoniale: '' as string,
   // Parent 2 (conjoint)
   parent2Nom: '',
   parent2Prenom: '',
@@ -365,6 +369,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
     anneeScolaire:  ANNEE_COURANTE,
     notes:          f.notes,
     sexe:           f.sexe || null,
+    parentsMemeResidence: f.parentsMemeResidence,
+    situationMatrimoniale: f.situationMatrimoniale || null,
     whatsappPrincipal: f.parent1Whatsapp || f.parent1Tel || null,
     parent1: {
       nom:       f.parent1Nom,
@@ -1458,6 +1464,46 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               {/* ── Étape 4 : Parent / Tuteur ── */}
               {wizardStep === 4 && (
                 <div className="space-y-5 animate-in slide-in-from-right-4 duration-300">
+
+                  {/* Situation familiale */}
+                  <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-4">
+                    <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+                      <Users size={13} /> Situation familiale
+                    </p>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">Situation matrimoniale</label>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { v: 'MARIE', l: 'Marié(e)' },
+                          { v: 'DIVORCE', l: 'Divorcé(e)' },
+                          { v: 'SEPARE', l: 'Séparé(e)' },
+                          { v: 'CELIBATAIRE', l: 'Célibataire' },
+                          { v: 'VEUF', l: 'Veuf(ve)' },
+                          { v: 'UNION_LIBRE', l: 'Union libre' },
+                        ] as const).map(opt => (
+                          <button key={opt.v} type="button"
+                            onClick={() => setForm({ ...form, situationMatrimoniale: form.situationMatrimoniale === opt.v ? '' : opt.v })}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${form.situationMatrimoniale === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          >{opt.l}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">Les parents résident-ils dans le même pays ?</label>
+                      <div className="flex gap-3">
+                        {([
+                          { v: true, l: 'Oui' },
+                          { v: false, l: 'Non' },
+                        ] as const).map(opt => (
+                          <button key={String(opt.v)} type="button"
+                            onClick={() => setForm({ ...form, parentsMemeResidence: form.parentsMemeResidence === opt.v ? null : opt.v })}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold border transition-all ${form.parentsMemeResidence === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          >{opt.l}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
                       <Phone size={13} className="text-indigo-500"/> Parent / Tuteur légal principal

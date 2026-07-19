@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Baby, GraduationCap, Stethoscope, Phone, CheckCircle2,
   ChevronLeft, ArrowRight, Loader2, AlertCircle, Save,
-  Shield, Camera, School, UserCheck, X,
+  Shield, Camera, School, UserCheck, X, Users,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { compressImageToDataUrl } from '../services/photoUtils';
@@ -65,6 +65,7 @@ const EMPTY = {
   parent1Email: '', parent1Lien: 'MERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent1TelDomicile: '', parent1TelTravail: '', parent1Adresse: '',
   parent1Profession: '', parent1Entreprise: '', parent1PaysResidence: '',
+  parentsMemeResidence: null as boolean | null, situationMatrimoniale: '',
   parent2Nom: '', parent2Prenom: '', parent2Lien: 'PERE' as 'PERE' | 'MERE' | 'TUTEUR',
   parent2Tel: '', parent2TelDomicile: '', parent2TelTravail: '',
   parent2Profession: '', parent2Entreprise: '', parent2PaysResidence: '',
@@ -153,6 +154,8 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
         cantine: form.cantine, transportBus: form.transportBus,
         garderie: isMaternelle && form.garderie,
         besoinSpecifique: form.besoinSpecifique || null,
+        parentsMemeResidence: form.parentsMemeResidence,
+        situationMatrimoniale: form.situationMatrimoniale || null,
         ficheSanitaire: {
           vaccDiphterie: form.vaccDiphterie, vaccDiphterieDate: form.vaccDiphterieDate,
           vaccPolio: form.vaccPolio, vaccPolioDate: form.vaccPolioDate,
@@ -739,6 +742,45 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
             ════════════════════════════════════════════════════════════ */}
             {step === 4 && (
               <div className="space-y-4">
+
+                {/* Situation familiale */}
+                <div className="bg-indigo-50/50 rounded-3xl border border-indigo-100 p-4 sm:p-6 space-y-4">
+                  <p className="font-black text-indigo-600 text-xs uppercase tracking-widest flex items-center gap-2">
+                    <Users size={13} /> Situation familiale
+                  </p>
+                  <div>
+                    <label className={lbl}>Situation matrimoniale</label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {([
+                        { v: 'MARIE', l: 'Marié(e)' },
+                        { v: 'DIVORCE', l: 'Divorcé(e)' },
+                        { v: 'SEPARE', l: 'Séparé(e)' },
+                        { v: 'CELIBATAIRE', l: 'Célibataire' },
+                        { v: 'VEUF', l: 'Veuf(ve)' },
+                        { v: 'UNION_LIBRE', l: 'Union libre' },
+                      ] as const).map(opt => (
+                        <button key={opt.v} type="button"
+                          onClick={() => set({ situationMatrimoniale: form.situationMatrimoniale === opt.v ? '' : opt.v } as any)}
+                          className={`px-4 py-2 rounded-2xl text-sm font-bold border transition-all ${form.situationMatrimoniale === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                        >{opt.l}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={lbl}>Les parents résident-ils dans le même pays ?</label>
+                    <div className="flex gap-3 mt-1">
+                      {([
+                        { v: true, l: 'Oui' },
+                        { v: false, l: 'Non' },
+                      ] as const).map(opt => (
+                        <button key={String(opt.v)} type="button"
+                          onClick={() => set({ parentsMemeResidence: form.parentsMemeResidence === opt.v ? null : opt.v } as any)}
+                          className={`px-6 py-2.5 rounded-2xl text-sm font-bold border transition-all ${form.parentsMemeResidence === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                        >{opt.l}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
                 <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-4">
                   <p className="font-black text-slate-700 text-xs uppercase tracking-widest flex items-center gap-2">

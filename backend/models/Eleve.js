@@ -32,6 +32,8 @@ Eleve.init({
   notes:          { type: DataTypes.TEXT },
   sexe:           { type: DataTypes.CHAR(1) },
   ficheSanitaire: { type: DataTypes.JSONB, field: 'fiche_sanitaire' },
+  parentsMemeResidence: { type: DataTypes.BOOLEAN, allowNull: true, field: 'parents_meme_residence' },
+  situationMatrimoniale: { type: DataTypes.STRING(30), allowNull: true, field: 'situation_matrimoniale' },
 }, {
   sequelize,
   modelName: 'eleve',

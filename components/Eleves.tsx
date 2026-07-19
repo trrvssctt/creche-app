@@ -1814,6 +1814,45 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     </div>
                   </section>
 
+                  {/* Situation familiale */}
+                  <section className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-4">
+                    <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+                      <Users size={14} /> Situation familiale
+                    </h4>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">Situation matrimoniale</label>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { v: 'MARIE', l: 'Marié(e)' },
+                          { v: 'DIVORCE', l: 'Divorcé(e)' },
+                          { v: 'SEPARE', l: 'Séparé(e)' },
+                          { v: 'CELIBATAIRE', l: 'Célibataire' },
+                          { v: 'VEUF', l: 'Veuf(ve)' },
+                          { v: 'UNION_LIBRE', l: 'Union libre' },
+                        ] as const).map(opt => (
+                          <button key={opt.v} type="button"
+                            onClick={() => setFormData({ ...formData, situationMatrimoniale: formData.situationMatrimoniale === opt.v ? '' : opt.v })}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${formData.situationMatrimoniale === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          >{opt.l}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-2 block">Les parents résident-ils dans le même pays ?</label>
+                      <div className="flex gap-3">
+                        {([
+                          { v: true, l: 'Oui' },
+                          { v: false, l: 'Non' },
+                        ] as const).map(opt => (
+                          <button key={String(opt.v)} type="button"
+                            onClick={() => setFormData({ ...formData, parentsMemeResidence: (formData as any).parentsMemeResidence === opt.v ? null : opt.v })}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold border transition-all ${(formData as any).parentsMemeResidence === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          >{opt.l}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
                   {/* Parent 1 */}
                   <section>
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">

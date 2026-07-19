@@ -517,6 +517,8 @@ export interface Eleve {
   whatsappPrincipal: string;
   anneeScolaire: string;
   photoUrl?: string;
+  parentsMemeResidence?: boolean | null;
+  situationMatrimoniale?: string;
   createdAt?: string;
   updatedAt?: string;
   // ── Fiche sanitaire ────────────────────────────────────────────────────────
