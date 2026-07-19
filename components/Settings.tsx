@@ -420,8 +420,6 @@ const Settings: React.FC<SettingsProps> = ({ settings, onSave }) => {
       const nextAnnee = result.anneeActive || null;
       if (nextAnnee) {
         setAnneeDB(nextAnnee); refreshAnneeRef(nextAnnee); setAnnee(nextAnnee);
-      } else if (anneeDB === annee) {
-        setAnneeDB(null); refreshAnneeRef('');
       }
 
       setCampagneSuccess(`Année scolaire ${annee} clôturée.`);

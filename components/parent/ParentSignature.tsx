@@ -303,7 +303,7 @@ const ParentSignature: React.FC<Props> = ({ onRefresh }) => {
         </div>
       )}
 
-      {Object.entries(grouped).map(([eleveNom, elevesDocs]) => (
+      {(Object.entries(grouped) as [string, DocASigner[]][]).map(([eleveNom, elevesDocs]) => (
         <div key={eleveNom} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div>

@@ -87,7 +87,9 @@ const AnneeSelector: React.FC = () => {
                   >
                     <span>{a}</span>
                     {a === annee
-                      ? <span className="text-[8px] opacity-80">Actif</span>
+                      ? cloturee
+                        ? <span className="flex items-center gap-1 text-[8px]"><Archive size={9}/> Clôturée</span>
+                        : <span className="text-[8px] opacity-80">Actif</span>
                       : cloturee
                         ? <span className="flex items-center gap-1 text-[8px]"><Archive size={9}/> Clôturée</span>
                         : isPast(a)
