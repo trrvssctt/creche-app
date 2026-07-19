@@ -12,6 +12,10 @@ import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
 import { User, NiveauScolaire, Trimestre, NiveauCompetence } from '../types';
 import { useAnnee } from '../contexts/AnneeContext';
+import {
+  maternelleDomaines, elementaireCompetences, notesMatieres,
+  scaleForCycle, SCALE_MATERNELLE, SCALE_ELEMENTAIRE, type ScaleOption,
+} from '../services/bulletinTemplates';
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -117,128 +121,6 @@ const DOMAINES_CRECHE: DomaineForm[] = [
   ]},
 ];
 
-const DOMAINES_PS: DomaineForm[] = [
-  { nom: 'Motricité Globale', competences: [
-    { libelle: 'Courir sans tomber', niveau: '' },
-    { libelle: 'Sauter à pieds joints', niveau: '' },
-    { libelle: 'Monter et descendre des escaliers', niveau: '' },
-    { libelle: 'Lancer et attraper une balle', niveau: '' },
-  ]},
-  { nom: 'Motricité Fine & Graphisme', competences: [
-    { libelle: 'Tenir le crayon correctement', niveau: '' },
-    { libelle: 'Tracer des traits et des ronds', niveau: '' },
-    { libelle: "Découper le long d'un trait", niveau: '' },
-    { libelle: 'Coller avec de la colle', niveau: '' },
-  ]},
-  { nom: 'Langage Oral', competences: [
-    { libelle: "S'exprimer en phrases courtes", niveau: '' },
-    { libelle: 'Écouter une histoire sans interrompre', niveau: '' },
-    { libelle: 'Répondre à des questions simples', niveau: '' },
-    { libelle: 'Mémoriser une comptine', niveau: '' },
-  ]},
-  { nom: 'Découverte du Monde', competences: [
-    { libelle: 'Reconnaître les couleurs primaires', niveau: '' },
-    { libelle: 'Trier des objets par forme', niveau: '' },
-    { libelle: 'Comprendre les notions grand/petit', niveau: '' },
-    { libelle: "Dénombrer jusqu'à 5", niveau: '' },
-  ]},
-  { nom: 'Vie Sociale & Autonomie', competences: [
-    { libelle: 'Respecter les règles de vie de classe', niveau: '' },
-    { libelle: 'Attendre son tour', niveau: '' },
-    { libelle: 'Jouer avec les autres sans conflit majeur', niveau: '' },
-    { libelle: "S'habiller et se déshabiller seul", niveau: '' },
-  ]},
-  { nom: 'Activités Artistiques', competences: [
-    { libelle: 'Chanter une chanson connue', niveau: '' },
-    { libelle: 'Participer aux activités de dessin/peinture', niveau: '' },
-    { libelle: 'Explorer différents matériaux', niveau: '' },
-  ]},
-];
-
-const DOMAINES_MS: DomaineForm[] = [
-  { nom: 'Motricité Globale', competences: [
-    { libelle: 'Galoper, sauter, courir avec aisance', niveau: '' },
-    { libelle: 'Tenir en équilibre sur un pied', niveau: '' },
-    { libelle: 'Réaliser un parcours moteur', niveau: '' },
-    { libelle: 'Maîtriser la balle (lancer précis)', niveau: '' },
-  ]},
-  { nom: 'Motricité Fine & Graphisme', competences: [
-    { libelle: 'Utiliser les ciseaux avec précision', niveau: '' },
-    { libelle: 'Reproduire des motifs graphiques', niveau: '' },
-    { libelle: 'Assembler et coller avec soin', niveau: '' },
-    { libelle: 'Maîtrise du tracé (pression, direction)', niveau: '' },
-  ]},
-  { nom: 'Langage Oral', competences: [
-    { libelle: 'Raconter un événement vécu', niveau: '' },
-    { libelle: 'Décrire une image avec détails', niveau: '' },
-    { libelle: 'Écoute active et réponses pertinentes', niveau: '' },
-    { libelle: 'Poser des questions sur le monde', niveau: '' },
-  ]},
-  { nom: 'Langage Écrit & Lecture Précoce', competences: [
-    { libelle: 'Reconnaître son prénom écrit', niveau: '' },
-    { libelle: 'Écrire son prénom en capitales', niveau: '' },
-    { libelle: 'Reconnaître quelques lettres', niveau: '' },
-    { libelle: "Initiation à l'écriture cursive", niveau: '' },
-  ]},
-  { nom: 'Logique & Mathématiques', competences: [
-    { libelle: "Compter jusqu'à 10 avec correspondance", niveau: '' },
-    { libelle: 'Sérier et classer des objets', niveau: '' },
-    { libelle: 'Comparer des quantités (plus / moins)', niveau: '' },
-    { libelle: 'Reproduire une suite rythmique', niveau: '' },
-  ]},
-  { nom: 'Vie Sociale & Autonomie', competences: [
-    { libelle: 'Gérer de petits conflits avec les mots', niveau: '' },
-    { libelle: 'Aider ses camarades', niveau: '' },
-    { libelle: 'Respecter les adultes et les règles', niveau: '' },
-    { libelle: 'Autonomie dans les gestes quotidiens', niveau: '' },
-  ]},
-];
-
-const DOMAINES_GS: DomaineForm[] = [
-  { nom: 'Motricité & Psychomotricité', competences: [
-    { libelle: 'Enchaîner des mouvements complexes', niveau: '' },
-    { libelle: 'Équilibre sur pied et poutre', niveau: '' },
-    { libelle: 'Participer aux activités collectives', niveau: '' },
-    { libelle: 'Endurance et coordination', niveau: '' },
-  ]},
-  { nom: 'Graphisme & Écriture', competences: [
-    { libelle: 'Écriture cursive : lettres minuscules', niveau: '' },
-    { libelle: 'Copier des mots en cursive', niveau: '' },
-    { libelle: 'Reproduire des modèles complexes', niveau: '' },
-    { libelle: 'Dictée de syllabes simples', niveau: '' },
-  ]},
-  { nom: 'Langage Oral', competences: [
-    { libelle: 'S\'exprimer clairement et structurément', niveau: '' },
-    { libelle: 'Mémoriser et réciter des poèmes', niveau: '' },
-    { libelle: 'Raconter une histoire inventée', niveau: '' },
-    { libelle: "Reformuler les propos d'un camarade", niveau: '' },
-  ]},
-  { nom: 'Lecture & Conscience Phonologique', competences: [
-    { libelle: 'Reconnaître les sons et syllabes', niveau: '' },
-    { libelle: 'Déchiffrer des syllabes simples', niveau: '' },
-    { libelle: 'Associer sons et lettres (correspondances)', niveau: '' },
-    { libelle: 'Lecture globale de mots familiers', niveau: '' },
-  ]},
-  { nom: 'Mathématiques', competences: [
-    { libelle: "Compter jusqu'à 30 et au-delà", niveau: '' },
-    { libelle: 'Effectuer des additions simples', niveau: '' },
-    { libelle: 'Reconnaître pair / impair', niveau: '' },
-    { libelle: 'Mesurer et comparer des grandeurs', niveau: '' },
-  ]},
-  { nom: 'Découverte du Monde', competences: [
-    { libelle: 'Observer et formuler des hypothèses', niveau: '' },
-    { libelle: 'Situer dans le temps (avant / après)', niveau: '' },
-    { libelle: 'Distinguer vivant / non-vivant', niveau: '' },
-    { libelle: 'Décrire son environnement proche', niveau: '' },
-  ]},
-  { nom: 'Vie Sociale & Responsabilités', competences: [
-    { libelle: 'Assumer des responsabilités de classe', niveau: '' },
-    { libelle: "Participer à un projet collectif", niveau: '' },
-    { libelle: 'Entraide et coopération', niveau: '' },
-    { libelle: 'Respect du travail personnel et des autres', niveau: '' },
-  ]},
-];
-
 function getDomainesParNiveau(niveau: NiveauScolaire): DomaineForm[] {
   const deep = (src: DomaineForm[]): DomaineForm[] =>
     src.map(d => ({
@@ -246,71 +128,21 @@ function getDomainesParNiveau(niveau: NiveauScolaire): DomaineForm[] {
       competences: d.competences.map(c => ({ libelle: c.libelle, niveau: '' as NiveauCompetence | '' })),
     }));
   if (niveau === 'CRECHE') return deep(DOMAINES_CRECHE);
-  if (niveau === 'PS')     return deep(DOMAINES_PS);
-  if (niveau === 'MS')     return deep(DOMAINES_MS);
-  return deep(DOMAINES_GS);
+  // PS / MS / GS : grilles officielles du Drive (échelle Acquis/En cours/Non acquis)
+  const officiel = maternelleDomaines(niveau);
+  return officiel ? (officiel as DomaineForm[]) : deep(DOMAINES_CRECHE);
+}
+
+// Compétences (observables) du 2e bulletin élémentaire — échelle EA/A/M
+function getCompetencesElementaire(niveau: NiveauScolaire): DomaineForm[] {
+  return (elementaireCompetences(niveau) as DomaineForm[] | null) ?? [];
 }
 
 // ─── Matières Élémentaire ─────────────────────────────────────────────────────
 
 function getMatieresParNiveau(niveau: NiveauScolaire): MatiereForm[] {
-  const sm = (nom: string, coeff: number): SousMatiereForm => ({ nom, coefficient: coeff, note: '' });
-
-  const CP: MatiereForm[] = [
-    { nom: 'Français', coefficient: 3, appreciation: '', sousMatieres: [
-      sm('Lecture & Déchiffrage', 1.5), sm('Écriture & Copie', 1), sm('Expression Orale', 0.5),
-    ]},
-    { nom: 'Mathématiques', coefficient: 3, appreciation: '', sousMatieres: [
-      sm('Numération & Dénombrement', 1.5), sm('Calcul Mental', 1), sm('Géométrie & Formes', 0.5),
-    ]},
-    { nom: 'Découverte du Monde', coefficient: 1, appreciation: '', sousMatieres: [
-      sm('Sciences & Vie', 0.5), sm('Vivre Ensemble', 0.5),
-    ]},
-    { nom: 'Éducation Physique & Sportive', coefficient: 1, appreciation: '', sousMatieres: [sm('EPS', 1)]},
-    { nom: 'Arts & Culture', coefficient: 0.5, appreciation: '', sousMatieres: [sm('Arts Plastiques', 0.5)]},
-  ];
-
-  const CE1_CE2: MatiereForm[] = [
-    { nom: 'Français', coefficient: 4, appreciation: '', sousMatieres: [
-      sm('Lecture & Compréhension', 1), sm('Grammaire', 0.75), sm('Conjugaison', 0.75),
-      sm('Orthographe & Dictée', 1), sm('Expression Écrite', 0.5),
-    ]},
-    { nom: 'Mathématiques', coefficient: 4, appreciation: '', sousMatieres: [
-      sm('Numération & Calcul', 1.5), sm('Problèmes', 1.5), sm('Géométrie & Mesure', 1),
-    ]},
-    { nom: 'Sciences & Vie', coefficient: 1, appreciation: '', sousMatieres: [
-      sm('Sciences & Technologie', 0.5), sm('Éducation Civique', 0.5),
-    ]},
-    { nom: 'Histoire & Géographie', coefficient: 1, appreciation: '', sousMatieres: [
-      sm('Histoire', 0.5), sm('Géographie', 0.5),
-    ]},
-    { nom: 'Anglais', coefficient: 1, appreciation: '', sousMatieres: [sm('Anglais', 1)]},
-    { nom: 'Éducation Physique & Sportive', coefficient: 0.5, appreciation: '', sousMatieres: [sm('EPS', 0.5)]},
-    { nom: 'Arts & Culture', coefficient: 0.5, appreciation: '', sousMatieres: [sm('Arts Plastiques', 0.5)]},
-  ];
-
-  const CM1_CM2: MatiereForm[] = [
-    { nom: 'Français', coefficient: 4, appreciation: '', sousMatieres: [
-      sm('Lecture & Compréhension', 1), sm('Grammaire', 0.75), sm('Conjugaison', 0.75),
-      sm('Orthographe', 1), sm('Rédaction', 0.5),
-    ]},
-    { nom: 'Mathématiques', coefficient: 4, appreciation: '', sousMatieres: [
-      sm('Calcul & Numération', 1.5), sm('Problèmes', 1.5), sm('Géométrie & Mesures', 1),
-    ]},
-    { nom: 'Sciences & Technologie', coefficient: 1.5, appreciation: '', sousMatieres: [
-      sm('Sciences & Vie', 1), sm('Technologie', 0.5),
-    ]},
-    { nom: 'Histoire & Géographie', coefficient: 1.5, appreciation: '', sousMatieres: [
-      sm('Histoire', 0.75), sm('Géographie', 0.75),
-    ]},
-    { nom: 'Anglais', coefficient: 1.5, appreciation: '', sousMatieres: [sm('Anglais', 1.5)]},
-    { nom: 'Morale & Instruction Civique', coefficient: 1, appreciation: '', sousMatieres: [sm('Morale & Civisme', 1)]},
-    { nom: 'Éducation Physique & Sportive', coefficient: 0.5, appreciation: '', sousMatieres: [sm('EPS', 0.5)]},
-  ];
-
-  if (niveau === 'CP') return CP;
-  if (niveau === 'CE1' || niveau === 'CE2') return CE1_CE2;
-  return CM1_CM2;
+  // Grille de notes officielle du Drive (barème /20 pondéré conservé)
+  return (notesMatieres(niveau) as MatiereForm[] | null) ?? [];
 }
 
 // ─── Calculs ──────────────────────────────────────────────────────────────────
@@ -387,6 +219,8 @@ export default function Bulletins({ user }: Props) {
   const [bulletinForm, setBulletinForm] = useState<BulletinLocal | null>(null);
   const [saving, setSaving] = useState(false);
   const [detailEleve, setDetailEleve] = useState<any>(null);
+  // Élémentaire : onglet actif de l'éditeur (bulletin de notes ou de compétences)
+  const [elemTab, setElemTab] = useState<'NOTES' | 'COMPETENCES'>('NOTES');
 
   // ── Chargement ─────────────────────────────────────────────────────────────
 
@@ -514,6 +348,11 @@ export default function Bulletins({ user }: Props) {
     let form: BulletinLocal;
     if (existing) {
       form = JSON.parse(JSON.stringify(existing));
+      // Rétro-compat : un bulletin élémentaire enregistré avant l'ajout du 2e
+      // bulletin n'a pas encore les compétences → on les initialise.
+      if (cycle === 'ELEMENTAIRE' && (!form.domaines || form.domaines.length === 0)) {
+        form.domaines = getCompetencesElementaire(eleve.niveau || 'CP');
+      }
     } else {
       form = {
         eleveId: eleve.id,
@@ -528,21 +367,31 @@ export default function Bulletins({ user }: Props) {
         form.domaines = getDomainesParNiveau(eleve.niveau || 'PS');
         form.appreciationGenerale = '';
       } else {
+        // Élémentaire : DEUX bulletins portés par le même dossier —
+        // notes (matieres, barème /20) + compétences (domaines, échelle EA/A/M)
         form.matieres = getMatieresParNiveau(eleve.niveau || 'CP');
+        form.domaines = getCompetencesElementaire(eleve.niveau || 'CP');
         form.moyenneGenerale = 0;
         form.appreciationGenerale = '';
       }
     }
     setSelectedEleve(eleve);
     setBulletinForm(form);
+    setElemTab('NOTES');
     setModalMode('EDIT');
   }
 
   function openView(eleve: any) {
     const existing = getBulletin(eleve.id);
     if (!existing) return;
+    const cycle = getCycle(eleve.niveau || 'PS');
+    const form = JSON.parse(JSON.stringify(existing));
+    if (cycle === 'ELEMENTAIRE' && (!form.domaines || form.domaines.length === 0)) {
+      form.domaines = getCompetencesElementaire(eleve.niveau || 'CP');
+    }
     setSelectedEleve(eleve);
-    setBulletinForm(JSON.parse(JSON.stringify(existing)));
+    setBulletinForm(form);
+    setElemTab('NOTES');
     setModalMode('VIEW');
   }
 
@@ -597,11 +446,19 @@ export default function Bulletins({ user }: Props) {
 
   // ── Compétences sélecteur ──────────────────────────────────────────────────
 
-  const COMP_OPTS: { value: NiveauCompetence; label: string; color: string; icon: React.ReactNode }[] = [
-    { value: 'ACQUIS',     label: 'Acquis',     color: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: <CheckSquare size={13} /> },
-    { value: 'EN_COURS',   label: 'En cours',   color: 'bg-amber-100 text-amber-700 border-amber-300',       icon: <Circle size={13} /> },
-    { value: 'NON_ACQUIS', label: 'Non acquis', color: 'bg-rose-100 text-rose-700 border-rose-300',           icon: <MinusCircle size={13} /> },
-  ];
+  // Échelle d'acquisition selon le cycle : maternelle A/B/C, élémentaire EA/A/M
+  const compOptsFor = (niveau: NiveauScolaire): { value: NiveauCompetence; label: string; code: string; color: string; icon: React.ReactNode }[] => {
+    const cycle = getCycle(niveau);
+    const styleFor = (v: string): { color: string; icon: React.ReactNode } => {
+      if (v === 'ACQUIS')   return { color: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: <CheckSquare size={13} /> };
+      if (v === 'MAITRISE') return { color: 'bg-blue-100 text-blue-700 border-blue-300',          icon: <Award size={13} /> };
+      if (v === 'EN_COURS') return { color: 'bg-amber-100 text-amber-700 border-amber-300',       icon: <Circle size={13} /> };
+      return { color: 'bg-rose-100 text-rose-700 border-rose-300', icon: <MinusCircle size={13} /> };
+    };
+    return scaleForCycle(cycle).map((o: ScaleOption) => ({
+      value: o.value as NiveauCompetence, label: o.label, code: o.code, ...styleFor(o.value),
+    }));
+  };
 
   function setCompetenceNiveau(di: number, ci: number, niveau: NiveauCompetence) {
     setBulletinForm(prev => {
@@ -1286,23 +1143,38 @@ export default function Bulletins({ user }: Props) {
                 <p className="text-lg font-black uppercase tracking-widest">Le Toit des Anges</p>
                 <p className="text-sm text-slate-500">469 Cité Cheikh Omar TALL, Ouakam – Dakar</p>
                 <p className="text-xl font-black mt-4 uppercase border-b-2 border-slate-800 pb-2">
-                  Bulletin de {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' ? 'Notes' : 'Compétences'} — {TRIMESTRES.find(t => t.value === bulletinForm.trimestre)?.label}
+                  Bulletin de {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' ? (elemTab === 'NOTES' ? 'Notes' : 'Compétences') : 'Compétences'} — {TRIMESTRES.find(t => t.value === bulletinForm.trimestre)?.label}
                 </p>
                 <p className="text-sm mt-2">
                   Élève : <strong>{bulletinForm.elevePrenom} {bulletinForm.eleveNom}</strong> · Niveau : <strong>{niveauLabel(bulletinForm.niveau)}</strong> · Année : <strong>{bulletinForm.anneeScolaire}</strong>
                 </p>
               </div>
 
-              {/* ─── MATERNELLE / CRÈCHE : compétences ──────────────────────── */}
-              {(getCycle(bulletinForm.niveau) === 'MATERNELLE' || getCycle(bulletinForm.niveau) === 'CRECHE') && bulletinForm.domaines && (
+              {/* ─── ÉLÉMENTAIRE : onglets Notes / Compétences ──────────────── */}
+              {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && (
+                <div className="flex items-center gap-2 mb-5 print:hidden">
+                  {([['NOTES', 'Bulletin de notes', GraduationCap], ['COMPETENCES', 'Bulletin de compétences', Award]] as const).map(([key, lbl, Icon]) => (
+                    <button key={key} onClick={() => setElemTab(key)}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
+                        elemTab === key ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                      }`}>
+                      <Icon size={14} /> {lbl}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* ─── Compétences (maternelle/crèche, ou élémentaire onglet Compétences) ── */}
+              {((getCycle(bulletinForm.niveau) === 'MATERNELLE' || getCycle(bulletinForm.niveau) === 'CRECHE') ||
+                (getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && elemTab === 'COMPETENCES')) && bulletinForm.domaines && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 mb-2">
                     <Baby size={15} className="text-purple-500" />
                     <h3 className="text-xs font-black text-slate-700 uppercase tracking-[0.2em]">Évaluation par domaines</h3>
                     <div className="flex items-center gap-2 ml-auto text-[9px] font-bold text-slate-400">
-                      {COMP_OPTS.map(o => (
+                      {compOptsFor(bulletinForm.niveau).map(o => (
                         <span key={o.value} className={`px-2 py-0.5 rounded border ${o.color} flex items-center gap-1`}>
-                          {o.icon}{o.label}
+                          {o.icon}<strong>{o.code}</strong> {o.label}
                         </span>
                       ))}
                     </div>
@@ -1319,7 +1191,7 @@ export default function Bulletins({ user }: Props) {
                             <p className="text-sm text-slate-700 font-medium flex-1 pr-4">{comp.libelle}</p>
                             {modalMode === 'EDIT' && !bulletinForm.publie ? (
                               <div className="flex gap-1.5">
-                                {COMP_OPTS.map(o => (
+                                {compOptsFor(bulletinForm.niveau).map(o => (
                                   <button
                                     key={o.value}
                                     onClick={() => setCompetenceNiveau(di, ci, o.value)}
@@ -1337,10 +1209,10 @@ export default function Bulletins({ user }: Props) {
                             ) : (
                               <span className={`px-2.5 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 ${
                                 comp.niveau
-                                  ? COMP_OPTS.find(o => o.value === comp.niveau)?.color ?? 'bg-slate-100 text-slate-400 border-slate-200'
+                                  ? compOptsFor(bulletinForm.niveau).find(o => o.value === comp.niveau)?.color ?? 'bg-slate-100 text-slate-400 border-slate-200'
                                   : 'bg-slate-100 text-slate-300 border-slate-200'
                               }`}>
-                                {comp.niveau ? COMP_OPTS.find(o => o.value === comp.niveau)?.label : '—'}
+                                {comp.niveau ? compOptsFor(bulletinForm.niveau).find(o => o.value === comp.niveau)?.label : '—'}
                               </span>
                             )}
                           </div>
@@ -1351,8 +1223,8 @@ export default function Bulletins({ user }: Props) {
                 </div>
               )}
 
-              {/* ─── ÉLÉMENTAIRE : notes ──────────────────────────────────────── */}
-              {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && bulletinForm.matieres && (
+              {/* ─── ÉLÉMENTAIRE : notes (onglet Notes) ───────────────────────── */}
+              {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && elemTab === 'NOTES' && bulletinForm.matieres && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 mb-2">
                     <GraduationCap size={15} className="text-indigo-600" />

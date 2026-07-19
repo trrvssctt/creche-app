@@ -460,7 +460,8 @@ export interface AnneeScolaireConfig {
   dateCloture?: string | null;
 }
 
-export type NiveauCompetence = 'ACQUIS' | 'EN_COURS' | 'NON_ACQUIS';
+// Maternelle : ACQUIS(A)/EN_COURS(B)/NON_ACQUIS(C) · Élémentaire : EN_COURS(EA)/ACQUIS(A)/MAITRISE(M)
+export type NiveauCompetence = 'ACQUIS' | 'EN_COURS' | 'NON_ACQUIS' | 'MAITRISE';
 
 export interface ContactParent {
   nom: string;
