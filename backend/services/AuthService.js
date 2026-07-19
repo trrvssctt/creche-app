@@ -2,7 +2,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { Op } from 'sequelize';
+import Sequelize from 'sequelize';
 import { User, Session } from '../models/index.js';
 
 // Utilisation d'une clé unique partagée par tout le Kernel AlwaysData
@@ -14,7 +14,7 @@ export class AuthService {
    */
   static async validateCredentials(email, password) {
     const user = await User.findOne({
-      where: { email: { [Op.iLike]: email } }
+      where: { email: { [Sequelize.Op.iLike]: email } }
     });
     if (!user) return null;
 
