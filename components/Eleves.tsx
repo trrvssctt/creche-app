@@ -103,6 +103,8 @@ const emptyForm = (annee = ''): Partial<Eleve> => ({
   parent2: undefined,
   contactUrgence: undefined,
   personneAutorisee: undefined,
+  situationMatrimoniale: '',
+  parentsMemeResidence: null,
 });
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
@@ -1845,8 +1847,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                           { v: false, l: 'Non' },
                         ] as const).map(opt => (
                           <button key={String(opt.v)} type="button"
-                            onClick={() => setFormData({ ...formData, parentsMemeResidence: (formData as any).parentsMemeResidence === opt.v ? null : opt.v })}
-                            className={`px-5 py-2 rounded-xl text-sm font-bold border transition-all ${(formData as any).parentsMemeResidence === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                            onClick={() => setFormData({ ...formData, parentsMemeResidence: formData.parentsMemeResidence === opt.v ? null : opt.v })}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold border transition-all ${formData.parentsMemeResidence === opt.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
                           >{opt.l}</button>
                         ))}
                       </div>
