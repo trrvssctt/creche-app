@@ -66,6 +66,7 @@ export class PublicController {
         cantine, transportBus, garderie, besoinSpecifique,
         ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
         photoUrl, piecesJointes, notes,
+        situationMatrimoniale, parentsMemeResidence,
       } = req.body;
 
       // Route publique : la photo est une data-URL compressée côté client — on
@@ -129,6 +130,8 @@ export class PublicController {
         anneeScolaire:   anneeResolue,
         statut:          'EN_ATTENTE',
         notes:           notesDossier,
+        situationMatrimoniale: situationMatrimoniale || null,
+        parentsMemeResidence:  parentsMemeResidence ?? null,
       });
 
       // Enregistrer les pièces jointes dans le dossier numérique de l'élève

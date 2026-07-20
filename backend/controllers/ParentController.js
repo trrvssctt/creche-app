@@ -567,6 +567,7 @@ export class ParentController {
         regimeFinancier, remisePct, cantine, transportBus, garderie, besoinSpecifique,
         ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
         photoUrl, piecesJointes, anneeScolaire, notes,
+        situationMatrimoniale, parentsMemeResidence,
       } = req.body;
 
       if (!nom || !prenom) {
@@ -620,6 +621,8 @@ export class ParentController {
         anneeScolaire:    anneeResolue,
         statut: 'EN_ATTENTE',
         notes: `${notes || "Inscription soumise via le portail parent."} [parent_user:${req.user.id}]`,
+        situationMatrimoniale: situationMatrimoniale || null,
+        parentsMemeResidence:  parentsMemeResidence ?? null,
       });
 
       // Enregistrer les pièces jointes dans le dossier numérique de l'élève
