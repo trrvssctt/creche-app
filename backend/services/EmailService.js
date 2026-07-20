@@ -1,9 +1,15 @@
-import nodemailer from 'nodemailer';
+let nodemailer;
+try {
+  nodemailer = (await import('nodemailer')).default;
+} catch {
+  console.warn('[EmailService] nodemailer non disponible — les emails seront désactivés');
+}
 
 // Transporteurs par rôle — chaque adresse a ses propres credentials IONOS
 const transporters = {};
 
 function getTransporter(role = 'support') {
+  if (!nodemailer) return null;
   if (transporters[role]) return transporters[role];
 
   const configs = {
