@@ -810,7 +810,7 @@ const ParentAdmission: React.FC<Props> = ({ onSuccess }) => {
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">WhatsApp</label>
                         <input type="tel" value={form.parent1Whatsapp} onChange={e => set({ parent1Whatsapp: e.target.value })} className={inp} /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Email</label>
-                        <input type="email" value={form.parent1Email} onChange={e => set({ parent1Email: e.target.value })} className={inp} /></div>
+                        <input type="text" inputMode="email" value={form.parent1Email} onChange={e => set({ parent1Email: e.target.value })} className={inp} /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. domicile</label>
                         <input type="tel" value={form.parent1TelDomicile} onChange={e => set({ parent1TelDomicile: e.target.value })} className={inp} placeholder="+221 33 xxx xxxx" /></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Tél. travail</label>

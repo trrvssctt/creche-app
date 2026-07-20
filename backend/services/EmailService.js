@@ -215,8 +215,12 @@ export class EmailService {
   }
 
   static async sendGenericInfo({ to, subject, body, ecoleNom, role = 'contact', logoUrl }) {
+    console.log(`[EmailService.sendGenericInfo] to="${to}", role="${role}", subject="${subject}"`);
     const transporter = getTransporter(role);
-    if (!transporter) return;
+    if (!transporter) {
+      console.warn(`[EmailService.sendGenericInfo] Pas de transporteur pour role="${role}" — email non envoyé`);
+      return;
+    }
 
     const fromMap = {
       support: process.env.MAIL_SUPPORT_PARENT,
@@ -227,11 +231,12 @@ export class EmailService {
     const content = `
       <div style="color:#475569;font-size:14px;line-height:1.7">${body}</div>`;
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"${ecoleNom}" <${fromMap[role] || fromMap.contact}>`,
       to,
       subject,
       html: baseLayout(content, ecoleNom, logoUrl),
     });
+    console.log(`[EmailService.sendGenericInfo] Email envoyé OK → messageId=${info.messageId}`);
   }
 }

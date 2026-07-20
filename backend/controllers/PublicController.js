@@ -147,6 +147,7 @@ export class PublicController {
       const frontendUrl = process.env.FRONTEND_URL || `https://${tenant.domain || 'scolarite.letoitdesanges.com'}`;
       const suiviUrl = `${frontendUrl}/suivi-inscription?ref=${ref}`;
 
+      console.log(`[PublicController] Email confirmation → parentEmail="${parentEmail || 'VIDE'}", ref="${ref}"`);
       if (parentEmail) {
         try {
           await EmailService.sendGenericInfo({

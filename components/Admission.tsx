@@ -1542,7 +1542,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       </div>
                       <div>
                         <label className="text-[9px] font-black text-slate-400 uppercase px-1 mb-1 block">Email</label>
-                        <input type="email" value={form.parent1Email} onChange={e => setForm({...form, parent1Email: e.target.value})}
+                        <input type="text" inputMode="email" value={form.parent1Email} onChange={e => setForm({...form, parent1Email: e.target.value})}
                           className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10" placeholder="email@exemple.sn" />
                       </div>
                     </div>

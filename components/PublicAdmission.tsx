@@ -802,7 +802,7 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
                     <div><label className={lbl}>WhatsApp</label>
                       <input type="tel" value={form.parent1Whatsapp} onChange={e => set({ parent1Whatsapp: e.target.value })} className={inp} /></div>
                     <div><label className={lbl}>Email</label>
-                      <input type="email" value={form.parent1Email} onChange={e => set({ parent1Email: e.target.value })} className={inp} autoComplete="email" /></div>
+                      <input type="text" inputMode="email" value={form.parent1Email} onChange={e => set({ parent1Email: e.target.value })} className={inp} autoComplete="email" /></div>
                     <div><label className={lbl}>Tél. domicile</label>
                       <input type="tel" value={form.parent1TelDomicile} onChange={e => set({ parent1TelDomicile: e.target.value })} className={inp} placeholder="+221 33 xxx xxxx" /></div>
                     <div><label className={lbl}>Tél. travail</label>
