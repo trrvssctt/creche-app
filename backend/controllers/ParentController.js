@@ -632,7 +632,7 @@ export class ParentController {
 
       // Email de confirmation au parent
       const user = await User.findByPk(req.user.id, { attributes: ['email', 'name'] });
-      const tenantInfo = await Tenant.findByPk(tenantId, { attributes: ['name', 'domain'] });
+      const tenantInfo = await Tenant.findByPk(tenantId, { attributes: ['name', 'domain', 'logoUrl'] });
       const ecoleNom = tenantInfo?.name || "L'école";
       const frontendUrl = process.env.FRONTEND_URL || `https://${tenantInfo?.domain || 'scolarite.letoitdesanges.com'}`;
 
@@ -642,6 +642,7 @@ export class ParentController {
             to: user.email,
             subject: `Confirmation de dépôt de dossier — ${ecoleNom}`,
             ecoleNom,
+            logoUrl: tenantInfo?.logoUrl,
             role: 'support',
             body: `
               <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Dossier d'inscription déposé</h2>
@@ -828,7 +829,7 @@ export class ParentController {
       if (!echeances.length) return res.status(404).json({ error: 'Aucune échéance trouvée.' });
 
       const user = await User.findByPk(req.user.id, { attributes: ['email', 'name'] });
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl'] });
       const eleve = echeances[0].eleve;
       const currency = tenant?.currency || 'F CFA';
       const total = echeances.reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
@@ -837,6 +838,7 @@ export class ParentController {
         to: user.email,
         parentName: user.name,
         ecoleNom: tenant?.name || 'L\'école',
+        logoUrl: tenant?.logoUrl,
         enfantNom: `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim(),
         mois: echeances.map(e => e.periodeLabel).join(', '),
         montant: total,

@@ -1309,7 +1309,7 @@ static async login(req, res) {
       });
 
       // Envoyer l'email de bienvenue
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'logoUrl'] });
       const ecoleNom = tenant?.name || 'L\'école';
       const frontendUrl = process.env.FRONTEND_URL || 'https://scolarite.letoitdesanges.com';
       let emailSent = false;
@@ -1321,6 +1321,7 @@ static async login(req, res) {
           tempPassword: motDePasseTemporaire,
           loginUrl: `${frontendUrl}/parents`,
           ecoleNom,
+          logoUrl: tenant?.logoUrl,
         });
         emailSent = true;
       } catch (emailErr) {
@@ -1384,7 +1385,7 @@ static async login(req, res) {
       const hashed = await bcrypt.hash(newPassword, 10);
       await User.update({ password: hashed }, { where: { id: parent.id }, individualHooks: false });
 
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'logoUrl'] });
       const ecoleNom = tenant?.name || 'L\'école';
       const frontendUrl = process.env.FRONTEND_URL || 'https://scolarite.letoitdesanges.com';
 
@@ -1395,6 +1396,7 @@ static async login(req, res) {
           newPassword,
           loginUrl: `${frontendUrl}/parents`,
           ecoleNom,
+          logoUrl: tenant?.logoUrl,
         });
       } catch (emailErr) {
         console.warn('[AUTH] Email de reset non envoyé:', emailErr.message);
@@ -1444,7 +1446,7 @@ static async login(req, res) {
         { where: { id: user.id }, individualHooks: false }
       );
 
-      const tenant = await Tenant.findByPk(user.tenantId, { attributes: ['name'] });
+      const tenant = await Tenant.findByPk(user.tenantId, { attributes: ['name', 'logoUrl'] });
       const ecoleNom = tenant?.name || 'L\'école';
       const frontendUrl = process.env.FRONTEND_URL || 'https://scolarite.letoitdesanges.com';
       const resetUrl = `${frontendUrl}/parents/reset-password?token=${token}`;
@@ -1455,6 +1457,7 @@ static async login(req, res) {
           parentName: user.name,
           resetUrl,
           ecoleNom,
+          logoUrl: tenant?.logoUrl,
         });
       } catch (emailErr) {
         console.warn('[AUTH] Email forgot-password non envoyé:', emailErr.message);

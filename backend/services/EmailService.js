@@ -52,7 +52,10 @@ function getTransporter(role = 'support') {
   return transporters[role];
 }
 
-function baseLayout(content, ecoleNom = 'Le Toit des Anges') {
+function baseLayout(content, ecoleNom = 'Le Toit des Anges', logoUrl = '') {
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="${ecoleNom}" width="72" height="72" style="display:block;margin:0 auto 12px;border-radius:14px;background:#fff;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.12);object-fit:contain" />`
+    : '';
   return `<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -61,6 +64,7 @@ function baseLayout(content, ecoleNom = 'Le Toit des Anges') {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06)">
   <tr><td style="background:linear-gradient(135deg,#f59e0b,#f97316);padding:28px 32px;text-align:center">
+    ${logoHtml}
     <h1 style="margin:0;color:#fff;font-size:22px;font-weight:800;letter-spacing:0.5px">${ecoleNom}</h1>
     <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:2px">Espace Parents</p>
   </td></tr>
@@ -77,7 +81,7 @@ function baseLayout(content, ecoleNom = 'Le Toit des Anges') {
 
 export class EmailService {
 
-  static async sendWelcomeParent({ to, parentName, email, tempPassword, loginUrl, ecoleNom }) {
+  static async sendWelcomeParent({ to, parentName, email, tempPassword, loginUrl, ecoleNom, logoUrl }) {
     const transporter = getTransporter('support');
     if (!transporter) { console.warn('[EmailService] Pas de transporteur support — email non envoyé'); return; }
 
@@ -107,11 +111,11 @@ export class EmailService {
       from: `"${ecoleNom}" <${process.env.MAIL_SUPPORT_PARENT}>`,
       to,
       subject: `Bienvenue sur l'espace parents — ${ecoleNom}`,
-      html: baseLayout(content, ecoleNom),
+      html: baseLayout(content, ecoleNom, logoUrl),
     });
   }
 
-  static async sendPasswordReset({ to, parentName, resetUrl, ecoleNom }) {
+  static async sendPasswordReset({ to, parentName, resetUrl, ecoleNom, logoUrl }) {
     const transporter = getTransporter('support');
     if (!transporter) return;
 
@@ -134,11 +138,11 @@ export class EmailService {
       from: `"${ecoleNom}" <${process.env.MAIL_SUPPORT_PARENT}>`,
       to,
       subject: `Réinitialisation de mot de passe — ${ecoleNom}`,
-      html: baseLayout(content, ecoleNom),
+      html: baseLayout(content, ecoleNom, logoUrl),
     });
   }
 
-  static async sendAdminResetNotification({ to, parentName, newPassword, loginUrl, ecoleNom }) {
+  static async sendAdminResetNotification({ to, parentName, newPassword, loginUrl, ecoleNom, logoUrl }) {
     const transporter = getTransporter('support');
     if (!transporter) return;
 
@@ -165,11 +169,11 @@ export class EmailService {
       from: `"${ecoleNom}" <${process.env.MAIL_SUPPORT_PARENT}>`,
       to,
       subject: `Mot de passe réinitialisé — ${ecoleNom}`,
-      html: baseLayout(content, ecoleNom),
+      html: baseLayout(content, ecoleNom, logoUrl),
     });
   }
 
-  static async sendInvoice({ to, parentName, ecoleNom, enfantNom, mois, montant, currency, echeances }) {
+  static async sendInvoice({ to, parentName, ecoleNom, enfantNom, mois, montant, currency, echeances, logoUrl }) {
     const transporter = getTransporter('comptabilite');
     if (!transporter) return;
 
@@ -206,11 +210,11 @@ export class EmailService {
       from: `"${ecoleNom} — Comptabilité" <${process.env.MAIL_COMPTABILITE}>`,
       to,
       subject: `Facture scolarité ${enfantNom} — ${mois} — ${ecoleNom}`,
-      html: baseLayout(content, ecoleNom),
+      html: baseLayout(content, ecoleNom, logoUrl),
     });
   }
 
-  static async sendGenericInfo({ to, subject, body, ecoleNom, role = 'contact' }) {
+  static async sendGenericInfo({ to, subject, body, ecoleNom, role = 'contact', logoUrl }) {
     const transporter = getTransporter(role);
     if (!transporter) return;
 
@@ -227,7 +231,7 @@ export class EmailService {
       from: `"${ecoleNom}" <${fromMap[role] || fromMap.contact}>`,
       to,
       subject,
-      html: baseLayout(content, ecoleNom),
+      html: baseLayout(content, ecoleNom, logoUrl),
     });
   }
 }

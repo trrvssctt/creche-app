@@ -153,6 +153,7 @@ export class PublicController {
             to: parentEmail,
             subject: `Confirmation de dépôt de dossier — ${ecoleNom}`,
             ecoleNom,
+            logoUrl: tenant.logoUrl,
             role: 'support',
             body: `
               <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Dossier d'inscription déposé</h2>
