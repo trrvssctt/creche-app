@@ -100,9 +100,10 @@ const ParentLogin: React.FC<ParentLoginProps> = ({ onLoginSuccess }) => {
                   Adresse email
                 </label>
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="email"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={e => setEmail(e.target.value.trim())}
                   placeholder="votre@email.com"
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100 outline-none transition text-sm"
                   autoComplete="email"
