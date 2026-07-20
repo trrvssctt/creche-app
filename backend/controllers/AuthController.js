@@ -8,6 +8,7 @@ import { Op } from 'sequelize';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { StripeService } from '../services/StripeService.js';
+import { EmailService } from '../services/EmailService.js';
 
 // ── Emails et domaines bloqués (spam / abus avérés) ──────────────────────────
 const BLOCKED_EMAILS = new Set([
@@ -1307,13 +1308,35 @@ static async login(req, res) {
         sha256Signature: crypto.createHash('sha256').update(`${req.user.id}:parent-account:${email}:${Date.now()}`).digest('hex'),
       });
 
+      // Envoyer l'email de bienvenue
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name'] });
+      const ecoleNom = tenant?.name || 'L\'école';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://scolarite.letoitdesanges.com';
+      let emailSent = false;
+      try {
+        await EmailService.sendWelcomeParent({
+          to: email,
+          parentName: `${prenom} ${nom}`,
+          email,
+          tempPassword: motDePasseTemporaire,
+          loginUrl: `${frontendUrl}/parents`,
+          ecoleNom,
+        });
+        emailSent = true;
+      } catch (emailErr) {
+        console.warn('[AUTH] Email de bienvenue non envoyé:', emailErr.message);
+      }
+
       return res.status(201).json({
         id: user.id,
         email: user.email,
         name: user.name,
         roles: user.roles,
         eleveIds: user.eleveIds,
-        message: 'Compte parent créé. Transmettez le mot de passe temporaire au parent.',
+        emailSent,
+        message: emailSent
+          ? 'Compte parent créé. Un email avec les identifiants a été envoyé.'
+          : 'Compte parent créé. L\'email n\'a pas pu être envoyé — transmettez le mot de passe manuellement.',
       });
     } catch (error) {
       console.error('[AUTH CREATE PARENT ACCOUNT]:', error);
@@ -1342,6 +1365,134 @@ static async login(req, res) {
       return res.json({ byEleveId });
     } catch (error) {
       console.error('[LIST PARENT ACCOUNTS]:', error);
+      return res.status(500).json({ error: 'ServerError', message: error.message });
+    }
+  }
+
+  // POST /api/admin/parent-accounts/:id/reset-password — Admin réinitialise le mot de passe d'un parent
+  static async resetParentPassword(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+
+      const parent = await User.findOne({
+        where: { id, tenantId, roles: { [Op.contains]: ['PARENT'] } },
+      });
+      if (!parent) return res.status(404).json({ error: 'Compte parent introuvable.' });
+
+      const newPassword = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const hashed = await bcrypt.hash(newPassword, 10);
+      await User.update({ password: hashed }, { where: { id: parent.id }, individualHooks: false });
+
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name'] });
+      const ecoleNom = tenant?.name || 'L\'école';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://scolarite.letoitdesanges.com';
+
+      try {
+        await EmailService.sendAdminResetNotification({
+          to: parent.email,
+          parentName: parent.name,
+          newPassword,
+          loginUrl: `${frontendUrl}/parents`,
+          ecoleNom,
+        });
+      } catch (emailErr) {
+        console.warn('[AUTH] Email de reset non envoyé:', emailErr.message);
+      }
+
+      await AuditLog.create({
+        tenantId,
+        userId: req.user.id,
+        userName: req.user.name,
+        action: 'PARENT_PASSWORD_RESET',
+        resource: `User: ${parent.email}`,
+        severity: 'MEDIUM',
+        sha256Signature: crypto.createHash('sha256').update(`${req.user.id}:reset:${parent.email}:${Date.now()}`).digest('hex'),
+      });
+
+      return res.json({
+        success: true,
+        newPassword,
+        emailSent: true,
+        message: `Mot de passe réinitialisé. Le parent a été notifié par email.`,
+      });
+    } catch (error) {
+      console.error('[AUTH RESET PARENT PASSWORD]:', error);
+      return res.status(500).json({ error: 'ServerError', message: error.message });
+    }
+  }
+
+  // POST /api/parent-forgot-password — Parent demande un lien de reset (public, pas d'auth)
+  static async parentForgotPassword(req, res) {
+    try {
+      const email = (req.body.email || '').toLowerCase().trim();
+      if (!email) return res.status(400).json({ error: 'Email requis.' });
+
+      const user = await User.findOne({
+        where: { email, roles: { [Op.contains]: ['PARENT'] } },
+      });
+
+      // Toujours répondre OK pour ne pas révéler si le compte existe
+      if (!user) {
+        return res.json({ success: true, message: 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.' });
+      }
+
+      const token = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 3600000); // 1 heure
+      await User.update(
+        { passwordResetToken: token, passwordResetExpires: expires },
+        { where: { id: user.id }, individualHooks: false }
+      );
+
+      const tenant = await Tenant.findByPk(user.tenantId, { attributes: ['name'] });
+      const ecoleNom = tenant?.name || 'L\'école';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://scolarite.letoitdesanges.com';
+      const resetUrl = `${frontendUrl}/parents/reset-password?token=${token}`;
+
+      try {
+        await EmailService.sendPasswordReset({
+          to: user.email,
+          parentName: user.name,
+          resetUrl,
+          ecoleNom,
+        });
+      } catch (emailErr) {
+        console.warn('[AUTH] Email forgot-password non envoyé:', emailErr.message);
+      }
+
+      return res.json({ success: true, message: 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.' });
+    } catch (error) {
+      console.error('[AUTH PARENT FORGOT PASSWORD]:', error);
+      return res.status(500).json({ error: 'ServerError', message: error.message });
+    }
+  }
+
+  // POST /api/parent-reset-password — Parent réinitialise avec le token (public, pas d'auth)
+  static async parentResetPassword(req, res) {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || !newPassword) return res.status(400).json({ error: 'Token et nouveau mot de passe requis.' });
+      if (newPassword.length < 6) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 6 caractères.' });
+
+      const user = await User.findOne({
+        where: {
+          passwordResetToken: token,
+          passwordResetExpires: { [Op.gt]: new Date() },
+          roles: { [Op.contains]: ['PARENT'] },
+        },
+      });
+
+      if (!user) return res.status(400).json({ error: 'Lien de réinitialisation invalide ou expiré.' });
+
+      const hashed = await bcrypt.hash(newPassword, 10);
+      await User.update(
+        { password: hashed, passwordResetToken: null, passwordResetExpires: null },
+        { where: { id: user.id }, individualHooks: false }
+      );
+
+      return res.json({ success: true, message: 'Mot de passe modifié avec succès. Vous pouvez vous connecter.' });
+    } catch (error) {
+      console.error('[AUTH PARENT RESET PASSWORD]:', error);
       return res.status(500).json({ error: 'ServerError', message: error.message });
     }
   }

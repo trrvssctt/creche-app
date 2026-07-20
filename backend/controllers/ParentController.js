@@ -1,5 +1,6 @@
 import { Op, QueryTypes } from 'sequelize';
 import axios from 'axios';
+import bcrypt from 'bcrypt';
 import {
   findDuplicateEleve, duplicateMessage,
   validatePiecesJointes, createPiecesJointes, missingRequiredPieces,
@@ -12,6 +13,7 @@ import { sequelize } from '../config/database.js';
 import { Tenant } from '../models/Tenant.js';
 import { User }   from '../models/User.js';
 import { uploadToCloudinary } from '../services/CloudinaryService.js';
+import { EmailService } from '../services/EmailService.js';
 
 // Vérifie que l'eleveId appartient bien au parent connecté
 function assertOwnsEleve(eleveId, req) {
@@ -760,6 +762,86 @@ export class ParentController {
       res.json({ success: true, message: 'Document signé avec succès.' });
     } catch (err) {
       console.error('[ParentController] signerDocument:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // POST /api/parent/factures/envoyer-email — Envoyer une facture par email au parent
+  static async sendInvoiceEmail(req, res) {
+    try {
+      const { tenantId } = req.user;
+      const { eleveId, echeanceIds } = req.body;
+      if (!eleveId || !echeanceIds?.length) {
+        return res.status(400).json({ error: 'eleveId et echeanceIds[] requis.' });
+      }
+
+      const allIds = await resolveAllEleveIds(req.user.id, tenantId, req.user.eleveIds || []);
+      if (!allIds.includes(eleveId)) {
+        return res.status(403).json({ error: 'Accès refusé à cet élève.' });
+      }
+
+      const echeances = await EcheancePaiement.findAll({
+        where: { id: { [Op.in]: echeanceIds }, eleveId, tenantId },
+        include: [
+          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom'] },
+          { model: Service, as: 'service', attributes: ['id', 'name'] },
+        ],
+      });
+      if (!echeances.length) return res.status(404).json({ error: 'Aucune échéance trouvée.' });
+
+      const user = await User.findByPk(req.user.id, { attributes: ['email', 'name'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency'] });
+      const eleve = echeances[0].eleve;
+      const currency = tenant?.currency || 'F CFA';
+      const total = echeances.reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+
+      await EmailService.sendInvoice({
+        to: user.email,
+        parentName: user.name,
+        ecoleNom: tenant?.name || 'L\'école',
+        enfantNom: `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim(),
+        mois: echeances.map(e => e.periodeLabel).join(', '),
+        montant: total,
+        currency,
+        echeances: echeances.map(e => ({
+          label: e.service?.name || 'Scolarité',
+          mois: e.periodeLabel,
+          montant: parseFloat(e.montant) || 0,
+        })),
+      });
+
+      res.json({ success: true, message: 'Facture envoyée par email.' });
+    } catch (err) {
+      console.error('[ParentController] sendInvoiceEmail:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // PUT /api/parent/change-password
+  static async changePassword(req, res) {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Mot de passe actuel et nouveau requis.' });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'Le nouveau mot de passe doit contenir au moins 6 caractères.' });
+      }
+
+      const user = await User.findByPk(req.user.id);
+      if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) {
+        return res.status(403).json({ error: 'Mot de passe actuel incorrect.' });
+      }
+
+      const hashed = await bcrypt.hash(newPassword, 10);
+      await User.update({ password: hashed }, { where: { id: user.id }, individualHooks: false });
+
+      res.json({ success: true, message: 'Mot de passe modifié avec succès.' });
+    } catch (err) {
+      console.error('[ParentController] changePassword:', err.message);
       res.status(500).json({ error: 'Erreur serveur', message: err.message });
     }
   }

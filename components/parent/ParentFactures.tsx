@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, CheckCircle2, Clock, Send, Loader2,
   ChevronDown, ChevronUp, Utensils, Bus, GraduationCap, BookOpen, Users,
-  Home, Package, Receipt, Download, FileText, BadgeCheck,
+  Home, Package, Receipt, Download, FileText, BadgeCheck, Mail,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
 import { generateRecu } from '../../services/pdfGenerator';
@@ -81,6 +81,7 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
   const [successMsg, setSuccessMsg] = useState('');
   const [showPaids, setShowPaids]   = useState(true);
   const [recuLoading, setRecuLoading] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState<string | null>(null);
 
   // Factures confirmées (payées par l'admin) depuis /parent/factures
   const [facturesConfirmees, setFacturesConfirmees] = useState<InvoiceFromApi[]>([]);
@@ -354,6 +355,26 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                           : <Download className="w-3.5 h-3.5" />}
                         Reçu
                       </button>
+                      {e.statut === 'PAYE' && (
+                        <button
+                          onClick={async () => {
+                            setEmailLoading(e.id);
+                            try {
+                              await apiClient.post('/parent/factures/envoyer-email', { eleveId: e.eleveId, echeanceIds: [e.id] });
+                              alert('Facture envoyée par email !');
+                            } catch { alert('Erreur lors de l\'envoi.'); }
+                            finally { setEmailLoading(null); }
+                          }}
+                          disabled={emailLoading === e.id}
+                          title="Recevoir par email"
+                          className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-white hover:bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl transition disabled:opacity-50"
+                        >
+                          {emailLoading === e.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Mail className="w-3.5 h-3.5" />}
+                          Email
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

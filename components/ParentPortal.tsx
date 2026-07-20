@@ -10,14 +10,15 @@ import ParentDocuments  from './parent/ParentDocuments';
 import ParentActualites from './parent/ParentActualites';
 import ParentAdmission  from './parent/ParentAdmission';
 import ParentSignature  from './parent/ParentSignature';
+import ParentProfil     from './parent/ParentProfil';
 import {
   Baby, CreditCard, BookOpen, Calendar, Folder, Bell, UserPlus, PenTool,
-  LogOut, Menu, X, AlertTriangle,
+  LogOut, Menu, X, AlertTriangle, Settings,
 } from 'lucide-react';
 
 interface Props { user: User; onLogout: () => void; }
 
-type Section = 'enfants' | 'factures' | 'bulletins' | 'planning' | 'documents' | 'signature' | 'actualites' | 'admission';
+type Section = 'enfants' | 'factures' | 'bulletins' | 'planning' | 'documents' | 'signature' | 'actualites' | 'admission' | 'profil';
 
 const NAV: { id: Section; label: string; icon: React.FC<any>; color: string }[] = [
   { id: 'enfants',    label: 'Mes enfants',       icon: Baby,       color: 'text-rose-500' },
@@ -28,6 +29,7 @@ const NAV: { id: Section; label: string; icon: React.FC<any>; color: string }[] 
   { id: 'signature',  label: 'Signature',          icon: PenTool,    color: 'text-indigo-500' },
   { id: 'actualites', label: 'Actualités',         icon: Bell,       color: 'text-purple-500' },
   { id: 'admission',  label: 'Inscrire un enfant', icon: UserPlus,   color: 'text-orange-500' },
+  { id: 'profil',     label: 'Mon profil',         icon: Settings,   color: 'text-slate-500' },
 ];
 
 const ParentPortal: React.FC<Props> = ({ user, onLogout }) => {
@@ -98,6 +100,7 @@ const ParentPortal: React.FC<Props> = ({ user, onLogout }) => {
       case 'signature':  return <ParentSignature onRefresh={fetchAll} />;
       case 'actualites': return <ParentActualites annonces={annonces} />;
       case 'admission':  return <ParentAdmission onSuccess={fetchAll} />;
+      case 'profil':     return <ParentProfil />;
     }
   };
 

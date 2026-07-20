@@ -28,6 +28,7 @@ router.get('/actualites',            ParentController.getActualites);
 router.get('/dossiers',              ParentController.getMesDossiers);
 router.post('/dossiers/upload',      upload.single('file'), ParentController.uploadDocument);
 router.post('/paiement/demander',    ParentController.demanderPaiement);
+router.post('/factures/envoyer-email', ParentController.sendInvoiceEmail);
 router.post('/admission',            ParentController.soumettreAdmission);
 router.put('/admission/:id',         ParentController.resoumettreAdmission);
 
@@ -36,5 +37,8 @@ router.get('/signature',             ParentController.getSignature);
 router.post('/signature',            ParentController.enregistrerSignature);
 router.get('/documents-a-signer',    ParentController.getDocumentsASigner);
 router.post('/signer-document',      ParentController.signerDocument);
+
+// Mot de passe
+router.put('/change-password',       ParentController.changePassword);
 
 export default router;

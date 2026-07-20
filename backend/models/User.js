@@ -75,8 +75,18 @@ User.init({
     type: DataTypes.JSONB,
     defaultValue: [],
     field: 'documents_signes'
+  },
+  passwordResetToken: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'password_reset_token'
+  },
+  passwordResetExpires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'password_reset_expires'
   }
-}, { 
+}, {
   sequelize, 
   modelName: 'user',
   tableName: 'users',

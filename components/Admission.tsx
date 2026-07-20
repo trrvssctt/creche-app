@@ -4,7 +4,7 @@ import {
   X, AlertCircle, Loader2, ArrowRight, UserCheck, UserX,
   Clock, GraduationCap, Baby, Phone, Mail, Save,
   Info, ChevronLeft, Edit3, MapPin, Heart, Shield, Stethoscope, Camera, Ban, UserPlus, Copy,
-  Globe, Building2, Users,
+  Globe, Building2, Users, Lock,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -276,6 +276,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [parentAccountLoading, setParentAccountLoading] = useState(false);
   const [parentAccountResult, setParentAccountResult] = useState<{ created: boolean; tempPassword?: string } | null>(null);
   const [parentsByEleveId, setParentsByEleveId] = useState<Record<string, { id: string; email: string; name: string; isActive: boolean }[]>>({});
+  const [resetPwLoading, setResetPwLoading] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [modeInscription, setModeInscription] = useState(false);
 
@@ -2112,6 +2113,29 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                         <UserPlus size={8}/> Compte portail : {parentsByEleveId[selected.id].map((p: any) => p.email).join(', ')}
                       </span>
                     )}
+                    {parentsByEleveId[selected.id]?.length > 0 && (
+                      <button
+                        disabled={!!resetPwLoading}
+                        onClick={async () => {
+                          const parentAccount = parentsByEleveId[selected.id][0];
+                          setResetPwLoading(parentAccount.id);
+                          try {
+                            const res = await apiClient.post(`/admin/parent-accounts/${parentAccount.id}/reset-password`);
+                            showToast(`Mot de passe réinitialisé pour ${parentAccount.email}. Nouveau : ${res.newPassword}. Email envoyé.`, 'success');
+                          } catch (err: any) {
+                            showToast(err?.message || 'Erreur lors du reset.', 'error');
+                          } finally {
+                            setResetPwLoading(null);
+                          }
+                        }}
+                        className="ml-1 px-2 py-0.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-full text-[8px] font-black flex items-center gap-1 hover:bg-rose-100 transition disabled:opacity-50"
+                        title="Réinitialiser le mot de passe du parent et l'informer par email"
+                      >
+                        {resetPwLoading === parentsByEleveId[selected.id][0]?.id
+                          ? <><Loader2 size={8} className="animate-spin"/> Reset…</>
+                          : <><Lock size={8}/> Reset mot de passe</>}
+                      </button>
+                    )}
                   </h4>
                   <div className="bg-slate-50 rounded-2xl p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <DetailRow label="Nom & Prénom" value={parentFull || null} />
@@ -2309,7 +2333,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   <CheckCircle2 size={32} className="text-emerald-500"/>
                 </div>
                 <h4 className="font-black text-slate-900 text-lg mb-1">Compte créé !</h4>
-                <p className="text-xs text-slate-500 mb-5">Transmettez ces informations au parent.</p>
+                <p className="text-xs text-slate-500 mb-5">Un email avec les identifiants a été envoyé au parent.</p>
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left space-y-2 mb-5">
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">URL de connexion</span>

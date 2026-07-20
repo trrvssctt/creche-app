@@ -119,6 +119,14 @@ router.post('/admin/parent-accounts',
   authenticateJWT, checkPermission(['ADMIN', 'DIRECTEUR']), tenantIsolation,
   AuthController.createParentAccount
 );
+router.post('/admin/parent-accounts/:id/reset-password',
+  authenticateJWT, checkPermission(['ADMIN', 'DIRECTEUR']), tenantIsolation,
+  AuthController.resetParentPassword
+);
+
+// ── Mot de passe oublié parent (routes publiques, pas d'auth) ────────────────
+router.post('/parent-forgot-password', AuthController.parentForgotPassword);
+router.post('/parent-reset-password',  AuthController.parentResetPassword);
 
 // ── Événements scolaires (agenda admin → visible parents) ─────────────────────
 const SCHOOL_ROLES = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE'];
