@@ -4,6 +4,7 @@ import {
   findDuplicateEleve, duplicateMessage,
   validatePiecesJointes, createPiecesJointes, missingRequiredPieces,
 } from '../utils/eleveDedup.js';
+import { EmailService } from '../services/EmailService.js';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -136,10 +137,51 @@ export class PublicController {
       // Référence lisible : PRE-AAAA-XXXX
       const ref = `PRE-${new Date().getFullYear()}-${eleve.id.slice(0, 6).toUpperCase()}`;
 
+      // Envoyer l'email de confirmation au parent
+      const parentEmail = parent1?.email;
+      const parentName = [parent1?.prenom, parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+      const ecoleNom = tenant.name || "L'école";
+      const frontendUrl = process.env.FRONTEND_URL || `https://${tenant.domain || 'scolarite.letoitdesanges.com'}`;
+      const suiviUrl = `${frontendUrl}/suivi-inscription?ref=${ref}`;
+
+      if (parentEmail) {
+        try {
+          await EmailService.sendGenericInfo({
+            to: parentEmail,
+            subject: `Confirmation de dépôt de dossier — ${ecoleNom}`,
+            ecoleNom,
+            role: 'support',
+            body: `
+              <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Dossier d'inscription déposé</h2>
+              <p style="color:#475569;font-size:14px;line-height:1.7">
+                Bonjour ${parentName},<br>
+                Votre dossier d'inscription pour <strong>${prenom} ${nom}</strong> a bien été transmis à <strong>${ecoleNom}</strong>.
+              </p>
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
+                <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Votre référence de suivi</p>
+                <p style="margin:0;font-weight:900;color:#d97706;font-size:28px;font-family:monospace;letter-spacing:3px">${ref}</p>
+              </div>
+              <p style="color:#475569;font-size:13px;line-height:1.6">
+                Conservez cette référence précieusement. Elle vous permettra de suivre l'avancement de votre dossier en ligne.
+              </p>
+              <div style="text-align:center;margin:28px 0 12px">
+                <a href="${suiviUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;text-decoration:none;padding:14px 36px;border-radius:12px;font-weight:800;font-size:14px">
+                  Suivre mon dossier
+                </a>
+              </div>
+              <p style="color:#94a3b8;font-size:12px;line-height:1.6">
+                L'école examinera votre dossier et vous contactera pour la suite de la procédure.
+              </p>`,
+          });
+        } catch (emailErr) {
+          console.warn('[PublicController] Email confirmation non envoyé:', emailErr.message);
+        }
+      }
+
       return res.status(201).json({
         success: true,
         reference: ref,
-        message:   `Votre dossier a été transmis à ${tenant.name || "l'école"}. Conservez votre référence : ${ref}. Vous serez contacté(e) pour la suite.`,
+        message:   `Votre dossier a été transmis à ${ecoleNom}. Conservez votre référence : ${ref}. Vous serez contacté(e) pour la suite.`,
       });
     } catch (err) {
       console.error('[PublicController.submitAdmission]', err);

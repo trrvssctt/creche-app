@@ -625,8 +625,43 @@ export class ParentController {
       // Enregistrer les pièces jointes dans le dossier numérique de l'élève
       if (pj.list.length) await createPiecesJointes(eleve, pj.list, req.user.id);
 
+      const ref = `PRE-${new Date().getFullYear()}-${eleve.id.slice(0, 6).toUpperCase()}`;
+
+      // Email de confirmation au parent
+      const user = await User.findByPk(req.user.id, { attributes: ['email', 'name'] });
+      const tenantInfo = await Tenant.findByPk(tenantId, { attributes: ['name', 'domain'] });
+      const ecoleNom = tenantInfo?.name || "L'école";
+      const frontendUrl = process.env.FRONTEND_URL || `https://${tenantInfo?.domain || 'scolarite.letoitdesanges.com'}`;
+
+      if (user?.email) {
+        try {
+          await EmailService.sendGenericInfo({
+            to: user.email,
+            subject: `Confirmation de dépôt de dossier — ${ecoleNom}`,
+            ecoleNom,
+            role: 'support',
+            body: `
+              <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Dossier d'inscription déposé</h2>
+              <p style="color:#475569;font-size:14px;line-height:1.7">
+                Bonjour ${user.name},<br>
+                Votre dossier d'inscription pour <strong>${prenom} ${nom}</strong> a bien été transmis à <strong>${ecoleNom}</strong>.
+              </p>
+              <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
+                <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Votre référence de suivi</p>
+                <p style="margin:0;font-weight:900;color:#d97706;font-size:28px;font-family:monospace;letter-spacing:3px">${ref}</p>
+              </div>
+              <p style="color:#475569;font-size:13px;line-height:1.6">
+                Vous pouvez suivre l'avancement depuis votre portail parents. L'école examinera votre dossier et vous contactera.
+              </p>`,
+          });
+        } catch (emailErr) {
+          console.warn('[ParentController] Email confirmation admission non envoyé:', emailErr.message);
+        }
+      }
+
       res.status(201).json({
         success: true,
+        reference: ref,
         message: "Dossier d'inscription soumis. L'école vous contactera pour confirmer.",
         eleve: { id: eleve.id, nom: eleve.nom, prenom: eleve.prenom, statut: eleve.statut },
       });
