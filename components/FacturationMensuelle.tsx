@@ -165,8 +165,8 @@ const FacturationMensuelle = ({
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   const [generating,    setGenerating]    = useState(false);
-  // phase 'data' = appels API en cours ; phase 'pdf' = rendu PDF en cours
-  const [progress,      setProgress]      = useState<{ done: number; total: number; phase: 'data' | 'pdf' } | null>(null);
+  // phase 'data' = appels API en cours ; phase 'pdf' = rendu PDF en cours ; phase 'email' = envoi emails
+  const [progress,      setProgress]      = useState<{ done: number; total: number; phase: 'data' | 'pdf' | 'email' } | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   // Fichier prêt à télécharger (blob + nom). L'utilisateur clique lui-même → contourne le popup-blocker.
   const [readyDownload, setReadyDownload] = useState<{ blob: Blob; filename: string } | null>(null);
@@ -327,6 +327,24 @@ const FacturationMensuelle = ({
           setProgress({ done, total, phase: 'pdf' })
         );
         setReadyDownload({ blob, filename: zipName });
+      }
+
+      // ── Phase 3 : envoi par email aux parents ───────────────────────────
+      setProgress({ done: 0, total: ids.length, phase: 'email' });
+      try {
+        const emailResult = await apiClient.post('/abonnements/echeances/envoyer-facture-email', {
+          eleveIds: ids,
+          month: selectedMonth,
+          year: selectedYear,
+        });
+        setProgress({ done: ids.length, total: ids.length, phase: 'email' });
+        const sent = emailResult?.sent || 0;
+        const skipped = emailResult?.skipped || 0;
+        if (sent > 0) showToast(`Facture envoyée par email à ${sent} parent${sent > 1 ? 's' : ''}${skipped ? ` (${skipped} sans email)` : ''}`, 'success');
+        else if (skipped > 0) showToast(`Aucun email envoyé (${skipped} élève${skipped > 1 ? 's' : ''} sans adresse email parent)`, 'warning');
+      } catch (emailErr: any) {
+        console.warn('[FacturationMensuelle] Erreur envoi email:', emailErr.message);
+        showToast('Factures générées mais erreur lors de l\'envoi par email', 'warning');
       }
     } catch (err: any) {
       const msg = err?.message || 'Erreur lors de la génération des factures.';
@@ -530,7 +548,9 @@ const FacturationMensuelle = ({
               <Loader2 size={13} className="animate-spin"/>
               {progress.phase === 'data'
                 ? `Données ${progress.done}/${progress.total}…`
-                : `PDFs ${progress.done}/${progress.total}…`}
+                : progress.phase === 'pdf'
+                ? `PDFs ${progress.done}/${progress.total}…`
+                : `Envoi emails ${progress.done}/${progress.total}…`}
             </div>
           )}
           <button
@@ -752,7 +772,9 @@ const FacturationMensuelle = ({
               <Loader2 size={12} className="animate-spin"/>
               {progress.phase === 'data'
                 ? `Collecte données ${progress.done}/${progress.total}…`
-                : `Génération PDFs ${progress.done}/${progress.total}…`}
+                : progress.phase === 'pdf'
+                ? `Génération PDFs ${progress.done}/${progress.total}…`
+                : `Envoi emails ${progress.done}/${progress.total}…`}
             </div>
           )}
           <button

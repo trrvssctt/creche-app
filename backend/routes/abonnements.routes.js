@@ -21,5 +21,6 @@ router.post('/echeances/payer-tout/:eleveId',     checkPermission(WRITE), Abonne
 router.post('/echeances/payer-selection',         checkPermission(WRITE), AbonnementController.paySelection);
 router.post('/echeances/relancer',                checkPermission(WRITE), AbonnementController.sendReminder);
 router.get('/echeances/facture/:eleveId',         checkPermission(READ),  AbonnementController.factureEleve);
+router.post('/echeances/envoyer-facture-email',  checkPermission(WRITE), AbonnementController.sendFactureEmail);
 
 export default router;

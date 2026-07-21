@@ -2,9 +2,10 @@ import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import {
   AbonnementEleve, EcheancePaiement, Eleve, Service, Sale, SaleItem, Payment,
-  Invoice, InvoiceItem,
+  Invoice, InvoiceItem, Tenant,
 } from '../models/index.js';
 import { NotificationService } from '../services/NotificationService.js';
+import { EmailService } from '../services/EmailService.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -812,6 +813,77 @@ export class AbonnementController {
       console.log(`[CRON] Échéances générées — ${abos.length} abonnements traités, ${aEnvoyer.length} rappels envoyés`);
     } catch (err) {
       console.error('[CRON.cronGenerateEcheances]', err);
+    }
+  }
+
+  // ── Envoyer la facture mensuelle par email au parent ─────────────────────
+  // POST /abonnements/echeances/envoyer-facture-email
+  // Body : { eleveId, month, year } ou { eleveIds: [...], month, year } pour batch
+  static async sendFactureEmail(req, res) {
+    try {
+      const { tenantId } = req.user;
+      const { eleveId, eleveIds, month, year } = req.body;
+      const m = parseInt(month) || new Date().getMonth() + 1;
+      const y = parseInt(year) || new Date().getFullYear();
+      const from = new Date(y, m - 1, 1).toISOString().split('T')[0];
+      const to   = new Date(y, m, 0).toISOString().split('T')[0];
+
+      const ids = eleveIds || (eleveId ? [eleveId] : []);
+      if (!ids.length) return res.status(400).json({ error: 'eleveId ou eleveIds[] requis.' });
+
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl'] });
+      const ecoleNom = tenant?.name || "L'école";
+      const currency = tenant?.currency || 'F CFA';
+
+      const MOIS_LABELS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+      const periodLabel = `${MOIS_LABELS[m - 1]} ${y}`;
+
+      const results = { sent: 0, skipped: 0, errors: [] };
+
+      for (const id of ids) {
+        try {
+          const eleve = await Eleve.findOne({ where: { id, tenantId } });
+          if (!eleve) { results.skipped++; continue; }
+
+          const parentEmail = eleve.parent1?.email;
+          if (!parentEmail) { results.skipped++; continue; }
+
+          const echeances = await EcheancePaiement.findAll({
+            where: { eleveId: id, tenantId, dateEcheance: { [Op.between]: [from, to] } },
+            include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre'] }],
+            order: [['dateEcheance', 'ASC']],
+          });
+
+          if (!echeances.length) { results.skipped++; continue; }
+
+          const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+          const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+
+          await EmailService.sendInvoice({
+            to: parentEmail,
+            parentName,
+            ecoleNom,
+            logoUrl: tenant?.logoUrl,
+            enfantNom: `${eleve.prenom} ${eleve.nom}`.trim(),
+            mois: periodLabel,
+            montant: totalDu,
+            currency,
+            echeances: echeances.map(e => ({
+              label: e.service?.name || 'Scolarité',
+              mois: periodLabel,
+              montant: parseFloat(e.montant) || 0,
+            })),
+          });
+          results.sent++;
+        } catch (emailErr) {
+          results.errors.push({ eleveId: id, message: emailErr.message });
+        }
+      }
+
+      res.json({ success: true, ...results });
+    } catch (err) {
+      console.error('[AbonnementController.sendFactureEmail]', err);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
     }
   }
 }
