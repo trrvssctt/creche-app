@@ -652,7 +652,15 @@ export class ParentController {
                 <p style="margin:0;font-weight:900;color:#d97706;font-size:28px;font-family:monospace;letter-spacing:3px">${ref}</p>
               </div>
               <p style="color:#475569;font-size:13px;line-height:1.6">
-                Vous pouvez suivre l'avancement depuis votre portail parents. L'école examinera votre dossier et vous contactera.
+                Conservez cette référence précieusement. Elle vous permettra de suivre l'avancement de votre dossier en ligne.
+              </p>
+              <div style="text-align:center;margin:28px 0 12px">
+                <a href="${frontendUrl}/suivi-inscription?ref=${ref}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;text-decoration:none;padding:14px 36px;border-radius:12px;font-weight:800;font-size:14px">
+                  Suivre mon dossier
+                </a>
+              </div>
+              <p style="color:#94a3b8;font-size:12px;line-height:1.6">
+                L'école examinera votre dossier et vous contactera pour la suite de la procédure.
               </p>`,
           });
         } catch (emailErr) {
