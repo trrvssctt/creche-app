@@ -14,6 +14,7 @@ import { Tenant } from '../models/Tenant.js';
 import { User }   from '../models/User.js';
 import { uploadToCloudinary } from '../services/CloudinaryService.js';
 import { EmailService } from '../services/EmailService.js';
+import { PdfReceiptService } from '../services/PdfReceiptService.js';
 
 // Vérifie que l'eleveId appartient bien au parent connecté
 async function assertOwnsEleve(eleveId, req) {
@@ -811,7 +812,7 @@ export class ParentController {
     }
   }
 
-  // POST /api/parent/factures/envoyer-email — Envoyer une facture par email au parent
+  // POST /api/parent/factures/envoyer-email — Envoyer une facture par email au parent avec PDF
   static async sendInvoiceEmail(req, res) {
     try {
       const { tenantId } = req.user;
@@ -828,22 +829,56 @@ export class ParentController {
       const echeances = await EcheancePaiement.findAll({
         where: { id: { [Op.in]: echeanceIds }, eleveId, tenantId },
         include: [
-          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom'] },
+          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom', 'matricule'] },
           { model: Service, as: 'service', attributes: ['id', 'name'] },
         ],
       });
       if (!echeances.length) return res.status(404).json({ error: 'Aucune échéance trouvée.' });
 
-      const user = await User.findByPk(req.user.id, { attributes: ['email', 'name'] });
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl'] });
+      const user = await User.findByPk(req.user.id, { attributes: ['email', 'name', 'telephone'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl', 'address', 'phone', 'email'] });
       const eleve = echeances[0].eleve;
       const currency = tenant?.currency || 'F CFA';
-      const total = echeances.reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+      const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+      const totalDu = echeances.filter(e => e.statut !== 'PAYE' && e.statut !== 'ANNULE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+      const total = totalPaye + totalDu;
+      const allPaid = totalDu === 0 && totalPaye > 0;
+      const dateStr = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const ref = `REC-${echeanceIds[0].slice(0, 8).toUpperCase()}`;
+
+      const pdfBuffer = await PdfReceiptService.generateReceipt({
+        ecoleNom: tenant?.name || "L'école",
+        ecoleAdresse: tenant?.address || '',
+        ecoleTel: tenant?.phone || '',
+        ecoleEmail: tenant?.email || '',
+        logoUrl: tenant?.logoUrl || '',
+        parentName: user?.name || 'Parent',
+        parentTel: user?.telephone || '',
+        enfantNom: `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim(),
+        matricule: eleve?.matricule || '',
+        classe: '', niveau: '',
+        reference: ref,
+        type: allPaid ? 'Reçu de paiement' : 'Facture',
+        date: dateStr,
+        periode: echeances.map(e => e.periodeLabel).filter(Boolean).join(', '),
+        currency,
+        lignes: echeances.map(e => ({
+          label: e.service?.name || 'Scolarité',
+          periode: e.periodeLabel || '',
+          echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : '',
+          montant: parseFloat(e.montant) || 0,
+          statut: e.statut,
+        })),
+        totalDu: total,
+        totalPaye,
+        soldeRestant: totalDu,
+        isPaid: allPaid,
+      });
 
       await EmailService.sendInvoice({
         to: user.email,
         parentName: user.name,
-        ecoleNom: tenant?.name || 'L\'école',
+        ecoleNom: tenant?.name || "L'école",
         logoUrl: tenant?.logoUrl,
         enfantNom: `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim(),
         mois: echeances.map(e => e.periodeLabel).join(', '),
@@ -854,9 +889,15 @@ export class ParentController {
           mois: e.periodeLabel,
           montant: parseFloat(e.montant) || 0,
         })),
+        subject: allPaid ? `Reçu de paiement — ${ref}` : `Facture — ${ref}`,
+        attachments: [{
+          filename: `${allPaid ? 'recu' : 'facture'}_${(eleve?.prenom || '').replace(/\s/g, '_')}_${(eleve?.nom || '').replace(/\s/g, '_')}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        }],
       });
 
-      res.json({ success: true, message: 'Facture envoyée par email.' });
+      res.json({ success: true, message: 'Reçu envoyé par email avec le PDF en pièce jointe.' });
     } catch (err) {
       console.error('[ParentController] sendInvoiceEmail:', err.message);
       res.status(500).json({ error: 'Erreur serveur', message: err.message });

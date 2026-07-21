@@ -390,109 +390,243 @@ export async function generateFicheRenseignements(eleve: EleveForPdf, ecole: Eco
   doc.save(`fiche_renseignements_${eleve.prenom}_${eleve.nom}.pdf`);
 }
 
-// ─── Reçu de paiement ─────────────────────────────────────────────────────────
+// ─── Reçu de paiement (format professionnel) ─────────────────────────────────
 
 export async function generateRecu(echeance: EcheanceForPdf, ecole: Ecole): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
+  const ml = 14;
+  const mr = 14;
+  const contentW = W - ml - mr;
 
   const logo = ecole.logoUrl ? await loadImageBase64(ecole.logoUrl) : null;
   drawHeader(doc, ecole, logo);
 
-  let y = 52;
+  let y = 46;
   const ref = `REC-${echeance.id.slice(0, 8).toUpperCase()}`;
   const datePmt = fmtDate(echeance.datePaiement || new Date().toISOString());
+  const montant = Number(echeance.montant || 0);
+  const fmtM = (n: number) => `${n.toLocaleString('fr-FR')} F CFA`;
+  const isPaid = echeance.statut === 'PAYE';
+  const serviceName = echeance.service?.name || echeance.periodeLabel || echeance.mois || 'Service';
+  const periode = echeance.periodeLabel || echeance.mois || '';
 
-  // Titre
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(15, 23, 42);
-  doc.text('REÇU DE PAIEMENT', W / 2, y, { align: 'center' });
-  y += 7;
+  // ─── Bloc référence ──────────────────────────────────
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(ml, y, contentW * 0.55, 28, 2, 2, 'D');
+
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`Référence : ${ref}  •  Date : ${datePmt}`, W / 2, y, { align: 'center' });
-  y += 12;
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Référence :', ml + 4, y + 7);
+  doc.setFont('helvetica', 'bold');
+  doc.text(ref, ml + 28, y + 7);
 
-  divider(doc, y);
-  y += 12;
+  doc.setFont('helvetica', 'normal');
+  doc.text('Type :', ml + 4, y + 14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(180, 83, 9);
+  doc.text('Reçu de paiement', ml + 17, y + 14);
 
-  // Bénéficiaire
-  if (echeance.eleve) {
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Date :', ml + 4, y + 21);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(datePmt, ml + 17, y + 21);
+
+  // ─── Bloc info paiement (à droite) ──────────────────
+  if (isPaid) {
+    const ipX = ml + contentW * 0.58;
+    const ipW = contentW * 0.42;
+    doc.setFillColor(236, 253, 245);
+    doc.roundedRect(ipX, y, ipW, 28, 2, 2, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(100, 116, 139);
-    doc.text('BÉNÉFICIAIRE', 20, y);
-    y += 6;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${echeance.eleve.prenom} ${echeance.eleve.nom}`, 20, y);
-    y += 14;
+    doc.setFontSize(8);
+    doc.setTextColor(22, 163, 74);
+    doc.text('Paiement confirmé', ipX + 4, y + 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Montant réglé : ${fmtM(montant)}`, ipX + 4, y + 16);
+    doc.text(`Date de paiement : ${datePmt}`, ipX + 4, y + 22);
   }
 
-  // Tableau montant
-  const tableY = y;
-  doc.setFillColor(248, 250, 252);
-  doc.rect(18, tableY, W - 36, 40, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.4);
-  doc.rect(18, tableY, W - 36, 40, 'D');
+  y += 36;
 
-  // En-tête tableau
-  doc.setFillColor(226, 232, 240);
-  doc.rect(18, tableY, W - 36, 9, 'F');
+  // ─── Résumé financier ──────────────────────────────
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105);
-  doc.text('DÉSIGNATION', 24, tableY + 6);
-  doc.text('MONTANT', W - 24, tableY + 6, { align: 'right' });
-
-  // Ligne service
-  const serviceName = echeance.service?.name || echeance.periodeLabel || echeance.mois || 'Service';
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(serviceName, 24, tableY + 20);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`${Number(echeance.montant).toLocaleString('fr-FR')} FCFA`, W - 24, tableY + 20, { align: 'right' });
+  doc.text(`Reçu ${ref} du ${datePmt}`, ml, y);
+  y += 10;
 
-  // Ligne total
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(51, 51, 51);
+  doc.text('Total dû', ml, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(fmtM(montant), ml + 50, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.text('Total payé', ml, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 163, 74);
+  doc.text(fmtM(isPaid ? montant : 0), ml + 50, y);
+  y += 7;
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Solde restant', ml, y);
+  doc.text(fmtM(isPaid ? 0 : montant), ml + 50, y);
+  y += 14;
+
+  // ─── Blocs élève / parent ──────────────────────────
+  const boxH = 22;
+  const boxW = contentW * 0.48;
+
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.3);
-  doc.line(18, tableY + 26, W - 18, tableY + 26);
+  doc.roundedRect(ml, y, boxW, boxH, 2, 2, 'D');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(5, 150, 105);
-  doc.text('TOTAL RÉGLÉ', 24, tableY + 35);
-  doc.setFontSize(13);
-  doc.text(`${Number(echeance.montant).toLocaleString('fr-FR')} FCFA`, W - 24, tableY + 35, { align: 'right' });
-  y += 50;
-
-  // Badge PAYÉ
-  doc.setFillColor(5, 150, 105);
-  doc.rect(W / 2 - 28, y, 56, 12, 'F');
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('ÉLÈVE', ml + 4, y + 5);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(255, 255, 255);
-  doc.text('✓  PAYÉ', W / 2, y + 8, { align: 'center' });
-  y += 22;
-
-  divider(doc, y);
-  y += 12;
-
-  // Note légale
-  doc.setFont('helvetica', 'italic');
   doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  const note = doc.splitTextToSize(
-    `Ce reçu constitue un document officiel de paiement émis par ${ecole.name || 'l\'établissement'}. `
-    + 'Conservez-le précieusement. En cas de litige, ce document fait foi.',
-    W - 40
-  );
-  doc.text(note, 20, y);
+  doc.setTextColor(15, 23, 42);
+  doc.text(echeance.eleve ? `${echeance.eleve.prenom} ${echeance.eleve.nom}` : '—', ml + 4, y + 12);
+  if (periode) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Période : ${periode}`, ml + 4, y + 18);
+  }
+
+  const px = ml + contentW * 0.52;
+  doc.roundedRect(px, y, boxW, boxH, 2, 2, 'D');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('SERVICE', px + 4, y + 5);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(serviceName, px + 4, y + 12);
+
+  y += boxH + 8;
+
+  // ─── Tableau des lignes ──────────────────────────
+  const colService = ml;
+  const colPeriode = ml + contentW * 0.4;
+  const colMontant = ml + contentW * 0.65;
+  const colStatut = ml + contentW * 0.82;
+  const rowH = 9;
+
+  // Header tableau
+  doc.setFillColor(30, 58, 95);
+  doc.rect(ml, y, contentW, rowH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
+  doc.text('SERVICE / OFFRE', colService + 3, y + 6);
+  doc.text('PÉRIODE', colPeriode, y + 6);
+  doc.text('MONTANT', colMontant, y + 6);
+  doc.text('STATUT', colStatut, y + 6);
+  y += rowH;
+
+  // Ligne de données
+  doc.setFillColor(248, 250, 252);
+  doc.rect(ml, y, contentW, rowH, 'F');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 51, 51);
+  doc.text(serviceName, colService + 3, y + 6, { maxWidth: contentW * 0.38 });
+  doc.text(periode, colPeriode, y + 6);
+  doc.setFont('helvetica', 'bold');
+  doc.text(fmtM(montant), colMontant, y + 6);
+
+  // Badge statut
+  const statutLabel = isPaid ? 'Payé' : echeance.statut === 'EN_RETARD' ? 'En retard' : 'En attente';
+  if (isPaid) {
+    doc.setFillColor(220, 252, 231);
+    doc.setTextColor(22, 163, 74);
+  } else {
+    doc.setFillColor(254, 243, 199);
+    doc.setTextColor(245, 158, 11);
+  }
+  doc.roundedRect(colStatut - 1, y + 1.5, 22, 6, 1.5, 1.5, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6);
+  doc.text(statutLabel, colStatut + 1.5, y + 5.5);
+  y += rowH;
+
+  // ─── Totaux ──────────────────────────────────
+  y += 6;
+  const totX = ml + contentW * 0.5;
+  const totW = contentW * 0.5;
+
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.rect(totX, y, totW, 8, 'D');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 51, 51);
+  doc.text('Total dû', totX + 4, y + 5.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(fmtM(montant), totX + totW - 4, y + 5.5, { align: 'right' });
+  y += 8;
+
+  doc.setFillColor(236, 253, 245);
+  doc.rect(totX, y, totW, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(22, 163, 74);
+  doc.text('Total payé', totX + 4, y + 5.5);
+  doc.text(fmtM(isPaid ? montant : 0), totX + totW - 4, y + 5.5, { align: 'right' });
+  y += 8;
+
+  const soldeBg = isPaid ? [220, 252, 231] : [30, 58, 95];
+  const soldeTxt = isPaid ? [22, 163, 74] : [255, 255, 255];
+  doc.setFillColor(soldeBg[0], soldeBg[1], soldeBg[2]);
+  doc.rect(totX, y, totW, 9, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(soldeTxt[0], soldeTxt[1], soldeTxt[2]);
+  doc.text('Solde restant', totX + 4, y + 6);
+  doc.text(fmtM(isPaid ? 0 : montant), totX + totW - 4, y + 6, { align: 'right' });
+  y += 14;
+
+  // ─── Tampon PAYÉ ──────────────────────────────
+  if (isPaid) {
+    doc.saveGraphicsState();
+    const stampX = W - 60;
+    const stampY = y - 6;
+    doc.setDrawColor(22, 163, 74);
+    doc.setLineWidth(1.2);
+    doc.roundedRect(stampX, stampY, 38, 15, 2, 2, 'D');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(22, 163, 74);
+    doc.text('PAYÉ', stampX + 6, stampY + 11);
+    doc.restoreGraphicsState();
+  }
+
+  y += 10;
+
+  // ─── Signatures ──────────────────────────────
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.line(ml, y, ml + 60, y);
+  doc.line(W - mr - 60, y, W - mr, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('Signature du parent / tuteur', ml, y + 4);
+  doc.text('Cachet & signature de la Direction', W - mr - 60, y + 4);
 
   drawFooter(doc, ecole, ref);
-  doc.save(`recu_paiement_${ref}_${(echeance.eleve?.nom || 'eleve').replace(/\s/g, '_')}.pdf`);
+  const fileName = `recu_${(echeance.eleve?.prenom || '').replace(/\s/g, '_')}_${(echeance.eleve?.nom || 'eleve').replace(/\s/g, '_')}_${(periode || ref).replace(/[\s/]/g, '_')}.pdf`;
+  doc.save(fileName);
 }
