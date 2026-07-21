@@ -1,8 +1,9 @@
-import { Eleve, Classe, Sale, SaleItem, Payment, Service, AbonnementEleve, EcheancePaiement } from '../models/index.js';
+import { Eleve, Classe, Sale, SaleItem, Payment, Service, AbonnementEleve, EcheancePaiement, Tenant } from '../models/index.js';
 import { sequelize } from '../config/database.js';
 import { Op } from 'sequelize';
 import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
 import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
+import { EmailService } from '../services/EmailService.js';
 
 // ── Création automatique des abonnements à l'inscription ────────────────────
 // Cherche les offres (MENSUALITE/BUS/CANTINE) applicables au niveau/options de
@@ -333,6 +334,57 @@ export class EleveController {
       }, { transaction: t });
 
       await t.commit();
+
+      // Envoyer la facture d'inscription par email au parent
+      const parentEmail = eleve.parent1?.email;
+      if (parentEmail) {
+        try {
+          const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl'] });
+          const ecoleNom = tenant?.name || "L'école";
+          const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+          const lignes = feeServices.map(svc => {
+            const prix = applyRemise(svc.price);
+            return `<tr>
+              <td style="padding:8px 12px;border-bottom:1px solid #f0ede8;font-size:13px;color:#475569">${svc.name}${remisePct > 0 ? ` <em>(remise ${remisePct}%)</em>` : ''}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #f0ede8;font-size:14px;font-weight:700;color:#1e293b;text-align:right">${prix.toLocaleString('fr-FR')} FCFA</td>
+            </tr>`;
+          }).join('');
+
+          await EmailService.sendGenericInfo({
+            to: parentEmail,
+            subject: `Reçu de paiement — Inscription ${eleve.prenom} ${eleve.nom} — ${ecoleNom}`,
+            ecoleNom,
+            logoUrl: tenant?.logoUrl,
+            role: 'comptabilite',
+            body: `
+              <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Reçu de paiement — Frais d'inscription</h2>
+              <p style="color:#475569;font-size:14px;line-height:1.7">
+                Bonjour ${parentName},<br>
+                Nous confirmons la réception du paiement des frais d'inscription pour <strong>${eleve.prenom} ${eleve.nom}</strong>.
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #f0ede8;border-radius:8px;overflow:hidden">
+                <tr style="background:#faf9f7">
+                  <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Description</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Montant</th>
+                </tr>
+                ${lignes}
+                <tr style="background:#fffbeb">
+                  <td style="padding:12px;font-size:13px;font-weight:800;color:#92400e;text-transform:uppercase">Total payé</td>
+                  <td style="padding:12px;font-size:16px;font-weight:900;color:#d97706;text-align:right">${totalHt.toLocaleString('fr-FR')} FCFA</td>
+                </tr>
+              </table>
+              <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:16px 0;text-align:center">
+                <p style="margin:0;font-size:12px;font-weight:700;color:#065f46">Référence : ${ref}</p>
+                <p style="margin:4px 0 0;font-size:11px;color:#047857">Méthode : ${methodePaiement}</p>
+              </div>
+              <p style="color:#94a3b8;font-size:12px;line-height:1.6">
+                Conservez cet email comme preuve de paiement. Pour toute question, contactez l'administration.
+              </p>`,
+          });
+        } catch (emailErr) {
+          console.warn('[EleveController.factureInscription] Email non envoyé:', emailErr.message);
+        }
+      }
 
       return res.status(201).json({
         sale: sale.toJSON(),
