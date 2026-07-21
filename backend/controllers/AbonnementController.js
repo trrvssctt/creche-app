@@ -132,30 +132,45 @@ async function sendPaymentReceiptEmail({ tenantId, eleve, echeances, methodePaie
     const parentEmail = eleve?.parent1?.email;
     if (!parentEmail) return;
 
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'logoUrl', 'currency'] });
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'logoUrl', 'currency', 'address', 'phone', 'email'] });
     const ecoleNom = tenant?.name || "L'école";
     const currency = tenant?.currency || 'F CFA';
     const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+    const parentTel = eleve.parent1?.telephone || eleve.parent1?.whatsapp || '';
     const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
     const total = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
     const dateFmt = new Date().toLocaleDateString('fr-FR');
 
     const lignes = echeances.map(e => ({
-      label: `${e.service?.name || 'Scolarité'} — ${e.periodeLabel || ''}`,
+      label: e.service?.name || 'Scolarité',
+      periode: e.periodeLabel || '',
+      echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : dateFmt,
       montant: parseFloat(e.montant || 0),
+      statut: 'Payé',
     }));
 
     const pdfBuffer = await PdfReceiptService.generateReceipt({
       ecoleNom,
+      ecoleAdresse: tenant?.address || '',
+      ecoleTel: tenant?.phone || '',
+      ecoleEmail: tenant?.email || '',
+      logoUrl: tenant?.logoUrl || '',
       parentName,
+      parentTel,
       enfantNom,
+      matricule: eleve.matricule || '',
+      classe: '',
+      niveau: eleve.niveau || '',
       reference: saleRef || 'N/A',
+      type: 'Reçu de paiement',
       date: dateFmt,
-      methode: methodePaiement || 'CASH',
+      periode: echeances.map(e => e.periodeLabel).filter(Boolean).join(', '),
       currency,
       lignes,
-      total,
-      titre: 'Reçu de paiement — Scolarité',
+      totalDu: total,
+      totalPaye: total,
+      soldeRestant: 0,
+      isPaid: true,
     });
 
     await EmailService.sendInvoice({
@@ -167,7 +182,7 @@ async function sendPaymentReceiptEmail({ tenantId, eleve, echeances, methodePaie
       mois: echeances.map(e => e.periodeLabel).filter(Boolean).join(', ') || dateFmt,
       montant: total,
       currency,
-      echeances: lignes.map(l => ({ label: l.label, mois: '', montant: l.montant })),
+      echeances: lignes.map(l => ({ label: l.label, mois: l.periode, montant: l.montant })),
       subject: `Reçu de paiement — ${enfantNom} — ${ecoleNom}`,
       attachments: [{
         filename: `recu_${enfantNom.replace(/\s+/g, '_')}_${dateFmt.replace(/\//g, '-')}.pdf`,
@@ -949,7 +964,7 @@ export class AbonnementController {
       const ids = eleveIds || (eleveId ? [eleveId] : []);
       if (!ids.length) return res.status(400).json({ error: 'eleveId ou eleveIds[] requis.' });
 
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl', 'address', 'phone', 'email'] });
       const ecoleNom = tenant?.name || "L'école";
       const currency = tenant?.currency || 'F CFA';
 
@@ -992,25 +1007,44 @@ export class AbonnementController {
           if (!echeances.length) { results.skippedNoData++; continue; }
 
           const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+          const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant || 0), 0);
           const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+          const parentTel = eleve.parent1?.telephone || eleve.parent1?.whatsapp || '';
 
           const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+          const dateFmt = new Date().toLocaleDateString('fr-FR');
+          const refFacture = `FAC-${(eleve.matricule || eleve.id.slice(0,8)).replace(/-/g, '').toUpperCase()}-${periodLabel.replace(/\s+/g, '').toUpperCase()}`;
+
           const lignesPdf = echeances.map(e => ({
             label: e.service?.name || 'Scolarité',
+            periode: periodLabel,
+            echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : '',
             montant: parseFloat(e.montant) || 0,
+            statut: e.statut === 'PAYE' ? 'Payé' : e.statut === 'EN_RETARD' ? 'En retard' : 'En attente',
           }));
 
           const pdfBuffer = await PdfReceiptService.generateReceipt({
             ecoleNom,
+            ecoleAdresse: tenant?.address || '',
+            ecoleTel: tenant?.phone || '',
+            ecoleEmail: tenant?.email || '',
+            logoUrl: tenant?.logoUrl || '',
             parentName,
+            parentTel,
             enfantNom,
-            reference: `FAC-${periodLabel.replace(/\s+/g, '-').toUpperCase()}`,
-            date: new Date().toLocaleDateString('fr-FR'),
-            methode: '',
+            matricule: eleve.matricule || '',
+            classe: '',
+            niveau: eleve.niveau || '',
+            reference: refFacture,
+            type: 'Facture mensuelle',
+            date: dateFmt,
+            periode: periodLabel,
             currency,
             lignes: lignesPdf,
-            total: totalDu,
-            titre: `Facture mensuelle — ${periodLabel}`,
+            totalDu,
+            totalPaye,
+            soldeRestant: totalDu - totalPaye,
+            isPaid: totalDu <= totalPaye,
           });
 
           await EmailService.sendInvoice({

@@ -340,28 +340,43 @@ export class EleveController {
       const parentEmail = eleve.parent1?.email;
       if (parentEmail) {
         try {
-          const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl'] });
+          const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl', 'address', 'phone', 'email'] });
           const ecoleNom = tenant?.name || "L'école";
           const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+          const parentTel = eleve.parent1?.telephone || eleve.parent1?.whatsapp || '';
           const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
           const dateFmt = new Date().toLocaleDateString('fr-FR');
 
           const pdfLignes = feeServices.map(svc => ({
             label: `${svc.name}${remisePct > 0 ? ` (remise ${remisePct}%)` : ''}`,
+            periode: '',
+            echeance: dateFmt,
             montant: applyRemise(svc.price),
+            statut: 'Payé',
           }));
 
           const pdfBuffer = await PdfReceiptService.generateReceipt({
             ecoleNom,
+            ecoleAdresse: tenant?.address || '',
+            ecoleTel: tenant?.phone || '',
+            ecoleEmail: tenant?.email || '',
+            logoUrl: tenant?.logoUrl || '',
             parentName,
+            parentTel,
             enfantNom,
+            matricule: eleve.matricule || '',
+            classe: '',
+            niveau: eleve.niveau || '',
             reference: ref,
+            type: "Reçu — Frais d'inscription",
             date: dateFmt,
-            methode: methodePaiement,
-            currency: 'FCFA',
+            periode: '',
+            currency: 'F CFA',
             lignes: pdfLignes,
-            total: totalHt,
-            titre: "Reçu de paiement — Frais d'inscription",
+            totalDu: totalHt,
+            totalPaye: totalHt,
+            soldeRestant: 0,
+            isPaid: true,
           });
 
           const lignes = feeServices.map(svc => {
