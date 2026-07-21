@@ -105,6 +105,8 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const [employees, setEmployees] = useState<any[]>([]);
   const [contracts, setContracts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dettesParEleve, setDettesParEleve] = useState<Record<string, number>>({});
+  const [expandedClasse, setExpandedClasse] = useState<string | null>(null);
 
   // Navigation
   const [viewMode, setViewMode] = useState<'NIVEAUX' | 'CLASSES'>('NIVEAUX');
@@ -120,13 +122,14 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [elevesData, admissionsData, servicesData, classesData, empData, contractsData] = await Promise.all([
+      const [elevesData, admissionsData, servicesData, classesData, empData, contractsData, echeancesData] = await Promise.all([
         apiClient.get('/eleves', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(() => []),
         apiClient.get('/customers').catch(() => []),
         apiClient.get('/services').catch(() => []),
         apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(() => []),
         apiClient.get('/hr/employees').catch(() => []),
         apiClient.get('/hr/contracts').catch(() => []),
+        apiClient.get('/abonnements/echeances').catch(() => []),
       ]);
       setEleves(Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? []));
       setAdmissions(Array.isArray(admissionsData) ? admissionsData : (admissionsData?.rows ?? []));
@@ -134,6 +137,17 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
       setClasses(Array.isArray(classesData) ? classesData : (classesData?.rows ?? []));
       setEmployees(Array.isArray(empData) ? empData : (empData?.rows ?? []));
       setContracts(Array.isArray(contractsData) ? contractsData : (contractsData?.rows ?? []));
+
+      // Calculer dette par élève (somme des échéances non payées)
+      const echeances = Array.isArray(echeancesData) ? echeancesData : [];
+      const dettes: Record<string, number> = {};
+      for (const ech of echeances) {
+        if (ech.statut !== 'PAYE' && ech.statut !== 'ANNULE') {
+          const id = ech.eleveId || ech.eleve_id;
+          if (id) dettes[id] = (dettes[id] || 0) + Number(ech.montant || 0);
+        }
+      }
+      setDettesParEleve(dettes);
     } catch (err) {
       console.error('Fetch Error:', err);
     } finally {
@@ -417,7 +431,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
         
         <div className="flex gap-2 p-1 bg-white border border-slate-100 rounded-2xl shadow-sm">
            <button onClick={() => setViewMode('NIVEAUX')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'NIVEAUX' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}>Par Niveau</button>
-           <button onClick={() => setViewMode('CLASSES')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'CLASSES' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}>Toutes les classes</button>
+           <button onClick={() => setViewMode('CLASSES')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'CLASSES' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}>Classes Physiques (sous-classes)</button>
         </div>
       </div>
 
@@ -508,7 +522,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
         /* VUE TOUTES LES CLASSES (TABLEAU) */
         <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden">
           <div className="p-8 border-b border-slate-50 flex items-center justify-between flex-wrap gap-4">
-            <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Registre Global des Classes ({classes.length})</h3>
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Classes Physiques — Sous-classes ({classes.length})</h3>
             {isAdmin && (
               <button
                  onClick={() => { setEditingClasse({ nom: '', niveau: 'PS' as any }); setShowClasseModal(true); }}
@@ -531,10 +545,17 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
             <tbody className="divide-y divide-slate-50">
               {classes.map(c => {
                 const def = NIVEAUX_DEF.find(n => n.value === c.niveau);
+                const isExpanded = expandedClasse === c.id;
+                const elevesClasse = eleves.filter(e => e.classeId === c.id && STATUTS_INSCRITS.includes(e.statut));
+                const totalDetteClasse = elevesClasse.reduce((sum, e) => sum + (dettesParEleve[e.id] || 0), 0);
                 return (
-                  <tr key={c.id} className="hover:bg-slate-50/50 transition-all">
+                  <React.Fragment key={c.id}>
+                  <tr className="hover:bg-slate-50/50 transition-all cursor-pointer" onClick={() => setExpandedClasse(isExpanded ? null : c.id)}>
                     <td className="px-8 py-5">
                        <div className="flex items-center gap-3">
+                          <div className={`w-6 h-6 flex items-center justify-center text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                            <ChevronRight size={14} />
+                          </div>
                           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${def?.accentBg || 'bg-slate-100'} ${def?.accentText || 'text-slate-600'}`}>
                             {c.nom.charAt(0)}
                           </div>
@@ -567,13 +588,65 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
                     </td>
                     <td className="px-8 py-5 text-right">
                        {isAdmin && (
-                         <div className="flex items-center justify-end gap-1">
+                         <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                            <button onClick={() => { setEditingClasse(c); setShowClasseModal(true); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit3 size={16} /></button>
                            <button onClick={() => handleDeleteClasse(c.id)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={16} /></button>
                          </div>
                        )}
                     </td>
                   </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-0">
+                        <div className="bg-slate-50/80 rounded-2xl mx-4 mb-4 overflow-hidden border border-slate-100">
+                          <div className="px-6 py-3 flex items-center justify-between border-b border-slate-100">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                              Élèves de {c.nom} ({elevesClasse.length})
+                            </span>
+                            {totalDetteClasse > 0 && (
+                              <span className="text-[10px] font-black text-rose-600">
+                                Total restant : {totalDetteClasse.toLocaleString('fr-FR')} {currency}
+                              </span>
+                            )}
+                          </div>
+                          {elevesClasse.length === 0 ? (
+                            <div className="px-6 py-6 text-center text-[10px] font-bold text-slate-400">Aucun élève affecté à cette classe</div>
+                          ) : (
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                                  <th className="px-6 py-2 text-left">Élève</th>
+                                  <th className="px-6 py-2 text-left">Matricule</th>
+                                  <th className="px-6 py-2 text-right">Montant restant</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {elevesClasse
+                                  .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr') || (a.prenom || '').localeCompare(b.prenom || '', 'fr'))
+                                  .map(e => {
+                                    const dette = dettesParEleve[e.id] || 0;
+                                    return (
+                                      <tr key={e.id} className="hover:bg-white/60">
+                                        <td className="px-6 py-2.5 font-bold text-slate-700">{e.nom} {e.prenom}</td>
+                                        <td className="px-6 py-2.5 text-slate-400 font-mono text-[10px]">{e.matricule || '—'}</td>
+                                        <td className="px-6 py-2.5 text-right">
+                                          {dette > 0 ? (
+                                            <span className="font-black text-rose-600">{dette.toLocaleString('fr-FR')} {currency}</span>
+                                          ) : (
+                                            <span className="font-bold text-emerald-600">À jour</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
