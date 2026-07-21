@@ -784,12 +784,13 @@ export class ParentController {
       }
 
       const signes = user.documentsSignes || [];
-      const existing = signes.find(d => d.eleveId === eleveId && d.typeDoc === typeDoc);
-      if (existing) {
-        return res.json({ success: true, message: 'Document déjà signé.', alreadySigned: true });
+      const existingIdx = signes.findIndex(d => d.eleveId === eleveId && d.typeDoc === typeDoc);
+      if (existingIdx >= 0) {
+        signes[existingIdx].date = new Date().toISOString();
+      } else {
+        signes.push({ eleveId, typeDoc, date: new Date().toISOString() });
       }
 
-      signes.push({ eleveId, typeDoc, date: new Date().toISOString() });
       await User.update(
         { documentsSignes: signes },
         { where: { id: req.user.id } }

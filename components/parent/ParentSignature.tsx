@@ -385,9 +385,19 @@ const ParentSignature: React.FC<Props> = ({ onRefresh }) => {
                       <Download size={14} />
                     </button>
                     {doc.signe ? (
-                      <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
-                        <CheckCircle2 size={12} /> Signé
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
+                          <CheckCircle2 size={12} /> Signé
+                        </span>
+                        <button
+                          onClick={() => handleSignDoc(doc)}
+                          disabled={!signatureUrl || signing === key}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 text-xs font-semibold hover:bg-indigo-50 disabled:opacity-40"
+                        >
+                          {signing === key ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                          Re-signer
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => handleSignDoc(doc)}
