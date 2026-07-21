@@ -16,12 +16,10 @@ import { uploadToCloudinary } from '../services/CloudinaryService.js';
 import { EmailService } from '../services/EmailService.js';
 
 // Vérifie que l'eleveId appartient bien au parent connecté
-function assertOwnsEleve(eleveId, req) {
-  const eleveIds = req.user?.eleveIds || [];
-  if (!eleveIds.includes(eleveId)) {
-    return false;
-  }
-  return true;
+async function assertOwnsEleve(eleveId, req) {
+  const { id: userId, tenantId, eleveIds = [] } = req.user || {};
+  const allIds = await resolveAllEleveIds(userId, tenantId, eleveIds);
+  return allIds.includes(eleveId);
 }
 
 // Résout tous les eleveIds d'un parent :
@@ -33,8 +31,7 @@ async function resolveAllEleveIds(userId, tenantId, eleveIdsFromJWT = []) {
     const tagged = await Eleve.findAll({
       where: {
         tenantId,
-        notes:  { [Op.like]: `%[parent_user:${userId}]%` },
-        statut: { [Op.in]: ['INSCRIT', 'ACTIF'] },
+        notes: { [Op.like]: `%[parent_user:${userId}]%` },
       },
       attributes: ['id'],
     });
@@ -71,7 +68,7 @@ export class ParentController {
       const { tenantId } = req.user;
       const { id } = req.params;
 
-      if (!assertOwnsEleve(id, req)) {
+      if (!(await assertOwnsEleve(id, req))) {
         return res.status(403).json({ error: 'Accès refusé à cet élève.' });
       }
 
@@ -328,7 +325,7 @@ export class ParentController {
 
       const where = { eleveId: { [Op.in]: eleveIds }, tenantId };
       if (req.query.eleveId) {
-        if (!assertOwnsEleve(req.query.eleveId, req)) {
+        if (!(await assertOwnsEleve(req.query.eleveId, req))) {
           return res.status(403).json({ error: 'Accès refusé à cet élève.' });
         }
         where.eleveId = req.query.eleveId;
@@ -352,7 +349,7 @@ export class ParentController {
       const { eleveId, typeDoc = 'AUTRE', nom } = req.body;
 
       if (!eleveId) return res.status(400).json({ error: 'eleveId requis.' });
-      if (!assertOwnsEleve(eleveId, req)) {
+      if (!(await assertOwnsEleve(eleveId, req))) {
         return res.status(403).json({ error: 'Accès refusé à cet élève.' });
       }
       if (!req.file) return res.status(400).json({ error: 'Fichier manquant.' });
@@ -389,7 +386,7 @@ export class ParentController {
       const { tenantId, name, eleveIds = [] } = req.user;
       const { echeanceId, eleveId, montant, methode = 'Wave', reference } = req.body;
 
-      if (eleveId && !assertOwnsEleve(eleveId, req)) {
+      if (eleveId && !(await assertOwnsEleve(eleveId, req))) {
         return res.status(403).json({ error: 'Accès refusé à cet élève.' });
       }
 
