@@ -339,9 +339,19 @@ const FacturationMensuelle = ({
         });
         setProgress({ done: ids.length, total: ids.length, phase: 'email' });
         const sent = emailResult?.sent || 0;
-        const skipped = emailResult?.skipped || 0;
-        if (sent > 0) showToast(`Facture envoyée par email à ${sent} parent${sent > 1 ? 's' : ''}${skipped ? ` (${skipped} sans email)` : ''}`, 'success');
-        else if (skipped > 0) showToast(`Aucun email envoyé (${skipped} élève${skipped > 1 ? 's' : ''} sans adresse email parent)`, 'warning');
+        const skippedNoEmail = emailResult?.skippedNoEmail || 0;
+        const skippedNoData = emailResult?.skippedNoData || 0;
+        if (sent > 0) {
+          const extras = [];
+          if (skippedNoEmail) extras.push(`${skippedNoEmail} sans email`);
+          if (skippedNoData) extras.push(`${skippedNoData} sans échéances`);
+          showToast(`Facture envoyée par email à ${sent} parent${sent > 1 ? 's' : ''}${extras.length ? ` (${extras.join(', ')})` : ''}`, 'success');
+        } else if (skippedNoEmail || skippedNoData) {
+          const reasons = [];
+          if (skippedNoEmail) reasons.push(`${skippedNoEmail} sans adresse email`);
+          if (skippedNoData) reasons.push(`${skippedNoData} sans échéances pour ce mois`);
+          showToast(`Aucun email envoyé : ${reasons.join(', ')}`, 'warning');
+        }
       } catch (emailErr: any) {
         console.warn('[FacturationMensuelle] Erreur envoi email:', emailErr.message);
         showToast('Factures générées mais erreur lors de l\'envoi par email', 'warning');

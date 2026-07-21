@@ -956,23 +956,40 @@ export class AbonnementController {
       const MOIS_LABELS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
       const periodLabel = `${MOIS_LABELS[m - 1]} ${y}`;
 
-      const results = { sent: 0, skipped: 0, errors: [] };
+      const results = { sent: 0, skippedNoEmail: 0, skippedNoData: 0, errors: [] };
 
       for (const id of ids) {
         try {
           const eleve = await Eleve.findOne({ where: { id, tenantId } });
-          if (!eleve) { results.skipped++; continue; }
+          if (!eleve) { results.skippedNoData++; continue; }
 
           const parentEmail = eleve.parent1?.email;
-          if (!parentEmail) { results.skipped++; continue; }
+          if (!parentEmail) { results.skippedNoEmail++; continue; }
 
-          const echeances = await EcheancePaiement.findAll({
+          // Chercher échéances enregistrées
+          let echeances = await EcheancePaiement.findAll({
             where: { eleveId: id, tenantId, dateEcheance: { [Op.between]: [from, to] } },
-            include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre'] }],
+            include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre', 'estRecurrent'] }],
             order: [['dateEcheance', 'ASC']],
           });
 
-          if (!echeances.length) { results.skipped++; continue; }
+          // Fallback : calculer depuis les abonnements actifs si aucune échéance
+          if (!echeances.length) {
+            const abos = await AbonnementEleve.findAll({
+              where: { tenantId, eleveId: id, isActive: true },
+              include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'typeOffre', 'estRecurrent'] }],
+            });
+            const abosRecurrents = abos.filter(abo => abo.service?.estRecurrent !== false);
+            if (abosRecurrents.length > 0) {
+              echeances = abosRecurrents.map(abo => ({
+                montant: abo.montant,
+                service: abo.service ? abo.service.toJSON() : null,
+                periodeLabel: periodeLabel(abo.periodicite || 'MENSUEL', from),
+              }));
+            }
+          }
+
+          if (!echeances.length) { results.skippedNoData++; continue; }
 
           const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
           const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
