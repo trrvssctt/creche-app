@@ -6,7 +6,6 @@ import {
   Filter, Calendar, User as UserIcon, TrendingUp,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
-import { generateRecu } from '../../services/pdfGenerator';
 
 interface ServiceInfo {
   id: string; name: string; description?: string;
@@ -98,8 +97,14 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
 
   const handleRecu = async (e: Echeance) => {
     setRecuLoading(e.id);
-    try { await generateRecu(e, ecole || {}); }
-    catch { alert('Erreur lors de la génération du reçu.'); }
+    try {
+      const { blob, filename } = await apiClient.requestBlob(`/parent/echeances/${e.id}/recu-pdf`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename || `recu_${e.id}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch { alert('Erreur lors de la génération du reçu.'); }
     finally { setRecuLoading(null); }
   };
 

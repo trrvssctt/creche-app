@@ -812,6 +812,87 @@ export class ParentController {
     }
   }
 
+  // Helper interne : génère le PDF reçu/facture pour une ou plusieurs échéances
+  static async _buildReceiptPdf(tenantId, userId, echeanceIds, eleveId) {
+    const echeances = await EcheancePaiement.findAll({
+      where: { id: { [Op.in]: echeanceIds }, eleveId, tenantId },
+      include: [
+        { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom', 'matricule', 'niveau'] },
+        { model: Service, as: 'service', attributes: ['id', 'name'] },
+      ],
+    });
+    if (!echeances.length) return null;
+
+    const user = await User.findByPk(userId, { attributes: ['email', 'name'] });
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl', 'address', 'phone', 'email'] });
+    const eleve = echeances[0].eleve;
+    const currency = tenant?.currency || 'F CFA';
+    const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+    const totalDuCalc = echeances.filter(e => e.statut !== 'PAYE' && e.statut !== 'ANNULE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+    const total = totalPaye + totalDuCalc;
+    const allPaid = totalDuCalc === 0 && totalPaye > 0;
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    const enfantNom = `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim();
+    const ref = `FAC-${(eleve?.matricule || echeanceIds[0].slice(0, 8)).toUpperCase()}-${(echeances[0].periodeLabel || '').replace(/\s+/g, '').toUpperCase() || 'X'}`;
+
+    const pdfBuffer = await PdfReceiptService.generateReceipt({
+      ecoleNom: tenant?.name || "L'école",
+      ecoleAdresse: tenant?.address || '',
+      ecoleTel: tenant?.phone || '',
+      ecoleEmail: tenant?.email || '',
+      logoUrl: tenant?.logoUrl || '',
+      parentName: user?.name || 'Parent',
+      parentTel: '',
+      enfantNom,
+      matricule: eleve?.matricule || '',
+      classe: '',
+      niveau: eleve?.niveau || '',
+      reference: ref,
+      type: allPaid ? 'Reçu de paiement' : 'Facture mensuelle',
+      date: dateStr,
+      periode: echeances.map(e => e.periodeLabel).filter(Boolean).join(', '),
+      currency,
+      lignes: echeances.map(e => ({
+        label: e.service?.name || 'Scolarité',
+        periode: e.periodeLabel || '',
+        echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : dateStr,
+        montant: parseFloat(e.montant || 0),
+        statut: e.statut === 'PAYE' ? 'Payé' : e.statut === 'EN_RETARD' ? 'En retard' : 'En attente',
+      })),
+      totalDu: total,
+      totalPaye,
+      soldeRestant: totalDuCalc,
+      isPaid: allPaid,
+    });
+
+    return { pdfBuffer, ref, enfantNom, total, currency, allPaid, echeances, tenant, user };
+  }
+
+  // GET /api/parent/echeances/:id/recu-pdf — Télécharger le reçu PDF (identique Recouvrement)
+  static async downloadRecuPdf(req, res) {
+    try {
+      const { tenantId } = req.user;
+      const echeanceId = req.params.id;
+
+      const ech = await EcheancePaiement.findOne({ where: { id: echeanceId, tenantId }, attributes: ['id', 'eleveId'] });
+      if (!ech) return res.status(404).json({ error: 'Échéance introuvable.' });
+
+      const allIds = await resolveAllEleveIds(req.user.id, tenantId, req.user.eleveIds || []);
+      if (!allIds.includes(ech.eleveId)) return res.status(403).json({ error: 'Accès refusé.' });
+
+      const result = await ParentController._buildReceiptPdf(tenantId, req.user.id, [echeanceId], ech.eleveId);
+      if (!result) return res.status(404).json({ error: 'Impossible de générer le PDF.' });
+
+      const filename = `recu_${result.enfantNom.replace(/\s+/g, '_')}_${result.ref}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(result.pdfBuffer);
+    } catch (err) {
+      console.error('[ParentController] downloadRecuPdf:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
   // POST /api/parent/factures/envoyer-email — Envoyer une facture par email au parent avec PDF
   static async sendInvoiceEmail(req, res) {
     try {
@@ -826,62 +907,18 @@ export class ParentController {
         return res.status(403).json({ error: 'Accès refusé à cet élève.' });
       }
 
-      const echeances = await EcheancePaiement.findAll({
-        where: { id: { [Op.in]: echeanceIds }, eleveId, tenantId },
-        include: [
-          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom', 'matricule'] },
-          { model: Service, as: 'service', attributes: ['id', 'name'] },
-        ],
-      });
-      if (!echeances.length) return res.status(404).json({ error: 'Aucune échéance trouvée.' });
+      const result = await ParentController._buildReceiptPdf(tenantId, req.user.id, echeanceIds, eleveId);
+      if (!result) return res.status(404).json({ error: 'Aucune échéance trouvée.' });
 
-      const user = await User.findByPk(req.user.id, { attributes: ['email', 'name', 'telephone'] });
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl', 'address', 'phone', 'email'] });
-      const eleve = echeances[0].eleve;
-      const currency = tenant?.currency || 'F CFA';
-      const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
-      const totalDu = echeances.filter(e => e.statut !== 'PAYE' && e.statut !== 'ANNULE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
-      const total = totalPaye + totalDu;
-      const allPaid = totalDu === 0 && totalPaye > 0;
-      const dateStr = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-      const ref = `REC-${echeanceIds[0].slice(0, 8).toUpperCase()}`;
-
-      const pdfBuffer = await PdfReceiptService.generateReceipt({
-        ecoleNom: tenant?.name || "L'école",
-        ecoleAdresse: tenant?.address || '',
-        ecoleTel: tenant?.phone || '',
-        ecoleEmail: tenant?.email || '',
-        logoUrl: tenant?.logoUrl || '',
-        parentName: user?.name || 'Parent',
-        parentTel: user?.telephone || '',
-        enfantNom: `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim(),
-        matricule: eleve?.matricule || '',
-        classe: '', niveau: '',
-        reference: ref,
-        type: allPaid ? 'Reçu de paiement' : 'Facture',
-        date: dateStr,
-        periode: echeances.map(e => e.periodeLabel).filter(Boolean).join(', '),
-        currency,
-        lignes: echeances.map(e => ({
-          label: e.service?.name || 'Scolarité',
-          periode: e.periodeLabel || '',
-          echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : '',
-          montant: parseFloat(e.montant) || 0,
-          statut: e.statut,
-        })),
-        totalDu: total,
-        totalPaye,
-        soldeRestant: totalDu,
-        isPaid: allPaid,
-      });
+      const { pdfBuffer, ref, enfantNom, total, currency, allPaid, echeances, tenant, user } = result;
 
       await EmailService.sendInvoice({
         to: user.email,
         parentName: user.name,
         ecoleNom: tenant?.name || "L'école",
         logoUrl: tenant?.logoUrl,
-        enfantNom: `${eleve?.prenom || ''} ${eleve?.nom || ''}`.trim(),
-        mois: echeances.map(e => e.periodeLabel).join(', '),
+        enfantNom,
+        mois: echeances.map(e => e.periodeLabel).filter(Boolean).join(', '),
         montant: total,
         currency,
         echeances: echeances.map(e => ({
@@ -889,9 +926,9 @@ export class ParentController {
           mois: e.periodeLabel,
           montant: parseFloat(e.montant) || 0,
         })),
-        subject: allPaid ? `Reçu de paiement — ${ref}` : `Facture — ${ref}`,
+        subject: allPaid ? `Reçu de paiement — ${enfantNom} — ${tenant?.name || ''}` : `Facture — ${enfantNom} — ${tenant?.name || ''}`,
         attachments: [{
-          filename: `${allPaid ? 'recu' : 'facture'}_${(eleve?.prenom || '').replace(/\s/g, '_')}_${(eleve?.nom || '').replace(/\s/g, '_')}.pdf`,
+          filename: `${allPaid ? 'recu' : 'facture'}_${enfantNom.replace(/\s+/g, '_')}.pdf`,
           content: pdfBuffer,
           contentType: 'application/pdf',
         }],

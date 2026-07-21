@@ -28,6 +28,7 @@ router.get('/actualites',            ParentController.getActualites);
 router.get('/dossiers',              ParentController.getMesDossiers);
 router.post('/dossiers/upload',      upload.single('file'), ParentController.uploadDocument);
 router.post('/paiement/demander',    ParentController.demanderPaiement);
+router.get('/echeances/:id/recu-pdf',  ParentController.downloadRecuPdf);
 router.post('/factures/envoyer-email', ParentController.sendInvoiceEmail);
 router.post('/admission',            ParentController.soumettreAdmission);
 router.put('/admission/:id',         ParentController.resoumettreAdmission);
