@@ -242,7 +242,7 @@ const Payments = ({ currency, tenantSettings }: { currency: string; tenantSettin
           ...p,
           saleRef: sale.reference,
           saleId: sale.id,
-          customer: sale.customer?.companyName || sale.customer?.name || 'Vente Directe',
+          customer: sale.customer?.companyName || sale.customer?.name || sale.walkinName || 'Vente Directe',
           operator: sale.operator || 'Admin',
           saleStatus: sale.status,
         }))

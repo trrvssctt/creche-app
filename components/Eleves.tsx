@@ -2105,52 +2105,79 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   </p>
                 </div>
 
-                {/* Offres de scolarité applicables */}
+                {/* Récapitulatif financier */}
                 {servicesApplicables.length > 0 && (() => {
-                  const premierVersement = servicesApplicables.reduce((sum, s) => {
-                    // Premier versement = frais ponctuels + 1ère mensualité (pas × dureeMois)
-                    return sum + Number(s.price);
-                  }, 0);
+                  const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
+                  const fraisPonctuels = servicesApplicables.filter(s => {
+                    const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+                    return !RECURRING.includes(type);
+                  });
+                  const servicesRecurrents = servicesApplicables.filter(s => {
+                    const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+                    return RECURRING.includes(type);
+                  });
+                  const totalPaye = fraisPonctuels.reduce((sum, s) => sum + Number(s.price), 0);
+                  const totalMensuel = servicesRecurrents.reduce((sum, s) => sum + Number(s.price), 0);
                   return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
-                    <p className="text-[9px] font-black text-amber-700 uppercase tracking-widest flex items-center gap-2">
-                      <Banknote size={13} /> Tarifs applicables
-                    </p>
-                    <div className="space-y-2">
-                      {servicesApplicables.map(s => {
-                        const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-                        const isMensuel = type === 'MENSUALITE' || type === 'CANTINE' || type === 'BUS';
-                        return (
-                          <div key={s.id} className="flex justify-between items-center">
-                            <div>
-                              <span className="font-black text-amber-900 text-sm">{s.name}</span>
-                              <span className="ml-2 text-[9px] font-bold text-amber-500 uppercase">
-                                {isMensuel ? '/mois' : 'Ponctuel'}
+                  <div className="space-y-4">
+                    {/* Frais payés */}
+                    {fraisPonctuels.length > 0 && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-3">
+                        <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-2">
+                          <CheckCircle2 size={13} /> Frais d'inscription — Payés
+                        </p>
+                        <div className="space-y-2">
+                          {fraisPonctuels.map(s => (
+                            <div key={s.id} className="flex justify-between items-center">
+                              <span className="font-bold text-emerald-900 text-sm">{s.name}</span>
+                              <span className="font-black text-emerald-800 text-sm">
+                                {Number(s.price).toLocaleString('fr-FR')} {currency}
                               </span>
                             </div>
-                            <span className="font-black text-amber-800 text-sm">
-                              {Number(s.price).toLocaleString('fr-FR')} {currency}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="pt-2 border-t border-amber-200 space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Premier versement</span>
-                        <span className="font-black text-amber-900 text-sm">
-                          {premierVersement.toLocaleString('fr-FR')} {currency}
-                        </span>
+                          ))}
+                        </div>
+                        <div className="pt-2 border-t border-emerald-200 flex justify-between items-center">
+                          <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Total payé</span>
+                          <span className="font-black text-emerald-900 text-base">
+                            {totalPaye.toLocaleString('fr-FR')} {currency}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-emerald-600 font-bold flex items-center gap-1.5">
+                          <CheckCircle2 size={10} /> Enregistré en trésorerie · Méthode : {fraisMethodePaiement}
+                        </p>
                       </div>
-                      <p className="text-[9px] text-amber-500 font-bold">
-                        Frais ponctuels + 1ère mensualité — les versements suivants sont gérés dans le Recouvrement.
-                      </p>
-                    </div>
-                    <InscriptionFactureButton
-                      inscritEleve={inscritEleve}
-                      servicesApplicables={servicesApplicables}
-                      currency={currency}
-                    />
+                    )}
+
+                    {/* Services récurrents */}
+                    {servicesRecurrents.length > 0 && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                          <Banknote size={13} /> Mensualités — Gérées via le Recouvrement
+                        </p>
+                        <div className="space-y-2">
+                          {servicesRecurrents.map(s => (
+                            <div key={s.id} className="flex justify-between items-center">
+                              <div>
+                                <span className="font-bold text-slate-700 text-sm">{s.name}</span>
+                                <span className="ml-2 text-[9px] font-bold text-slate-400 uppercase">/mois</span>
+                              </div>
+                              <span className="font-black text-slate-600 text-sm">
+                                {Number(s.price).toLocaleString('fr-FR')} {currency}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total mensuel</span>
+                          <span className="font-black text-slate-700 text-sm">
+                            {totalMensuel.toLocaleString('fr-FR')} {currency}/mois
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-slate-400 font-bold">
+                          Ces services seront facturés mensuellement via le module Recouvrement.
+                        </p>
+                      </div>
+                    )}
                   </div>
                   );
                 })()}
