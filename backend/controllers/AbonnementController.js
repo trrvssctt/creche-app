@@ -6,6 +6,7 @@ import {
 } from '../models/index.js';
 import { NotificationService } from '../services/NotificationService.js';
 import { EmailService } from '../services/EmailService.js';
+import { PdfReceiptService } from '../services/PdfReceiptService.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,60 @@ async function createPaymentBundle({ tenantId, echeances, methodePaiement, eleve
   }
 
   return { sale, invoiceId };
+}
+
+// Envoie le reçu de paiement par email au parent avec le PDF en pièce jointe
+async function sendPaymentReceiptEmail({ tenantId, eleve, echeances, methodePaiement, saleRef }) {
+  try {
+    const parentEmail = eleve?.parent1?.email;
+    if (!parentEmail) return;
+
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'logoUrl', 'currency'] });
+    const ecoleNom = tenant?.name || "L'école";
+    const currency = tenant?.currency || 'F CFA';
+    const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+    const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+    const total = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+    const dateFmt = new Date().toLocaleDateString('fr-FR');
+
+    const lignes = echeances.map(e => ({
+      label: `${e.service?.name || 'Scolarité'} — ${e.periodeLabel || ''}`,
+      montant: parseFloat(e.montant || 0),
+    }));
+
+    const pdfBuffer = await PdfReceiptService.generateReceipt({
+      ecoleNom,
+      parentName,
+      enfantNom,
+      reference: saleRef || 'N/A',
+      date: dateFmt,
+      methode: methodePaiement || 'CASH',
+      currency,
+      lignes,
+      total,
+      titre: 'Reçu de paiement — Scolarité',
+    });
+
+    await EmailService.sendInvoice({
+      to: parentEmail,
+      parentName,
+      ecoleNom,
+      logoUrl: tenant?.logoUrl,
+      enfantNom,
+      mois: echeances.map(e => e.periodeLabel).filter(Boolean).join(', ') || dateFmt,
+      montant: total,
+      currency,
+      echeances: lignes.map(l => ({ label: l.label, mois: '', montant: l.montant })),
+      subject: `Reçu de paiement — ${enfantNom} — ${ecoleNom}`,
+      attachments: [{
+        filename: `recu_${enfantNom.replace(/\s+/g, '_')}_${dateFmt.replace(/\//g, '-')}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      }],
+    });
+  } catch (err) {
+    console.warn('[sendPaymentReceiptEmail] Email non envoyé:', err.message);
+  }
 }
 
 // ── Contrôleur ──────────────────────────────────────────────────────────────
@@ -296,6 +351,16 @@ export class AbonnementController {
       }
 
       await t.commit();
+
+      // Envoyer le reçu par email au parent (async, non-bloquant)
+      sendPaymentReceiptEmail({
+        tenantId: req.user.tenantId,
+        eleve: ech.eleve,
+        echeances: [ech],
+        methodePaiement,
+        saleRef: sale.reference,
+      });
+
       return res.json({ echeance: ech, saleId: sale.id, invoiceId });
     } catch (err) {
       await t.rollback();
@@ -365,6 +430,15 @@ export class AbonnementController {
       }
 
       await t.commit();
+
+      sendPaymentReceiptEmail({
+        tenantId: req.user.tenantId,
+        eleve,
+        echeances,
+        methodePaiement,
+        saleRef: sale.reference,
+      });
+
       return res.json({ count: echeances.length, saleId: sale.id, invoiceId });
     } catch (err) {
       await t.rollback();
@@ -435,6 +509,15 @@ export class AbonnementController {
       }
 
       await t.commit();
+
+      sendPaymentReceiptEmail({
+        tenantId: req.user.tenantId,
+        eleve,
+        echeances,
+        methodePaiement,
+        saleRef: sale.reference,
+      });
+
       return res.json({
         count: echeances.length,
         saleId: sale.id,
@@ -451,7 +534,7 @@ export class AbonnementController {
   // ── Envoyer une relance ──────────────────────────────────────────────────
   static async sendReminder(req, res) {
     try {
-      const { echeanceIds, canal = 'WHATSAPP' } = req.body; // canal: 'EMAIL' | 'WHATSAPP'
+      const { echeanceIds, canal = 'EMAIL' } = req.body;
       if (!echeanceIds?.length)
         return res.status(400).json({ error: 'MissingIds', message: 'Aucune échéance sélectionnée.' });
 
@@ -463,6 +546,10 @@ export class AbonnementController {
         ],
       });
 
+      const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl', 'currency'] });
+      const ecoleNom = tenant?.name || 'Le Toit des Anges';
+      const currency = tenant?.currency || 'F CFA';
+
       let sent = 0;
       for (const ech of echeances) {
         const eleve = ech.eleve;
@@ -472,19 +559,50 @@ export class AbonnementController {
         const montantFmt = parseFloat(ech.montant).toLocaleString('fr-FR');
         const dateFmt = new Date(ech.dateEcheance).toLocaleDateString('fr-FR');
 
-        const message = `Bonjour ${parentNom},\n\nNous vous rappelons qu'une redevance de *${montantFmt} F CFA* pour *${ech.service?.name || 'scolarité'}* (${ech.periodeLabel}) est due le ${dateFmt} pour l'élève *${eleve.prenom} ${eleve.nom}*.\n\nMerci de vous en acquitter auprès de notre caisse.\n\n_Le Toit des Anges_`;
+        if (canal === 'EMAIL') {
+          const parentEmail = eleve.parent1?.email;
+          if (!parentEmail) continue;
 
-        const recipient = canal === 'EMAIL'
-          ? eleve.parent1?.email
-          : (eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone);
-
-        if (recipient) {
-          await NotificationService.send(canal, recipient, {
-            subject: `Relance redevance — ${eleve.prenom} ${eleve.nom}`,
-            message,
+          await EmailService.sendGenericInfo({
+            to: parentEmail,
+            subject: `Relance — Échéance ${ech.service?.name || 'scolarité'} — ${eleve.prenom} ${eleve.nom}`,
+            ecoleNom,
+            logoUrl: tenant?.logoUrl,
+            role: 'comptabilite',
+            body: `
+              <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Rappel de paiement</h2>
+              <p style="color:#475569;font-size:14px;line-height:1.7">
+                Bonjour ${parentNom},<br>
+                Nous vous rappelons qu'une échéance de paiement reste due pour votre enfant <strong>${eleve.prenom} ${eleve.nom}</strong>.
+              </p>
+              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:20px;margin:20px 0">
+                <table style="width:100%">
+                  <tr><td style="color:#78716c;font-size:13px;padding:4px 0">Service :</td><td style="font-weight:700;color:#1e293b;font-size:14px">${ech.service?.name || 'Scolarité'}</td></tr>
+                  <tr><td style="color:#78716c;font-size:13px;padding:4px 0">Période :</td><td style="font-weight:700;color:#1e293b;font-size:14px">${ech.periodeLabel || ''}</td></tr>
+                  <tr><td style="color:#78716c;font-size:13px;padding:4px 0">Montant :</td><td style="font-weight:900;color:#dc2626;font-size:16px">${montantFmt} ${currency}</td></tr>
+                  <tr><td style="color:#78716c;font-size:13px;padding:4px 0">Date d'échéance :</td><td style="font-weight:700;color:#1e293b;font-size:14px">${dateFmt}</td></tr>
+                </table>
+              </div>
+              <p style="color:#475569;font-size:13px;line-height:1.6">
+                Merci de régulariser ce paiement dans les meilleurs délais auprès de l'administration.
+              </p>
+              <p style="color:#94a3b8;font-size:12px;line-height:1.6">
+                Si vous avez déjà effectué ce paiement, veuillez ignorer ce message.
+              </p>`,
           });
           await ech.update({ reminderSentAt: new Date() });
           sent++;
+        } else {
+          const message = `Bonjour ${parentNom},\n\nNous vous rappelons qu'une redevance de *${montantFmt} ${currency}* pour *${ech.service?.name || 'scolarité'}* (${ech.periodeLabel}) est due le ${dateFmt} pour l'élève *${eleve.prenom} ${eleve.nom}*.\n\nMerci de vous en acquitter auprès de notre caisse.\n\n_${ecoleNom}_`;
+          const recipient = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+          if (recipient) {
+            await NotificationService.send(canal, recipient, {
+              subject: `Relance redevance — ${eleve.prenom} ${eleve.nom}`,
+              message,
+            });
+            await ech.update({ reminderSentAt: new Date() });
+            sent++;
+          }
         }
       }
 
@@ -859,12 +977,31 @@ export class AbonnementController {
           const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
           const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
 
+          const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+          const lignesPdf = echeances.map(e => ({
+            label: e.service?.name || 'Scolarité',
+            montant: parseFloat(e.montant) || 0,
+          }));
+
+          const pdfBuffer = await PdfReceiptService.generateReceipt({
+            ecoleNom,
+            parentName,
+            enfantNom,
+            reference: `FAC-${periodLabel.replace(/\s+/g, '-').toUpperCase()}`,
+            date: new Date().toLocaleDateString('fr-FR'),
+            methode: '',
+            currency,
+            lignes: lignesPdf,
+            total: totalDu,
+            titre: `Facture mensuelle — ${periodLabel}`,
+          });
+
           await EmailService.sendInvoice({
             to: parentEmail,
             parentName,
             ecoleNom,
             logoUrl: tenant?.logoUrl,
-            enfantNom: `${eleve.prenom} ${eleve.nom}`.trim(),
+            enfantNom,
             mois: periodLabel,
             montant: totalDu,
             currency,
@@ -873,6 +1010,11 @@ export class AbonnementController {
               mois: periodLabel,
               montant: parseFloat(e.montant) || 0,
             })),
+            attachments: [{
+              filename: `facture_${enfantNom.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`,
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+            }],
           });
           results.sent++;
         } catch (emailErr) {

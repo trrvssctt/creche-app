@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
 import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
 import { EmailService } from '../services/EmailService.js';
+import { PdfReceiptService } from '../services/PdfReceiptService.js';
 
 // ── Création automatique des abonnements à l'inscription ────────────────────
 // Cherche les offres (MENSUALITE/BUS/CANTINE) applicables au niveau/options de
@@ -335,13 +336,34 @@ export class EleveController {
 
       await t.commit();
 
-      // Envoyer la facture d'inscription par email au parent
+      // Envoyer la facture d'inscription par email au parent avec PDF en pièce jointe
       const parentEmail = eleve.parent1?.email;
       if (parentEmail) {
         try {
           const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl'] });
           const ecoleNom = tenant?.name || "L'école";
           const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+          const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+          const dateFmt = new Date().toLocaleDateString('fr-FR');
+
+          const pdfLignes = feeServices.map(svc => ({
+            label: `${svc.name}${remisePct > 0 ? ` (remise ${remisePct}%)` : ''}`,
+            montant: applyRemise(svc.price),
+          }));
+
+          const pdfBuffer = await PdfReceiptService.generateReceipt({
+            ecoleNom,
+            parentName,
+            enfantNom,
+            reference: ref,
+            date: dateFmt,
+            methode: methodePaiement,
+            currency: 'FCFA',
+            lignes: pdfLignes,
+            total: totalHt,
+            titre: "Reçu de paiement — Frais d'inscription",
+          });
+
           const lignes = feeServices.map(svc => {
             const prix = applyRemise(svc.price);
             return `<tr>
@@ -352,15 +374,20 @@ export class EleveController {
 
           await EmailService.sendGenericInfo({
             to: parentEmail,
-            subject: `Reçu de paiement — Inscription ${eleve.prenom} ${eleve.nom} — ${ecoleNom}`,
+            subject: `Reçu de paiement — Inscription ${enfantNom} — ${ecoleNom}`,
             ecoleNom,
             logoUrl: tenant?.logoUrl,
             role: 'comptabilite',
+            attachments: [{
+              filename: `recu_inscription_${enfantNom.replace(/\s+/g, '_')}.pdf`,
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+            }],
             body: `
               <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Reçu de paiement — Frais d'inscription</h2>
               <p style="color:#475569;font-size:14px;line-height:1.7">
                 Bonjour ${parentName},<br>
-                Nous confirmons la réception du paiement des frais d'inscription pour <strong>${eleve.prenom} ${eleve.nom}</strong>.
+                Nous confirmons la réception du paiement des frais d'inscription pour <strong>${enfantNom}</strong>.
               </p>
               <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #f0ede8;border-radius:8px;overflow:hidden">
                 <tr style="background:#faf9f7">
@@ -377,6 +404,9 @@ export class EleveController {
                 <p style="margin:0;font-size:12px;font-weight:700;color:#065f46">Référence : ${ref}</p>
                 <p style="margin:4px 0 0;font-size:11px;color:#047857">Méthode : ${methodePaiement}</p>
               </div>
+              <p style="color:#475569;font-size:12px;margin-top:12px">
+                📎 Le reçu de paiement PDF est joint à cet email.
+              </p>
               <p style="color:#94a3b8;font-size:12px;line-height:1.6">
                 Conservez cet email comme preuve de paiement. Pour toute question, contactez l'administration.
               </p>`,

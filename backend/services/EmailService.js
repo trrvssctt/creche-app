@@ -173,7 +173,7 @@ export class EmailService {
     });
   }
 
-  static async sendInvoice({ to, parentName, ecoleNom, enfantNom, mois, montant, currency, echeances, logoUrl }) {
+  static async sendInvoice({ to, parentName, ecoleNom, enfantNom, mois, montant, currency, echeances, logoUrl, attachments, subject: customSubject }) {
     const transporter = getTransporter('comptabilite');
     if (!transporter) return;
 
@@ -202,6 +202,7 @@ export class EmailService {
           <td style="padding:12px;font-size:16px;font-weight:900;color:#d97706;text-align:right">${(montant || 0).toLocaleString('fr-FR')} ${currency}</td>
         </tr>
       </table>
+      ${attachments?.length ? '<p style="color:#475569;font-size:12px;margin-top:16px">📎 La facture PDF est jointe à cet email.</p>' : ''}
       <p style="color:#94a3b8;font-size:12px;line-height:1.6">
         Pour toute question concernant la facturation, contactez l'administration de l'école.
       </p>`;
@@ -209,12 +210,13 @@ export class EmailService {
     await transporter.sendMail({
       from: `"${ecoleNom} — Comptabilité" <${process.env.MAIL_COMPTABILITE}>`,
       to,
-      subject: `Facture scolarité ${enfantNom} — ${mois} — ${ecoleNom}`,
+      subject: customSubject || `Facture scolarité ${enfantNom} — ${mois} — ${ecoleNom}`,
       html: baseLayout(content, ecoleNom, logoUrl),
+      ...(attachments?.length ? { attachments } : {}),
     });
   }
 
-  static async sendGenericInfo({ to, subject, body, ecoleNom, role = 'contact', logoUrl }) {
+  static async sendGenericInfo({ to, subject, body, ecoleNom, role = 'contact', logoUrl, attachments }) {
     console.log(`[EmailService.sendGenericInfo] to="${to}", role="${role}", subject="${subject}"`);
     const transporter = getTransporter(role);
     if (!transporter) {
@@ -236,6 +238,7 @@ export class EmailService {
       to,
       subject,
       html: baseLayout(content, ecoleNom, logoUrl),
+      ...(attachments?.length ? { attachments } : {}),
     });
     console.log(`[EmailService.sendGenericInfo] Email envoyé OK → messageId=${info.messageId}`);
   }
