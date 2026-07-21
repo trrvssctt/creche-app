@@ -1076,19 +1076,17 @@ export class AdminController {
         WHERE tenant_id = :tenantId AND annee_scolaire = :annee
       `, { replacements: { tenantId, annee, startOfMonth }, type: sequelize.QueryTypes.SELECT });
 
-      // ── Finance du mois ──────────────────────────────────────────────
+      // ── Finance du mois (basé sur les échéances de paiement) ─────────
       const financeStats = await sequelize.query(`
         SELECT
-          COALESCE(SUM(s.total_ttc), 0)                          AS ca_mois,
-          COALESCE(SUM(s.amount_paid), 0)                        AS encaisse_mois,
-          COUNT(*) FILTER (WHERE s.amount_paid < s.total_ttc)    AS nb_impayes,
-          COALESCE(SUM(s.total_ttc - s.amount_paid)
-            FILTER (WHERE s.amount_paid < s.total_ttc), 0)       AS montant_impayes
-        FROM sales s
-        WHERE s.tenant_id = :tenantId
-          AND s.status != 'ANNULE'
-          AND s.created_at BETWEEN :startOfMonth AND :endOfMonth
-      `, { replacements: { tenantId, startOfMonth, endOfMonth }, type: sequelize.QueryTypes.SELECT });
+          COALESCE(SUM(ep.montant) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth), 0) AS ca_mois,
+          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE' AND ep.paid_at BETWEEN :startOfMonth AND :endOfMonth), 0) AS encaisse_mois,
+          COUNT(*) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth AND ep.statut != 'PAYE') AS nb_impayes,
+          COALESCE(SUM(ep.montant) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth AND ep.statut != 'PAYE'), 0) AS montant_impayes
+        FROM echeances_paiements ep
+        JOIN eleves el ON el.id = ep.eleve_id
+        WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee
+      `, { replacements: { tenantId, startOfMonth, endOfMonth, annee }, type: sequelize.QueryTypes.SELECT });
 
       // ── Top débiteurs ────────────────────────────────────────────────
       const topDebtors = await sequelize.query(`

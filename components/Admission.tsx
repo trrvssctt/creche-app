@@ -1892,7 +1892,8 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                     const isAdmin = roles.some(r => r === 'ADMIN' || r === 'DIRECTEUR' || r === 'SUPER_ADMIN');
                     const estInscrit = statut === 'INSCRIT' || statut === 'ACTIF';
                     const parentEmail = selected.email && !selected.email.includes('@letoidesanges.sn') ? selected.email : (selected.parent1Email || '');
-                    if (!isAdmin || !estInscrit) return null;
+                    const hasParentAccount = parentsByEleveId[selected.id]?.length > 0;
+                    if (!isAdmin || !estInscrit || hasParentAccount) return null;
                     return (
                       <button
                         onClick={() => {

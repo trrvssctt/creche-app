@@ -276,6 +276,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [admissionsLoading, setAdmissionsLoading] = useState(false);
   const [admissionSearch, setAdmissionSearch] = useState('');
   const [inscritEleve, setInscritEleve] = useState<Partial<Eleve> | null>(null);
+  const [fraisInscriptionPayes, setFraisInscriptionPayes] = useState(false);
+  const [fraisMethodePaiement, setFraisMethodePaiement] = useState('CASH');
   // Codes (typeDoc) des pièces justificatives déjà présentes dans le dossier numérique
   const [piecesFournies, setPiecesFournies] = useState<Set<string>>(new Set());
 
@@ -819,6 +821,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       }
     }
     if (showModal === 'CREATE' && !p1Phone) { setError('Le numéro WhatsApp ou téléphone du parent est obligatoire.'); return; }
+    if (showModal === 'CREATE' && !fraisInscriptionPayes) { setError('Vous devez confirmer le paiement des frais d\'inscription.'); return; }
     setActionLoading(true);
     setError(null);
     try {
@@ -844,26 +847,77 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         fetchEleves();
       } else if (selectedDossierId) {
         // ── Inscription depuis un dossier de candidature ───────────────────────
-        // On met à jour le dossier existant (évite le doublon qu'un POST créerait)
         const updated: any = await apiClient.put(`/eleves/${selectedDossierId}`, {
           ...payload,
           statut: 'INSCRIT',
           dateAdmission: payload.dateAdmission || new Date().toISOString().slice(0, 10),
           matricule: payload.matricule || genMatricule(payload.niveau as NiveauScolaire),
         });
-        setInscritEleve({ ...payload, id: updated?.id || selectedDossierId });
+        const eleveId = updated?.id || selectedDossierId;
+        setInscritEleve({ ...payload, id: eleveId });
         setAdmissions(prev => prev.filter(d => d.id !== selectedDossierId));
         showToast('Élève inscrit avec succès.', 'success');
-        loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
+        await loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
+        // Enregistrer le paiement des frais d'inscription en trésorerie
+        if (fraisInscriptionPayes) {
+          try {
+            const svcData = await apiClient.get('/services');
+            const allSvcs: any[] = Array.isArray(svcData) ? svcData : [];
+            const applicable = allSvcs.filter(s => {
+              if (s.isActive === false || s.is_active === false) return false;
+              const niveaux: string[] = s.niveauxCibles || s.niveaux_cibles || [];
+              const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+              if (niveaux.length === 0) return type !== 'MENSUALITE' && type !== 'BUS' && type !== 'CANTINE';
+              if (!niveaux.includes(payload.niveau as string)) return false;
+              if (type === 'BUS') return !!payload.transportBus;
+              if (type === 'CANTINE') return !!payload.cantine;
+              return true;
+            });
+            if (applicable.length > 0) {
+              await apiClient.post(`/eleves/${eleveId}/facture-inscription`, {
+                services: applicable,
+                methodePaiement: fraisMethodePaiement,
+              });
+            }
+          } catch (fErr: any) {
+            console.warn('Facture inscription auto:', fErr?.message);
+          }
+        }
         setCreateStep('DOCS');
         fetchEleves();
       } else {
         // ── Création directe d'un élève (sans dossier préalable) ──────────────
         const created: any = await apiClient.post('/eleves', payload);
-        if (created?.id) setInscritEleve({ ...payload, id: created.id });
+        const eleveId = created?.id;
+        if (eleveId) setInscritEleve({ ...payload, id: eleveId });
         showToast('Élève inscrit avec succès.', 'success');
-        if (!created?.id) setInscritEleve(payload);
-        loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
+        if (!eleveId) setInscritEleve(payload);
+        await loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
+        // Enregistrer le paiement des frais d'inscription en trésorerie
+        if (fraisInscriptionPayes && eleveId) {
+          try {
+            const svcData = await apiClient.get('/services');
+            const allSvcs: any[] = Array.isArray(svcData) ? svcData : [];
+            const applicable = allSvcs.filter(s => {
+              if (s.isActive === false || s.is_active === false) return false;
+              const niveaux: string[] = s.niveauxCibles || s.niveaux_cibles || [];
+              const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+              if (niveaux.length === 0) return type !== 'MENSUALITE' && type !== 'BUS' && type !== 'CANTINE';
+              if (!niveaux.includes(payload.niveau as string)) return false;
+              if (type === 'BUS') return !!payload.transportBus;
+              if (type === 'CANTINE') return !!payload.cantine;
+              return true;
+            });
+            if (applicable.length > 0) {
+              await apiClient.post(`/eleves/${eleveId}/facture-inscription`, {
+                services: applicable,
+                methodePaiement: fraisMethodePaiement,
+              });
+            }
+          } catch (fErr: any) {
+            console.warn('Facture inscription auto:', fErr?.message);
+          }
+        }
         setCreateStep('DOCS');
         fetchEleves();
       }
@@ -951,6 +1005,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setSelectedDossierId(null);
     setServicesApplicables([]);
     setDuplicateSource(null);
+    setFraisInscriptionPayes(false);
+    setFraisMethodePaiement('CASH');
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1739,6 +1795,34 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                           className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                       </div>
                     </div>
+
+                    {/* Frais d'inscription payés — obligatoire */}
+                    {showModal === 'CREATE' && (
+                      <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={fraisInscriptionPayes}
+                            onChange={e => setFraisInscriptionPayes(e.target.checked)}
+                            className="w-5 h-5 rounded-lg border-2 border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-sm font-black text-emerald-800">Frais d'inscription payés</span>
+                          <span className="text-[9px] font-bold text-rose-500 uppercase">*obligatoire</span>
+                        </label>
+                        {fraisInscriptionPayes && (
+                          <div className="pl-8">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-1 block">Méthode de paiement</label>
+                            <select
+                              value={fraisMethodePaiement}
+                              onChange={e => setFraisMethodePaiement(e.target.value)}
+                              className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 appearance-none"
+                            >
+                              {METHODES_PAIEMENT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </section>
 
                   {/* Régime & Options */}
