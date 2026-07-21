@@ -1166,17 +1166,35 @@ export class AdminController {
           COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE'), 0)          AS total_encaisse,
           COUNT(*) FILTER (WHERE ep.statut IN ('EN_ATTENTE','EN_RETARD'))         AS nb_en_attente,
           COUNT(*) FILTER (WHERE ep.statut = 'EN_RETARD')                         AS nb_en_retard,
+          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'EN_RETARD'), 0)     AS montant_en_retard,
           COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut IN ('EN_ATTENTE','EN_RETARD')), 0) AS montant_restant
         FROM echeances_paiements ep
         JOIN eleves el ON el.id = ep.eleve_id
         WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee
       `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
 
+      // ── CA annuel global (scolarité via écheances + ventes/stock) ──────
+      const [sy] = annee.split('-');
+      const startYear = `${sy}-09-01`;
+      const endYear   = `${parseInt(sy) + 1}-09-01`;
+      const caAnnuelStats = await sequelize.query(`
+        SELECT
+          COALESCE((SELECT SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE')
+            FROM echeances_paiements ep
+            JOIN eleves el ON el.id = ep.eleve_id
+            WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee), 0) AS ca_scolarite,
+          COALESCE((SELECT SUM(s.amount_paid)
+            FROM sales s
+            WHERE s.tenant_id = :tenantId AND s.status != 'ANNULE'
+              AND s.sale_date >= :startYear AND s.sale_date < :endYear), 0) AS ca_ventes
+      `, { replacements: { tenantId, annee, startYear, endYear }, type: sequelize.QueryTypes.SELECT });
+
       return res.json({
         classes:             classesRows,
         elevesStats:         elevesStats[0] || {},
         financeStats:        financeStats[0] || {},
         echeancesStats:      echeancesStats[0] || {},
+        caAnnuelStats:       caAnnuelStats[0] || {},
         topDebtors,
         recentAdmissions,
         upcomingEvents,

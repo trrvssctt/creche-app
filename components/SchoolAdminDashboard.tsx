@@ -174,7 +174,13 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
   const totalEncaisse   = parseFloat(ecs.total_encaisse || 0);
   const tauxRecouvrement = pct(totalEncaisse, totalFacture);
   const nbEnRetard      = parseInt(ecs.nb_en_retard || 0);
+  const montantEnRetard = parseFloat(ecs.montant_en_retard || 0);
   const montantRestant  = parseFloat(ecs.montant_restant || 0);
+
+  const cas = data?.caAnnuelStats || {};
+  const caScolarite = parseFloat(cas.ca_scolarite || 0);
+  const caVentes    = parseFloat(cas.ca_ventes || 0);
+  const caAnnuel    = caScolarite + caVentes;
 
   const candidaturesPortail = data?.candidaturesPortail || [];
   const nbCandidatures = candidaturesPortail.length;
@@ -286,10 +292,10 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
         <GradientKpi
           icon={Wallet}
           label={`CA — ${now.toLocaleDateString('fr-FR', { month: 'long' })}`}
-          value={`${fmt(caMois)}`}
-          sub={`${fmt(encaisseMois)} FCFA encaissé · ${pct(encaisseMois, caMois)}% recouvré`}
+          value={`${fmt(encaisseMois)}`}
+          sub={`${fmt(caMois)} FCFA dû · ${pct(encaisseMois, caMois)}% recouvré`}
           gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
-          onClick={() => onNavigate?.('sales')}
+          onClick={() => onNavigate?.('payments')}
           badge={currency}
         />
         <GradientKpi
@@ -302,19 +308,16 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
             : tauxRecouvrement >= 50
               ? 'bg-gradient-to-br from-amber-500 to-orange-500'
               : 'bg-gradient-to-br from-rose-500 to-red-600'}
-          onClick={() => onNavigate?.('facturation')}
+          onClick={() => onNavigate?.('recovery')}
         />
         <GradientKpi
-          icon={nbImpayes > 0 ? AlertTriangle : BadgeCheck}
-          label="Impayés du mois"
-          value={nbImpayes > 0 ? `${nbImpayes} fact.` : 'À jour'}
-          sub={nbImpayes > 0
-            ? `${fmt(montantImpayes)} FCFA en attente`
-            : 'Tous les paiements sont à jour'}
-          gradient={nbImpayes > 0
-            ? 'bg-gradient-to-br from-rose-500 to-pink-600'
-            : 'bg-gradient-to-br from-slate-400 to-slate-500'}
-          onClick={() => onNavigate?.('facturation')}
+          icon={TrendingUp}
+          label={`CA annuel — ${data?.annee || ''}`}
+          value={`${fmt(caAnnuel)}`}
+          sub={`Scolarité ${fmt(caScolarite)} · Ventes ${fmt(caVentes)}`}
+          gradient="bg-gradient-to-br from-amber-500 to-orange-600"
+          onClick={() => onNavigate?.('payments')}
+          badge={currency}
         />
       </div>
 
@@ -350,10 +353,10 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           icon={AlertTriangle}
           label="Échéances en retard"
           value={nbEnRetard > 0 ? nbEnRetard : 'Aucun'}
-          sub={nbEnRetard > 0 ? `${fmt(montantRestant)} FCFA restant` : 'Pas de retard'}
+          sub={nbEnRetard > 0 ? `${fmt(montantEnRetard)} FCFA en retard` : 'Aucun retard'}
           color={nbEnRetard > 0 ? 'bg-rose-500' : 'bg-slate-400'}
           trend={nbEnRetard > 0 ? 'down' : undefined}
-          onClick={() => onNavigate?.('facturation')}
+          onClick={() => onNavigate?.('recovery')}
         />
       </div>
 
