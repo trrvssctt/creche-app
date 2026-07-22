@@ -1351,18 +1351,42 @@ static async login(req, res) {
       const parents = await User.findAll({
         where: {
           tenantId,
-          roles: { [Op.contains]: ['PARENT'] },
+          [Op.or]: [
+            { roles: { [Op.contains]: ['PARENT'] } },
+            { roles: { [Op.contains]: ['TUTEUR'] } },
+          ],
         },
         attributes: ['id', 'email', 'name', 'eleveIds', 'isActive'],
       });
+
       // Construire un index eleveId → infos compte parent
       const byEleveId = {};
       for (const p of parents) {
+        // 1) Via eleveIds stockés dans le user
         for (const eleveId of (p.eleveIds || [])) {
           if (!byEleveId[eleveId]) byEleveId[eleveId] = [];
-          byEleveId[eleveId].push({ id: p.id, email: p.email, name: p.name, isActive: p.isActive });
+          if (!byEleveId[eleveId].some(x => x.id === p.id))
+            byEleveId[eleveId].push({ id: p.id, email: p.email, name: p.name, isActive: p.isActive });
         }
       }
+
+      // 2) Via les notes [parent_user:userId] dans les élèves (admissions portail)
+      const { Eleve } = await import('../models/index.js');
+      const taggedEleves = await Eleve.findAll({
+        where: { tenantId, notes: { [Op.like]: '%[parent_user:%' } },
+        attributes: ['id', 'notes'],
+      });
+      for (const eleve of taggedEleves) {
+        const match = (eleve.notes || '').match(/\[parent_user:([^\]]+)\]/);
+        if (!match) continue;
+        const parentId = match[1];
+        const parent = parents.find(p => p.id === parentId);
+        if (!parent) continue;
+        if (!byEleveId[eleve.id]) byEleveId[eleve.id] = [];
+        if (!byEleveId[eleve.id].some(x => x.id === parent.id))
+          byEleveId[eleve.id].push({ id: parent.id, email: parent.email, name: parent.name, isActive: parent.isActive });
+      }
+
       return res.json({ byEleveId });
     } catch (error) {
       console.error('[LIST PARENT ACCOUNTS]:', error);

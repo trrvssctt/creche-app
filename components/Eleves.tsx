@@ -2491,14 +2491,86 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <Repeat size={12} /> Abonnements & Échéances
                   </p>
                   {canModify && (
-                    <button
-                      onClick={() => { setShowAddAbonnement(v => !v); }}
-                      className="px-3 py-1.5 bg-violet-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-violet-700 transition-all flex items-center gap-1.5"
-                    >
-                      <Plus size={11} /> Abonner
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowAddAbonnement(v => !v); }}
+                        className="px-3 py-1.5 bg-violet-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-violet-700 transition-all flex items-center gap-1.5"
+                      >
+                        <Plus size={11} /> Abonner
+                      </button>
+                    </div>
                   )}
                 </div>
+
+                {/* Bloc configuration multi-offres (comme à l'inscription) */}
+                {canModify && showAddAbonnement && allServicesRecurrents.length > 0 && (() => {
+                  const existingServiceIds = new Set(abonnements.filter((a: any) => a.isActive).map((a: any) => a.serviceId || a.service?.id));
+                  const available = allServicesRecurrents.filter(s => !existingServiceIds.has(s.id));
+                  if (available.length === 0) return null;
+                  return (
+                    <div className="mb-4 p-4 bg-indigo-50 border-2 border-indigo-200 rounded-2xl space-y-3">
+                      <p className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+                        <Repeat size={11} /> Offres disponibles — cochez et configurez
+                      </p>
+                      <div className="space-y-2">
+                        {available.map(s => {
+                          const cfg = offresConfig[s.id] || { checked: false, jourEcheance: 5 };
+                          return (
+                            <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${cfg.checked ? 'bg-white border-indigo-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-70'}`}>
+                              <input
+                                type="checkbox"
+                                checked={cfg.checked}
+                                onChange={e => setOffresConfig(prev => ({ ...prev, [s.id]: { ...cfg, checked: e.target.checked } }))}
+                                className="w-5 h-5 rounded-lg border-2 border-indigo-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-black text-slate-800 text-sm">{s.name}</p>
+                                <p className="text-[9px] text-slate-400 font-bold">{Number(s.price).toLocaleString('fr-FR')} {currency}/mois</p>
+                              </div>
+                              {cfg.checked && (
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase">Le</span>
+                                  <input
+                                    type="number" min="1" max="28"
+                                    value={cfg.jourEcheance}
+                                    onChange={e => setOffresConfig(prev => ({
+                                      ...prev, [s.id]: { ...cfg, jourEcheance: Math.min(28, Math.max(1, parseInt(e.target.value) || 1)) }
+                                    }))}
+                                    className="w-12 bg-white border border-indigo-200 rounded-lg px-2 py-1 text-center text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400"
+                                  />
+                                  <span className="text-[8px] font-black text-slate-400 uppercase">/mois</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!selectedEleve?.id) return;
+                          const selected = (Object.entries(offresConfig) as [string, { checked: boolean; jourEcheance: number }][])
+                            .filter(([, v]) => v.checked)
+                            .map(([serviceId, v]) => ({ serviceId, jourEcheance: v.jourEcheance || null }));
+                          if (!selected.length) { showToast('Cochez au moins une offre.', 'error'); return; }
+                          setAboActionLoading(true);
+                          try {
+                            await apiClient.post('/abonnements/batch', { eleveId: selectedEleve.id, abonnements: selected });
+                            setShowAddAbonnement(false);
+                            setOffresConfig({});
+                            fetchAbonnements(selectedEleve.id);
+                            showToast(`${selected.length} abonnement(s) créé(s).`, 'success');
+                          } catch (err: any) { showToast(err?.message || 'Erreur.', 'error'); }
+                          finally { setAboActionLoading(false); }
+                        }}
+                        disabled={aboActionLoading || !(Object.values(offresConfig) as { checked: boolean }[]).some(v => v.checked)}
+                        className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {aboActionLoading ? <RefreshCw className="animate-spin" size={13} /> : <Save size={13} />}
+                        Valider les abonnements sélectionnés
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Formulaire ajout abonnement */}
                 {showAddAbonnement && (
