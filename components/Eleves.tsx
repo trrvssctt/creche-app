@@ -276,8 +276,10 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [admissionsLoading, setAdmissionsLoading] = useState(false);
   const [admissionSearch, setAdmissionSearch] = useState('');
   const [inscritEleve, setInscritEleve] = useState<Partial<Eleve> | null>(null);
-  const [fraisInscriptionPayes, setFraisInscriptionPayes] = useState(false);
   const [fraisMethodePaiement, setFraisMethodePaiement] = useState('CASH');
+  const [fraisSelection, setFraisSelection] = useState<Record<string, boolean>>({});
+  const [fraisValidated, setFraisValidated] = useState(false);
+  const [fraisLoading, setFraisLoading] = useState(false);
   // Codes (typeDoc) des pièces justificatives déjà présentes dans le dossier numérique
   const [piecesFournies, setPiecesFournies] = useState<Set<string>>(new Set());
 
@@ -697,11 +699,18 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       // Pré-cocher les services récurrents pour la config d'inscription
       const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
       const newConfig: Record<string, { checked: boolean; jourEcheance: number }> = {};
+      const newFrais: Record<string, boolean> = {};
       filtered.forEach((s: any) => {
         const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-        if (RECURRING.includes(type)) newConfig[s.id] = { checked: true, jourEcheance: 5 };
+        if (RECURRING.includes(type)) {
+          newConfig[s.id] = { checked: true, jourEcheance: 5 };
+        } else {
+          newFrais[s.id] = true; // frais ponctuels pré-cochés
+        }
       });
       setOffresConfig(newConfig);
+      setFraisSelection(newFrais);
+      setFraisValidated(false);
       setOffresSaved(false);
     } catch {
       setServicesApplicables([]);
@@ -851,7 +860,6 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
       }
     }
     if (showModal === 'CREATE' && !p1Phone) { setError('Le numéro WhatsApp ou téléphone du parent est obligatoire.'); return; }
-    if (showModal === 'CREATE' && !fraisInscriptionPayes) { setError('Vous devez confirmer le paiement des frais d\'inscription.'); return; }
     setActionLoading(true);
     setError(null);
     try {
@@ -888,31 +896,6 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         setAdmissions(prev => prev.filter(d => d.id !== selectedDossierId));
         showToast('Élève inscrit avec succès.', 'success');
         await loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
-        // Enregistrer le paiement des frais d'inscription en trésorerie
-        if (fraisInscriptionPayes) {
-          try {
-            const svcData = await apiClient.get('/services');
-            const allSvcs: any[] = Array.isArray(svcData) ? svcData : [];
-            const applicable = allSvcs.filter(s => {
-              if (s.isActive === false || s.is_active === false) return false;
-              const niveaux: string[] = s.niveauxCibles || s.niveaux_cibles || [];
-              const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-              if (niveaux.length === 0) return type !== 'MENSUALITE' && type !== 'BUS' && type !== 'CANTINE';
-              if (!niveaux.includes(payload.niveau as string)) return false;
-              if (type === 'BUS') return !!payload.transportBus;
-              if (type === 'CANTINE') return !!payload.cantine;
-              return true;
-            });
-            if (applicable.length > 0) {
-              await apiClient.post(`/eleves/${eleveId}/facture-inscription`, {
-                services: applicable,
-                methodePaiement: fraisMethodePaiement,
-              });
-            }
-          } catch (fErr: any) {
-            console.warn('Facture inscription auto:', fErr?.message);
-          }
-        }
         setCreateStep('DOCS');
         fetchEleves();
       } else {
@@ -923,31 +906,6 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         showToast('Élève inscrit avec succès.', 'success');
         if (!eleveId) setInscritEleve(payload);
         await loadServicesApplicables(payload.niveau as NiveauScolaire, !!payload.cantine, !!payload.transportBus);
-        // Enregistrer le paiement des frais d'inscription en trésorerie
-        if (fraisInscriptionPayes && eleveId) {
-          try {
-            const svcData = await apiClient.get('/services');
-            const allSvcs: any[] = Array.isArray(svcData) ? svcData : [];
-            const applicable = allSvcs.filter(s => {
-              if (s.isActive === false || s.is_active === false) return false;
-              const niveaux: string[] = s.niveauxCibles || s.niveaux_cibles || [];
-              const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-              if (niveaux.length === 0) return type !== 'MENSUALITE' && type !== 'BUS' && type !== 'CANTINE';
-              if (!niveaux.includes(payload.niveau as string)) return false;
-              if (type === 'BUS') return !!payload.transportBus;
-              if (type === 'CANTINE') return !!payload.cantine;
-              return true;
-            });
-            if (applicable.length > 0) {
-              await apiClient.post(`/eleves/${eleveId}/facture-inscription`, {
-                services: applicable,
-                methodePaiement: fraisMethodePaiement,
-              });
-            }
-          } catch (fErr: any) {
-            console.warn('Facture inscription auto:', fErr?.message);
-          }
-        }
         setCreateStep('DOCS');
         fetchEleves();
       }
@@ -1826,31 +1784,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                       </div>
                     </div>
 
-                    {/* Frais d'inscription payés — obligatoire */}
+                    {/* Info : frais gérés à l'étape suivante */}
                     {showModal === 'CREATE' && (
-                      <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={fraisInscriptionPayes}
-                            onChange={e => setFraisInscriptionPayes(e.target.checked)}
-                            className="w-5 h-5 rounded-lg border-2 border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                          />
-                          <span className="text-sm font-black text-emerald-800">Frais d'inscription payés</span>
-                          <span className="text-[9px] font-bold text-rose-500 uppercase">*obligatoire</span>
-                        </label>
-                        {fraisInscriptionPayes && (
-                          <div className="pl-8">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-1 block">Méthode de paiement</label>
-                            <select
-                              value={fraisMethodePaiement}
-                              onChange={e => setFraisMethodePaiement(e.target.value)}
-                              className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 appearance-none"
-                            >
-                              {METHODES_PAIEMENT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
-                          </div>
-                        )}
+                      <div className="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                        <p className="text-[10px] font-black text-amber-700 flex items-center gap-2">
+                          <Banknote size={13} /> Les frais d'inscription seront détaillés et encaissés à l'étape suivante (Dossier Constitué).
+                        </p>
                       </div>
                     )}
                   </section>
@@ -2135,7 +2074,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   </p>
                 </div>
 
-                {/* Récapitulatif financier */}
+                {/* Récapitulatif financier — Frais d'inscription */}
                 {servicesApplicables.length > 0 && (() => {
                   const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
                   const fraisPonctuels = servicesApplicables.filter(s => {
@@ -2146,66 +2085,128 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     const type = (s.typeOffre || s.type_offre || '').toUpperCase();
                     return RECURRING.includes(type);
                   });
-                  const totalPaye = fraisPonctuels.reduce((sum, s) => sum + Number(s.price), 0);
+                  const remisePct = inscritEleve?.regimeFinancier === 'CAS_SOCIAL_TOTAL' ? 100 : Number(inscritEleve?.remisePct || 0);
+                  const applyRemise = (prix: number) => remisePct > 0 ? Math.round(prix * (1 - remisePct / 100)) : prix;
+                  const selectedFrais = fraisPonctuels.filter(s => fraisSelection[s.id]);
+                  const totalFrais = selectedFrais.reduce((sum, s) => sum + applyRemise(Number(s.price)), 0);
                   const totalMensuel = servicesRecurrents.reduce((sum, s) => sum + Number(s.price), 0);
                   return (
                   <div className="space-y-4">
-                    {/* Frais payés */}
+                    {/* Frais d'inscription — INTERACTIF */}
                     {fraisPonctuels.length > 0 && (
-                      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-3">
-                        <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-2">
-                          <CheckCircle2 size={13} /> Frais d'inscription — Payés
+                      <div className={`border-2 rounded-2xl p-5 space-y-3 ${fraisValidated ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-2 ${fraisValidated ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          {fraisValidated ? <><CheckCircle2 size={13} /> Frais d'inscription — Encaissés</> : <><Banknote size={13} /> Frais d'inscription — À encaisser</>}
                         </p>
-                        <div className="space-y-2">
-                          {fraisPonctuels.map(s => (
-                            <div key={s.id} className="flex justify-between items-center">
-                              <span className="font-bold text-emerald-900 text-sm">{s.name}</span>
-                              <span className="font-black text-emerald-800 text-sm">
-                                {Number(s.price).toLocaleString('fr-FR')} {currency}
-                              </span>
+                        {!fraisValidated ? (
+                          <>
+                            <p className="text-[9px] text-amber-600 font-bold -mt-1">
+                              Cochez les frais applicables. Le total est calculé en temps réel.
+                              {remisePct > 0 && <span className="text-violet-600"> (remise {remisePct}% appliquée)</span>}
+                            </p>
+                            <div className="space-y-2">
+                              {fraisPonctuels.map(s => {
+                                const checked = fraisSelection[s.id] ?? true;
+                                const prix = applyRemise(Number(s.price));
+                                return (
+                                  <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${checked ? 'bg-white border-amber-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={e => setFraisSelection(prev => ({ ...prev, [s.id]: e.target.checked }))}
+                                      className="w-5 h-5 rounded-lg border-2 border-amber-300 text-amber-600 focus:ring-amber-400 cursor-pointer"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-black text-slate-800 text-sm">{s.name}</p>
+                                      {remisePct > 0 && (
+                                        <p className="text-[9px] text-slate-400 font-bold line-through">{Number(s.price).toLocaleString('fr-FR')} {currency}</p>
+                                      )}
+                                    </div>
+                                    <span className={`font-black text-sm ${checked ? 'text-amber-800' : 'text-slate-400'}`}>
+                                      {prix.toLocaleString('fr-FR')} {currency}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          ))}
-                        </div>
-                        <div className="pt-2 border-t border-emerald-200 flex justify-between items-center">
-                          <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Total payé</span>
-                          <span className="font-black text-emerald-900 text-base">
-                            {totalPaye.toLocaleString('fr-FR')} {currency}
-                          </span>
-                        </div>
-                        <p className="text-[9px] text-emerald-600 font-bold flex items-center gap-1.5">
-                          <CheckCircle2 size={10} /> Enregistré en trésorerie · Méthode : {fraisMethodePaiement}
-                        </p>
+                            <div className="pt-3 border-t border-amber-200 space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Total à encaisser</span>
+                                <span className="font-black text-amber-900 text-xl">{totalFrais.toLocaleString('fr-FR')} {currency}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <select value={fraisMethodePaiement} onChange={e => setFraisMethodePaiement(e.target.value)}
+                                  className="flex-1 bg-white border border-amber-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-400">
+                                  <option value="CASH">Espèces</option>
+                                  <option value="WAVE">Wave</option>
+                                  <option value="OM">Orange Money</option>
+                                  <option value="FREE">Free Money</option>
+                                  <option value="VIREMENT">Virement</option>
+                                </select>
+                                <button
+                                  onClick={async () => {
+                                    if (!inscritEleve?.id || selectedFrais.length === 0) return;
+                                    setFraisLoading(true);
+                                    try {
+                                      await apiClient.post(`/eleves/${inscritEleve.id}/facture-inscription`, {
+                                        services: selectedFrais,
+                                        methodePaiement: fraisMethodePaiement,
+                                      });
+                                      setFraisValidated(true);
+                                      showToast(`${totalFrais.toLocaleString('fr-FR')} ${currency} encaissés. Reçu et email envoyés.`, 'success');
+                                    } catch (err: any) {
+                                      showToast(err?.message || "Erreur lors de l'encaissement.", 'error');
+                                    } finally { setFraisLoading(false); }
+                                  }}
+                                  disabled={fraisLoading || selectedFrais.length === 0}
+                                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                  {fraisLoading ? <RefreshCw className="animate-spin" size={13} /> : <Banknote size={13} />}
+                                  Encaisser {selectedFrais.length} frais
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="space-y-2">
+                              {selectedFrais.map(s => (
+                                <div key={s.id} className="flex justify-between items-center">
+                                  <span className="font-bold text-emerald-900 text-sm">{s.name}</span>
+                                  <span className="font-black text-emerald-800 text-sm">{applyRemise(Number(s.price)).toLocaleString('fr-FR')} {currency}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="pt-2 border-t border-emerald-200 flex justify-between items-center">
+                              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Total encaissé</span>
+                              <span className="font-black text-emerald-900 text-base">{totalFrais.toLocaleString('fr-FR')} {currency}</span>
+                            </div>
+                            <p className="text-[9px] text-emerald-600 font-bold flex items-center gap-1.5">
+                              <CheckCircle2 size={10} /> Enregistré en trésorerie · Méthode : {fraisMethodePaiement} · Email + reçu PDF envoyés
+                            </p>
+                          </>
+                        )}
                       </div>
                     )}
 
-                    {/* Services récurrents */}
+                    {/* Services récurrents — résumé */}
                     {servicesRecurrents.length > 0 && (
                       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                          <Banknote size={13} /> Mensualités — Gérées via le Recouvrement
+                          <Repeat size={13} /> Charges récurrentes — à configurer ci-dessous
                         </p>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {servicesRecurrents.map(s => (
                             <div key={s.id} className="flex justify-between items-center">
-                              <div>
-                                <span className="font-bold text-slate-700 text-sm">{s.name}</span>
-                                <span className="ml-2 text-[9px] font-bold text-slate-400 uppercase">/mois</span>
-                              </div>
-                              <span className="font-black text-slate-600 text-sm">
-                                {Number(s.price).toLocaleString('fr-FR')} {currency}
-                              </span>
+                              <span className="font-bold text-slate-700 text-sm">{s.name}</span>
+                              <span className="font-black text-slate-500 text-sm">{Number(s.price).toLocaleString('fr-FR')} {currency}<span className="text-[9px] text-slate-400 font-bold ml-1">/mois</span></span>
                             </div>
                           ))}
                         </div>
                         <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total mensuel</span>
-                          <span className="font-black text-slate-700 text-sm">
-                            {totalMensuel.toLocaleString('fr-FR')} {currency}/mois
-                          </span>
+                          <span className="font-black text-slate-700 text-sm">{totalMensuel.toLocaleString('fr-FR')} {currency}/mois</span>
                         </div>
-                        <p className="text-[9px] text-slate-400 font-bold">
-                          Configurez ci-dessous les offres applicables et leur date d'échéance.
-                        </p>
                       </div>
                     )}
                   </div>

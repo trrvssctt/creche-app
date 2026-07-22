@@ -270,7 +270,7 @@ export class EleveController {
         return res.status(400).json({ error: 'NoServices', message: 'Aucun service fourni.' });
       }
 
-      const VALID_METHODS = ['CASH', 'ORANGE_MONEY', 'WAVE', 'MTN_MOMO', 'STRIPE', 'TRANSFER', 'CHEQUE'];
+      const VALID_METHODS = ['CASH', 'ORANGE_MONEY', 'OM', 'WAVE', 'FREE', 'MTN_MOMO', 'STRIPE', 'TRANSFER', 'VIREMENT', 'CHEQUE'];
       const methodePaiement = VALID_METHODS.includes(rawMethod) ? rawMethod : 'CASH';
 
       const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];

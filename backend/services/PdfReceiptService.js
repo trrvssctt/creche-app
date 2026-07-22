@@ -18,7 +18,9 @@ async function fetchLogo(url) {
 }
 
 function fmtMontant(n, currency = 'F CFA') {
-  return `${(n || 0).toLocaleString('fr-FR')} ${currency}`;
+  // Remplacer les espaces insécables (U+202F, U+00A0) par un espace normal pour pdfkit
+  const formatted = (n || 0).toLocaleString('fr-FR').replace(/[  ]/g, ' ');
+  return `${formatted} ${currency}`;
 }
 
 export class PdfReceiptService {
