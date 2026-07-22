@@ -300,7 +300,11 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [abonnementsLoading, setAbonnementsLoading] = useState(false);
   const [allServicesRecurrents, setAllServicesRecurrents] = useState<any[]>([]);
   const [showAddAbonnement, setShowAddAbonnement] = useState(false);
-  const [newAboForm, setNewAboForm] = useState({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10) });
+  const [newAboForm, setNewAboForm] = useState({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10), jourEcheance: '' });
+  // Configuration offres à l'inscription
+  const [offresConfig, setOffresConfig] = useState<Record<string, { checked: boolean; jourEcheance: number }>>({});
+  const [savingOffres, setSavingOffres] = useState(false);
+  const [offresSaved, setOffresSaved] = useState(false);
   const [aboActionLoading, setAboActionLoading] = useState(false);
   const [expandedAbos, setExpandedAbos] = useState<Set<string>>(new Set());
   const [genLoading, setGenLoading] = useState<string | null>(null);
@@ -690,6 +694,15 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         return true;
       });
       setServicesApplicables(filtered);
+      // Pré-cocher les services récurrents pour la config d'inscription
+      const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
+      const newConfig: Record<string, { checked: boolean; jourEcheance: number }> = {};
+      filtered.forEach((s: any) => {
+        const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+        if (RECURRING.includes(type)) newConfig[s.id] = { checked: true, jourEcheance: 5 };
+      });
+      setOffresConfig(newConfig);
+      setOffresSaved(false);
     } catch {
       setServicesApplicables([]);
     }
@@ -725,9 +738,10 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         eleveId: selectedEleve.id,
         serviceId: newAboForm.serviceId,
         dateDebut: newAboForm.dateDebut,
+        jourEcheance: newAboForm.jourEcheance ? parseInt(newAboForm.jourEcheance) : undefined,
       });
       setShowAddAbonnement(false);
-      setNewAboForm({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10) });
+      setNewAboForm({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10), jourEcheance: '' });
       fetchAbonnements(selectedEleve.id);
       showToast('Abonnement créé. Les échéances ont été générées.', 'success');
     } catch (err: any) {
@@ -735,6 +749,22 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     } finally {
       setAboActionLoading(false);
     }
+  };
+
+  const handleSaveOffresInscription = async () => {
+    if (!inscritEleve?.id) return;
+    const selected = (Object.entries(offresConfig) as [string, { checked: boolean; jourEcheance: number }][])
+      .filter(([, v]) => v.checked)
+      .map(([serviceId, v]) => ({ serviceId, jourEcheance: v.jourEcheance || null }));
+    if (!selected.length) { showToast('Cochez au moins une offre.', 'error'); return; }
+    setSavingOffres(true);
+    try {
+      await apiClient.post('/abonnements/batch', { eleveId: inscritEleve.id, abonnements: selected });
+      setOffresSaved(true);
+      showToast(`${selected.length} offre(s) configurée(s) pour ${inscritEleve.prenom}.`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Erreur.', 'error');
+    } finally { setSavingOffres(false); }
   };
 
   const handleDesactiverAbonnement = async (aboId: string) => {
@@ -2174,13 +2204,83 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                           </span>
                         </div>
                         <p className="text-[9px] text-slate-400 font-bold">
-                          Ces services seront facturés mensuellement via le module Recouvrement.
+                          Configurez ci-dessous les offres applicables et leur date d'échéance.
                         </p>
                       </div>
                     )}
                   </div>
                   );
                 })()}
+
+                {/* ═══ Configuration des offres propres de l'élève ═══ */}
+                {servicesApplicables.filter(s => {
+                  const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+                  return ['MENSUALITE', 'BUS', 'CANTINE'].includes(type);
+                }).length > 0 && (
+                  <div className="bg-violet-50 border-2 border-violet-200 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest flex items-center gap-2">
+                        <Repeat size={13} /> Configurer les charges récurrentes
+                      </p>
+                      {offresSaved && (
+                        <span className="text-[9px] font-black text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 size={11} /> Enregistré
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-violet-600 font-bold -mt-2">
+                      Cochez les offres applicables à {inscritEleve?.prenom} et définissez le jour d'échéance mensuel.
+                    </p>
+                    <div className="space-y-2">
+                      {servicesApplicables.filter(s => {
+                        const type = (s.typeOffre || s.type_offre || '').toUpperCase();
+                        return ['MENSUALITE', 'BUS', 'CANTINE'].includes(type);
+                      }).map(s => {
+                        const cfg = offresConfig[s.id] || { checked: true, jourEcheance: 5 };
+                        return (
+                          <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${cfg.checked ? 'bg-white border-violet-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
+                            <input
+                              type="checkbox"
+                              checked={cfg.checked}
+                              onChange={e => setOffresConfig(prev => ({ ...prev, [s.id]: { ...cfg, checked: e.target.checked } }))}
+                              className="w-5 h-5 rounded-lg border-2 border-violet-300 text-violet-600 focus:ring-violet-400 cursor-pointer"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-black text-slate-800 text-sm">{s.name}</p>
+                              <p className="text-[9px] text-slate-400 font-bold">
+                                {Number(s.price).toLocaleString('fr-FR')} {currency}/mois
+                              </p>
+                            </div>
+                            {cfg.checked && (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[8px] font-black text-slate-400 uppercase">Le</span>
+                                <input
+                                  type="number" min="1" max="28"
+                                  value={cfg.jourEcheance}
+                                  onChange={e => setOffresConfig(prev => ({
+                                    ...prev, [s.id]: { ...cfg, jourEcheance: Math.min(28, Math.max(1, parseInt(e.target.value) || 1)) }
+                                  }))}
+                                  className="w-14 bg-white border border-violet-200 rounded-lg px-2 py-1.5 text-center text-sm font-black outline-none focus:ring-2 focus:ring-violet-400"
+                                />
+                                <span className="text-[8px] font-black text-slate-400 uppercase">de chaque mois</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {!offresSaved && (
+                      <button
+                        onClick={handleSaveOffresInscription}
+                        disabled={savingOffres}
+                        className="w-full py-3 bg-violet-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-violet-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {savingOffres ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
+                        Valider les abonnements
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Boutons de génération */}
                 <div>
@@ -2426,16 +2526,28 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         <p className="text-[9px] text-violet-500 font-bold">Aucun service récurrent actif. Activez la récurrence dans le module Offres de Scolarité.</p>
                       )}
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Date de début</label>
-                      <div className="relative">
-                        <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Date de début</label>
+                        <div className="relative">
+                          <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="date"
+                            value={newAboForm.dateDebut}
+                            onChange={e => setNewAboForm(f => ({ ...f, dateDebut: e.target.value }))}
+                            className="w-full bg-white border border-violet-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Jour d'échéance (mensuel)</label>
                         <input
-                          type="date"
-                          value={newAboForm.dateDebut}
-                          onChange={e => setNewAboForm(f => ({ ...f, dateDebut: e.target.value }))}
-                          className="w-full bg-white border border-violet-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
+                          type="number" min="1" max="28" placeholder="Ex: 5"
+                          value={newAboForm.jourEcheance}
+                          onChange={e => setNewAboForm(f => ({ ...f, jourEcheance: e.target.value }))}
+                          className="w-full bg-white border border-violet-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
                         />
+                        <p className="text-[8px] text-slate-400">Le jour du mois pour chaque échéance</p>
                       </div>
                     </div>
                     <div className="flex gap-2 pt-1">

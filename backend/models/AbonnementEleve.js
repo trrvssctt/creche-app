@@ -13,6 +13,7 @@ AbonnementEleve.init({
   dateDebut:    { type: DataTypes.DATEONLY, allowNull: false, field: 'date_debut' },
   dateFin:      { type: DataTypes.DATEONLY, field: 'date_fin' },
   isActive:     { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
+  jourEcheance: { type: DataTypes.INTEGER, allowNull: true, field: 'jour_echeance' }, // jour du mois (1-28) pour les récurrents
 }, {
   sequelize,
   modelName: 'abonnement_eleve',

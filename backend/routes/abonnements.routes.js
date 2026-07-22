@@ -11,6 +11,7 @@ router.post('/sync-mensuel',    checkPermission(WRITE), AbonnementController.syn
 
 // Abonnements
 router.post('/',                checkPermission(WRITE), AbonnementController.create);
+router.post('/batch',           checkPermission(WRITE), AbonnementController.createBatch);
 router.get('/eleve/:eleveId',   checkPermission(READ),  AbonnementController.listByEleve);
 router.put('/:id/desactiver',   checkPermission(WRITE), AbonnementController.deactivate);
 

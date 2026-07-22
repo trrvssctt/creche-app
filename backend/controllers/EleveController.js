@@ -13,6 +13,10 @@ import { PdfReceiptService } from '../services/PdfReceiptService.js';
 // pour ne pas bloquer la réponse de l'endpoint qui l'appelle.
 async function createAbonnementsAuto(tenantId, eleve) {
   try {
+    // Si l'élève a déjà des abonnements (configurés via le batch frontend), ne rien faire
+    const existingCount = await AbonnementEleve.count({ where: { tenantId, eleveId: eleve.id, isActive: true } });
+    if (existingCount > 0) return;
+
     const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
 
     // Charger les offres récurrentes actives pour ce tenant + année scolaire

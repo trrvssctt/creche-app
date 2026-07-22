@@ -203,7 +203,7 @@ export class AbonnementController {
   static async create(req, res) {
     const t = await sequelize.transaction();
     try {
-      const { eleveId, serviceId, dateDebut } = req.body;
+      const { eleveId, serviceId, dateDebut, jourEcheance } = req.body;
       if (!eleveId || !serviceId || !dateDebut)
         return res.status(400).json({ error: 'MissingFields', message: 'Champs obligatoires manquants.' });
 
@@ -216,14 +216,21 @@ export class AbonnementController {
       const abo = await AbonnementEleve.create({
         tenantId: req.user.tenantId, eleveId, serviceId,
         periodicite, montant, dateDebut, isActive: true,
+        jourEcheance: jourEcheance || null,
       }, { transaction: t });
+
+      // Date d'échéance : utiliser le jour configuré si récurrent
+      const dateEch = jourEcheance
+        ? (() => { const d = new Date(dateDebut); d.setDate(Math.min(jourEcheance, 28)); return d.toISOString().split('T')[0]; })()
+        : dateDebut;
+
       await EcheancePaiement.create({
         tenantId: req.user.tenantId,
         abonnementId: abo.id,
         eleveId,
         serviceId,
         montant,
-        dateEcheance: dateDebut,
+        dateEcheance: dateEch,
         periodeLabel: periodeLabel(periodicite, dateDebut),
         statut: 'EN_ATTENTE',
       }, { transaction: t });
@@ -233,6 +240,68 @@ export class AbonnementController {
     } catch (err) {
       await t.rollback();
       console.error('[AbonnementController.create]', err);
+      return res.status(500).json({ error: 'CreateError', message: err.message });
+    }
+  }
+
+  // POST /abonnements/batch — Configurer les offres propres d'un élève (inscription)
+  static async createBatch(req, res) {
+    const t = await sequelize.transaction();
+    try {
+      const { eleveId, abonnements } = req.body;
+      // abonnements: [{ serviceId, jourEcheance?, montant?, periodicite? }]
+      if (!eleveId || !Array.isArray(abonnements) || !abonnements.length)
+        return res.status(400).json({ error: 'MissingFields', message: 'eleveId et abonnements[] requis.' });
+
+      const tenantId = req.user.tenantId;
+      const now = new Date();
+      const dateDebut = now.toISOString().split('T')[0];
+      const created = [];
+
+      for (const item of abonnements) {
+        if (!item.serviceId) continue;
+        const service = await Service.findByPk(item.serviceId);
+        if (!service) continue;
+
+        const periodicite = item.periodicite || 'MENSUEL';
+        const montant = item.montant != null ? parseFloat(item.montant) : parseFloat(service.price);
+        const jour = item.jourEcheance ? Math.min(Math.max(item.jourEcheance, 1), 28) : null;
+
+        // Vérifier si un abonnement actif existe déjà pour ce service
+        const existing = await AbonnementEleve.findOne({
+          where: { tenantId, eleveId, serviceId: item.serviceId, isActive: true },
+        });
+        if (existing) continue;
+
+        const abo = await AbonnementEleve.create({
+          tenantId, eleveId, serviceId: item.serviceId,
+          periodicite, montant, dateDebut, isActive: true,
+          jourEcheance: jour,
+        }, { transaction: t });
+
+        // Créer la première échéance du mois en cours
+        const jourEch = jour || now.getDate();
+        const dateEch = new Date(now.getFullYear(), now.getMonth(), Math.min(jourEch, 28)).toISOString().split('T')[0];
+
+        await EcheancePaiement.create({
+          tenantId,
+          abonnementId: abo.id,
+          eleveId,
+          serviceId: item.serviceId,
+          montant,
+          dateEcheance: dateEch,
+          periodeLabel: periodeLabel(periodicite, dateDebut),
+          statut: 'EN_ATTENTE',
+        }, { transaction: t });
+
+        created.push(abo);
+      }
+
+      await t.commit();
+      return res.status(201).json({ success: true, count: created.length, abonnements: created });
+    } catch (err) {
+      await t.rollback();
+      console.error('[AbonnementController.createBatch]', err);
       return res.status(500).json({ error: 'CreateError', message: err.message });
     }
   }
@@ -758,89 +827,55 @@ export class AbonnementController {
     const m = parseInt(req.body.month) || now.getMonth() + 1;
     const y = parseInt(req.body.year)  || now.getFullYear();
 
-    const from  = new Date(y, m - 1, 1).toISOString().split('T')[0]; // 1er du mois
-    const to    = new Date(y, m,     0).toISOString().split('T')[0]; // dernier du mois
+    const from  = new Date(y, m - 1, 1).toISOString().split('T')[0];
+    const to    = new Date(y, m,     0).toISOString().split('T')[0];
     const today = now.toISOString().split('T')[0];
-    const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
 
     try {
-      // 1 — Services récurrents actifs du tenant (respecte le flag estRecurrent)
-      const services = await Service.findAll({
-        where: { tenantId, status: 'actif', typeOffre: { [Op.in]: RECURRING }, estRecurrent: true, deletedAt: null },
+      // Se baser uniquement sur les AbonnementEleve actifs (= offres propres à chaque élève)
+      const abonnements = await AbonnementEleve.findAll({
+        where: { tenantId, isActive: true },
+        include: [
+          { model: Eleve, as: 'eleve', attributes: ['id', 'regimeFinancier'] },
+          { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'typeOffre', 'estRecurrent'] },
+        ],
       });
 
-      if (!services.length)
-        return res.json({ message: 'Aucun service récurrent configuré.', elevesTraites: 0, abonnementsCreated: 0, echeancesCreated: 0 });
+      if (!abonnements.length)
+        return res.json({ message: 'Aucun abonnement actif. Configurez les offres par élève.', elevesTraites: 0, echeancesCreated: 0 });
 
-      // 2 — Tous les élèves INSCRIT/ACTIF
-      const eleves = await Eleve.findAll({
-        where: { tenantId, statut: { [Op.in]: ['INSCRIT', 'ACTIF'] } },
-        attributes: ['id', 'niveau', 'anneeScolaire', 'regimeFinancier', 'remisePct', 'cantine', 'transportBus'],
-      });
+      let echCreated = 0;
+      let skipped = 0;
 
-      let abosCreated = 0;
-      let echCreated  = 0;
-      let skipped     = 0;
+      for (const abo of abonnements) {
+        if (!abo.eleve || !abo.service) continue;
+        if (abo.eleve.regimeFinancier === 'CAS_SOCIAL_TOTAL') { skipped++; continue; }
+        if (abo.service.estRecurrent === false) continue;
 
-      for (const eleve of eleves) {
-        // Exonéré total → pas de facturation
-        if (eleve.regimeFinancier === 'CAS_SOCIAL_TOTAL') { skipped++; continue; }
+        const montant = parseFloat(abo.montant || abo.service.price || 0);
+        if (montant <= 0) continue;
 
-        const remisePct = parseFloat(eleve.remisePct || 0);
+        // Date d'échéance : utiliser jourEcheance configuré ou le 1er du mois
+        const jour = Math.min(abo.jourEcheance || 1, new Date(y, m, 0).getDate());
+        const dateEch = new Date(y, m - 1, jour).toISOString().split('T')[0];
 
-        // Filtrer les services applicables à cet élève
-        const applicable = services.filter(svc => {
-          const type    = (svc.typeOffre || '').toUpperCase();
-          const niveaux = Array.isArray(svc.niveauxCibles) ? svc.niveauxCibles : [];
-
-          if (type === 'CANTINE' && !eleve.cantine)     return false;
-          if (type === 'BUS'     && !eleve.transportBus) return false;
-
-          // Filtre niveau (vide ou 'TOUS' = tous niveaux)
-          if (niveaux.length > 0 && !niveaux.includes('TOUS') && !niveaux.includes(eleve.niveau)) return false;
-
-          return true;
+        // Vérifier si une échéance existe déjà pour ce mois
+        const existingEch = await EcheancePaiement.findOne({
+          where: { abonnementId: abo.id, tenantId, dateEcheance: { [Op.between]: [from, to] } },
         });
 
-        for (const svc of applicable) {
-          const prixBase = parseFloat(svc.price || 0);
-          const montant  = remisePct > 0 ? Math.round(prixBase * (1 - remisePct / 100)) : prixBase;
-
-          // Trouver ou créer l'abonnement actif
-          let [abo, createdAbo] = await AbonnementEleve.findOrCreate({
-            where: { tenantId, eleveId: eleve.id, serviceId: svc.id, isActive: true },
-            defaults: {
-              tenantId, eleveId: eleve.id, serviceId: svc.id,
-              periodicite: 'MENSUEL',
-              montant,
-              dateDebut: from,
-              isActive: true,
-            },
+        if (!existingEch) {
+          await EcheancePaiement.create({
+            tenantId,
+            abonnementId: abo.id,
+            eleveId:   abo.eleveId,
+            serviceId: abo.serviceId,
+            montant,
+            dateEcheance: dateEch,
+            periodeLabel: periodeLabel('MENSUEL', from),
+            statut: 'EN_ATTENTE',
           });
-          if (createdAbo) abosCreated++;
-
-          // Vérifier si une échéance existe déjà pour ce mois
-          const existingEch = await EcheancePaiement.findOne({
-            where: {
-              abonnementId: abo.id,
-              tenantId,
-              dateEcheance: { [Op.between]: [from, to] },
-            },
-          });
-
-          if (!existingEch) {
-            await EcheancePaiement.create({
-              tenantId,
-              abonnementId: abo.id,
-              eleveId:   eleve.id,
-              serviceId: svc.id,
-              montant,
-              dateEcheance: from,
-              periodeLabel: periodeLabel('MENSUEL', from),
-              statut: 'EN_ATTENTE',
-            });
-            echCreated++;
-          }
+          echCreated++;
         }
       }
 
@@ -850,12 +885,12 @@ export class AbonnementController {
         { where: { tenantId, statut: 'EN_ATTENTE', dateEcheance: { [Op.lt]: today } } }
       );
 
+      const eleveIds = new Set(abonnements.map(a => a.eleveId));
       return res.json({
         message: 'Synchronisation terminée.',
-        elevesTraites:     eleves.length - skipped,
-        elevesExoneres:    skipped,
-        abonnementsCreated: abosCreated,
-        echeancesCreated:  echCreated,
+        elevesTraites:    eleveIds.size - skipped,
+        elevesExoneres:   skipped,
+        echeancesCreated: echCreated,
         mois: `${String(m).padStart(2, '0')}/${y}`,
       });
     } catch (err) {
