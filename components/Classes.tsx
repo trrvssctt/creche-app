@@ -65,20 +65,13 @@ function getAdmissionStatut(d: any): StatutAdmission {
   return 'EN_ATTENTE';
 }
 
-function computeCA(services: any[], niveau: NiveauScolaire, nbInscrits: number): number {
+function computeCAFromEcheances(echeances: any[], elevesIds: Set<string>): number {
   let total = 0;
-  for (const s of services) {
-    const niveaux: string[] = s.niveauxCibles || s.niveaux_cibles || [];
-    const matchNiveau = niveaux.length === 0 || niveaux.includes(niveau);
-    if (!matchNiveau) continue;
-    const type = (s.typeOffre || s.type_offre || '').toUpperCase();
-    const price = Number(s.price || 0);
-    const duree = Number(s.dureeMois || s.duree_mois || 1);
-    if (type === 'MENSUALITE') {
-      total += price * duree * nbInscrits;
-    } else if (type === 'INSCRIPTION' || type === 'REINSCRIPTION') {
-      total += price * nbInscrits;
-    }
+  for (const ech of echeances) {
+    const id = ech.eleveId || ech.eleve_id;
+    if (!id || !elevesIds.has(id)) continue;
+    if (ech.statut === 'ANNULE') continue;
+    total += Number(ech.montant || 0);
   }
   return total;
 }
@@ -106,6 +99,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const [contracts, setContracts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dettesParEleve, setDettesParEleve] = useState<Record<string, number>>({});
+  const [allEcheances, setAllEcheances] = useState<any[]>([]);
   const [expandedClasse, setExpandedClasse] = useState<string | null>(null);
 
   // Navigation
@@ -129,7 +123,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
         apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(() => []),
         apiClient.get('/hr/employees').catch(() => []),
         apiClient.get('/hr/contracts').catch(() => []),
-        apiClient.get('/abonnements/echeances').catch(() => []),
+        apiClient.get('/abonnements/echeances', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(() => []),
       ]);
       setEleves(Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? []));
       setAdmissions(Array.isArray(admissionsData) ? admissionsData : (admissionsData?.rows ?? []));
@@ -140,6 +134,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
 
       // Calculer dette par élève (somme des échéances non payées)
       const echeances = Array.isArray(echeancesData) ? echeancesData : [];
+      setAllEcheances(echeances);
       const dettes: Record<string, number> = {};
       for (const ech of echeances) {
         if (ech.statut !== 'PAYE' && ech.statut !== 'ANNULE') {
@@ -214,23 +209,22 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
     const totalInscrits     = inscrits.length;
     const garcons           = inscrits.filter(e => e.sexe === 'M').length;
     const filles            = inscrits.filter(e => e.sexe === 'F').length;
-    const totalCA = NIVEAUX_DEF.reduce((sum, n) => {
-      const nInscrits = inscrits.filter(e => e.niveau === n.value);
-      return sum + computeCA(services, n.value, nInscrits.length);
-    }, 0);
+    const allIds = new Set<string>(inscrits.map(e => e.id));
+    const totalCA = computeCAFromEcheances(allEcheances, allIds);
     return { totalInscrits, garcons, filles, totalCA, totalClasses: classes.length };
-  }, [eleves, services, classes]);
+  }, [eleves, allEcheances, classes]);
 
   const statsParNiveau = useMemo(() => {
     return NIVEAUX_DEF.map(n => {
       const inscrits     = eleves.filter(e => e.niveau === n.value && STATUTS_INSCRITS.includes(e.statut));
       const garcons      = inscrits.filter(e => e.sexe === 'M').length;
       const filles       = inscrits.filter(e => e.sexe === 'F').length;
-      const ca           = computeCA(services, n.value, inscrits.length);
+      const niveauIds    = new Set<string>(inscrits.map(e => e.id));
+      const ca           = computeCAFromEcheances(allEcheances, niveauIds);
       const classesNiv   = classes.filter(c => c.niveau === n.value);
       return { ...n, inscrits, garcons, filles, ca, classes: classesNiv };
     });
-  }, [eleves, services, classes]);
+  }, [eleves, allEcheances, classes]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
