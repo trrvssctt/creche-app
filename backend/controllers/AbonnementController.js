@@ -314,7 +314,7 @@ export class AbonnementController {
         where: { tenantId: req.user.tenantId, eleveId },
         include: [
           { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'typeOffre'] },
-          { model: EcheancePaiement, as: 'echeances', order: [['dateEcheance', 'DESC']] },
+          { model: EcheancePaiement, as: 'echeances', where: { statut: { [Op.ne]: 'ANNULE' } }, required: false, order: [['dateEcheance', 'DESC']] },
         ],
         order: [['createdAt', 'DESC']],
       });
@@ -332,6 +332,13 @@ export class AbonnementController {
       });
       if (!abo) return res.status(404).json({ error: 'NotFound', message: 'Abonnement introuvable.' });
       await abo.update({ isActive: false, dateFin: new Date().toISOString().split('T')[0] });
+
+      // Annuler toutes les échéances non payées liées à cet abonnement
+      await EcheancePaiement.update(
+        { statut: 'ANNULE' },
+        { where: { abonnementId: abo.id, statut: { [Op.in]: ['EN_ATTENTE', 'EN_RETARD'] } } }
+      );
+
       return res.json(abo);
     } catch (err) {
       return res.status(500).json({ error: 'UpdateError', message: err.message });
@@ -345,7 +352,11 @@ export class AbonnementController {
       const where = { tenantId: req.user.tenantId };
 
       if (eleveId) where.eleveId = eleveId;
-      if (statut)  where.statut = statut;
+      if (statut) {
+        where.statut = statut;
+      } else {
+        where.statut = { [Op.ne]: 'ANNULE' };
+      }
 
       if (month && year) {
         const from = new Date(+year, +month - 1, 1);
@@ -716,7 +727,7 @@ export class AbonnementController {
 
       // ── 1. Chercher les échéances déjà enregistrées pour ce mois ────────
       let echeances = await EcheancePaiement.findAll({
-        where: { eleveId, tenantId: req.user.tenantId, dateEcheance: { [Op.between]: [from, to] } },
+        where: { eleveId, tenantId: req.user.tenantId, dateEcheance: { [Op.between]: [from, to] }, statut: { [Op.ne]: 'ANNULE' } },
         include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre', 'estRecurrent'] }],
         order: [['dateEcheance', 'ASC']],
       });
