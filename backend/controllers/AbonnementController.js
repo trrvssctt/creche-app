@@ -348,7 +348,7 @@ export class AbonnementController {
   // ── Lister les échéances (avec filtres) ──────────────────────────────────
   static async listEcheances(req, res) {
     try {
-      const { eleveId, statut, dateFrom, dateTo, month, year } = req.query;
+      const { eleveId, statut, dateFrom, dateTo, month, year, anneeScolaire } = req.query;
       const where = { tenantId: req.user.tenantId };
 
       if (eleveId) where.eleveId = eleveId;
@@ -358,9 +358,18 @@ export class AbonnementController {
         where.statut = { [Op.ne]: 'ANNULE' };
       }
 
-      if (month && year) {
-        const from = new Date(+year, +month - 1, 1);
-        const to   = new Date(+year, +month, 0);
+      if (month && (year || anneeScolaire)) {
+        // Déterminer l'année civile à partir du mois + année scolaire
+        // Ex: anneeScolaire "2025-2026", mois Oct-Déc → year=2025, mois Jan-Août → year=2026
+        let civYear;
+        if (anneeScolaire && /^\d{4}-\d{4}$/.test(anneeScolaire)) {
+          const [startYear, endYear] = anneeScolaire.split('-').map(Number);
+          civYear = +month >= 9 ? startYear : endYear;
+        } else {
+          civYear = +year;
+        }
+        const from = new Date(civYear, +month - 1, 1);
+        const to   = new Date(civYear, +month, 0);
         where.dateEcheance = { [Op.between]: [from.toISOString().split('T')[0], to.toISOString().split('T')[0]] };
       } else if (dateFrom || dateTo) {
         where.dateEcheance = {};
@@ -368,10 +377,14 @@ export class AbonnementController {
         if (dateTo)   where.dateEcheance[Op.lte] = dateTo;
       }
 
+      // Filtre par année scolaire de l'élève
+      const eleveWhere = {};
+      if (anneeScolaire) eleveWhere.anneeScolaire = anneeScolaire;
+
       const echeances = await EcheancePaiement.findAll({
         where,
         include: [
-          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom', 'niveau', 'parent1', 'whatsappPrincipal', 'matricule'] },
+          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom', 'niveau', 'parent1', 'whatsappPrincipal', 'matricule', 'anneeScolaire'], where: eleveWhere },
           { model: Service, as: 'service', attributes: ['id', 'name', 'typeOffre'] },
         ],
         order: [['dateEcheance', 'ASC']],
@@ -836,7 +849,16 @@ export class AbonnementController {
     const tenantId = req.user.tenantId;
     const now = new Date();
     const m = parseInt(req.body.month) || now.getMonth() + 1;
-    const y = parseInt(req.body.year)  || now.getFullYear();
+    const anneeScolaire = req.body.anneeScolaire;
+
+    // Déterminer l'année civile depuis l'année scolaire + mois
+    let y;
+    if (anneeScolaire && /^\d{4}-\d{4}$/.test(anneeScolaire)) {
+      const [startYear, endYear] = anneeScolaire.split('-').map(Number);
+      y = m >= 9 ? startYear : endYear;
+    } else {
+      y = parseInt(req.body.year) || now.getFullYear();
+    }
 
     const from  = new Date(y, m - 1, 1).toISOString().split('T')[0];
     const to    = new Date(y, m,     0).toISOString().split('T')[0];
@@ -844,10 +866,14 @@ export class AbonnementController {
 
     try {
       // Se baser uniquement sur les AbonnementEleve actifs (= offres propres à chaque élève)
+      // Filtrer par année scolaire de l'élève si fournie
+      const eleveWhere = {};
+      if (anneeScolaire) eleveWhere.anneeScolaire = anneeScolaire;
+
       const abonnements = await AbonnementEleve.findAll({
         where: { tenantId, isActive: true },
         include: [
-          { model: Eleve, as: 'eleve', attributes: ['id', 'regimeFinancier'] },
+          { model: Eleve, as: 'eleve', attributes: ['id', 'regimeFinancier', 'anneeScolaire'], where: eleveWhere },
           { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'typeOffre', 'estRecurrent'] },
         ],
       });

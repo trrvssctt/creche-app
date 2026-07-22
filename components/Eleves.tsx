@@ -993,8 +993,8 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setSelectedDossierId(null);
     setServicesApplicables([]);
     setDuplicateSource(null);
-    setFraisInscriptionPayes(false);
     setFraisMethodePaiement('CASH');
+    setFraisValidated(false);
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────

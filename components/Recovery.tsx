@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
+import { useAnnee } from '../contexts/AnneeContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ interface Echeance {
   eleve?: {
     id: string; nom: string; prenom: string; niveau: string;
     parent1?: { nom?: string; prenom?: string; telephone?: string; whatsapp?: string; email?: string };
-    whatsappPrincipal?: string; matricule?: string;
+    whatsappPrincipal?: string; matricule?: string; anneeScolaire?: string;
   };
   service?: { id: string; name: string; typeOffre: string };
 }
@@ -36,6 +37,7 @@ interface EleveGroupe {
   prenom: string;
   niveau: string;
   matricule: string;
+  anneeScolaire: string;
   whatsapp: string;
   email: string;
   echeances: Echeance[];
@@ -82,6 +84,7 @@ function statutBadge(statut: Echeance['statut']) {
 
 const Recovery = ({ currency }: { currency: string }) => {
   const showToast = useToast();
+  const { annee: anneeScolaire, anneesDisponibles } = useAnnee();
 
   // État
   const [echeances, setEcheances] = useState<Echeance[]>([]);
@@ -89,7 +92,7 @@ const Recovery = ({ currency }: { currency: string }) => {
   const [search, setSearch]       = useState('');
   const [filterStatut, setFilterStatut] = useState<'TOUS' | 'EN_ATTENTE' | 'EN_RETARD' | 'PAYE'>('TOUS');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear]   = useState(new Date().getFullYear());
+  const [selectedAnneeScolaire, setSelectedAnneeScolaire] = useState(anneeScolaire);
   const [expandedEleves, setExpandedEleves] = useState<Set<string>>(new Set());
   const [selectedEcheances, setSelectedEcheances] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -108,7 +111,7 @@ const Recovery = ({ currency }: { currency: string }) => {
     setLoading(true);
     try {
       const data = await apiClient.get('/abonnements/echeances', {
-        params: { month: selectedMonth, year: selectedYear },
+        params: { month: selectedMonth, anneeScolaire: selectedAnneeScolaire },
       });
       setEcheances(Array.isArray(data) ? data : []);
     } catch {
@@ -117,7 +120,7 @@ const Recovery = ({ currency }: { currency: string }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedAnneeScolaire]);
 
   useEffect(() => { fetchEcheances(); }, [fetchEcheances]);
 
@@ -141,6 +144,7 @@ const Recovery = ({ currency }: { currency: string }) => {
           eleveId: ech.eleveId,
           nom: e.nom, prenom: e.prenom, niveau: e.niveau,
           matricule: e.matricule || '',
+          anneeScolaire: e.anneeScolaire || '',
           whatsapp: e.whatsappPrincipal || e.parent1?.whatsapp || e.parent1?.telephone || '',
           email: e.parent1?.email || '',
           echeances: [],
@@ -190,7 +194,7 @@ const Recovery = ({ currency }: { currency: string }) => {
     try {
       const res = await apiClient.post('/abonnements/sync-mensuel', {
         month: selectedMonth,
-        year: selectedYear,
+        anneeScolaire: selectedAnneeScolaire,
       });
       showToast(
         `✓ ${res.elevesTraites} élève(s) traité(s) · ${res.echeancesCreated} échéance(s) créée(s)${res.elevesExoneres ? ` · ${res.elevesExoneres} exonéré(s)` : ''}`,
@@ -293,8 +297,11 @@ const Recovery = ({ currency }: { currency: string }) => {
   const loadFacture = async (eleveId: string) => {
     setActionLoading(`facture-${eleveId}`);
     try {
+      // Calculer l'année civile à partir du mois + année scolaire
+      const [startY, endY] = selectedAnneeScolaire.split('-').map(Number);
+      const civYear = selectedMonth >= 9 ? startY : endY;
       const data = await apiClient.get(`/abonnements/echeances/facture/${eleveId}`, {
-        params: { month: selectedMonth, year: selectedYear },
+        params: { month: selectedMonth, year: civYear },
       });
       setShowFactureModal(data);
     } catch (err: any) {
@@ -348,7 +355,7 @@ const Recovery = ({ currency }: { currency: string }) => {
               : <><Sparkles size={13} /> Synchroniser les élèves</>}
           </button>
 
-          {/* Sélecteur mois/année */}
+          {/* Sélecteur mois / année scolaire */}
           <div className="flex items-center gap-2 bg-white border border-slate-100 rounded-2xl shadow-sm p-1">
             <select
               value={selectedMonth}
@@ -358,11 +365,11 @@ const Recovery = ({ currency }: { currency: string }) => {
               {MOIS_NOMS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
             <select
-              value={selectedYear}
-              onChange={e => setSelectedYear(+e.target.value)}
+              value={selectedAnneeScolaire}
+              onChange={e => setSelectedAnneeScolaire(e.target.value)}
               className="bg-transparent px-3 py-2 text-[10px] font-black uppercase outline-none"
             >
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+              {anneesDisponibles.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
             <button onClick={fetchEcheances} className="p-2 hover:text-indigo-600 text-slate-400 transition-all">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -452,7 +459,7 @@ const Recovery = ({ currency }: { currency: string }) => {
                   <div className="flex-1 min-w-0">
                     <p className="font-black text-slate-900 text-sm">{g.prenom} {g.nom}</p>
                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-                      {NIVEAUX[g.niveau] || g.niveau} · {g.matricule} · {g.echeances.length} redevance(s)
+                      {NIVEAUX[g.niveau] || g.niveau} · {g.matricule} · {g.anneeScolaire} · {g.echeances.length} redevance(s)
                     </p>
                   </div>
 
