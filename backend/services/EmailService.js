@@ -81,7 +81,11 @@ function baseLayout(content, ecoleNom = 'Le Toit des Anges', logoUrl = '') {
 
 export class EmailService {
 
+  // ⚠️ Kill switch global — passer à false pour réactiver les emails
+  static EMAILS_DISABLED = true;
+
   static async sendWelcomeParent({ to, parentName, email, tempPassword, loginUrl, ecoleNom, logoUrl }) {
+    if (EmailService.EMAILS_DISABLED) return;
     const transporter = getTransporter('support');
     if (!transporter) { console.warn('[EmailService] Pas de transporteur support — email non envoyé'); return; }
 
@@ -116,6 +120,7 @@ export class EmailService {
   }
 
   static async sendPasswordReset({ to, parentName, resetUrl, ecoleNom, logoUrl }) {
+    if (EmailService.EMAILS_DISABLED) return;
     const transporter = getTransporter('support');
     if (!transporter) return;
 
@@ -143,6 +148,7 @@ export class EmailService {
   }
 
   static async sendAdminResetNotification({ to, parentName, newPassword, loginUrl, ecoleNom, logoUrl }) {
+    if (EmailService.EMAILS_DISABLED) return;
     const transporter = getTransporter('support');
     if (!transporter) return;
 
@@ -174,6 +180,7 @@ export class EmailService {
   }
 
   static async sendInvoice({ to, parentName, ecoleNom, enfantNom, mois, montant, currency, echeances, logoUrl, attachments, subject: customSubject }) {
+    if (EmailService.EMAILS_DISABLED) return;
     const transporter = getTransporter('comptabilite');
     if (!transporter) return;
 
@@ -217,6 +224,7 @@ export class EmailService {
   }
 
   static async sendGenericInfo({ to, subject, body, ecoleNom, role = 'contact', logoUrl, attachments }) {
+    if (EmailService.EMAILS_DISABLED) return;
     console.log(`[EmailService.sendGenericInfo] to="${to}", role="${role}", subject="${subject}"`);
     const transporter = getTransporter(role);
     if (!transporter) {
