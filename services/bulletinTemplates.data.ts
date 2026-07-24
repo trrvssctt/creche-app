@@ -157,7 +157,7 @@ export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
       'Je mène mon travail à son terme',
       'Je m’intègre à la vie de groupe',
   ] },
-  { nom: 'A- L’ORAL', competences: [
+  { nom: 'A- L’ORAL', section: '1-Mobiliser le langage dans toutes ses dimensions', competences: [
       'Je dis, décris et explique une activité après l’avoir terminée',
       'Je produis un discours oral compréhensible',
       'Je dis et chante des poèmes et des chansons apprises en classe',
@@ -169,7 +169,7 @@ export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
       'Je discrimine des sons proches',
       'Je mets en relation des sons et des lettres',
   ] },
-  { nom: 'B- L’ECRIT', competences: [
+  { nom: 'B- L’ECRIT', section: '1-Mobiliser le langage dans toutes ses dimensions', competences: [
       'Je reconnais la plupart des lettres de l’alphabet',
       'Je reconnais les différents types d’écrits',
       'Je reconnais la plupart des lettres de l’alphabet dans les trois écritures',
@@ -189,6 +189,7 @@ export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
       'Je dessine et je peins avec plaisir',
       'J’applique des techniques simples coller, assembler …',
       'Je réalise une production en volume',
+      'Je participe à l’observation d’une Œuvre plastique',
       'Je mémorise et reproduis plusieurs chansons apprises en classe',
       'J’écoute un rythme musical',
       'Je reproduis un rythme musical simple',
