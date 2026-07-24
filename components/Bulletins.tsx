@@ -28,6 +28,7 @@ interface CompetenceForm {
 
 interface DomaineForm {
   nom: string;
+  section?: string;
   competences: CompetenceForm[];
 }
 
@@ -125,10 +126,10 @@ function getDomainesParNiveau(niveau: NiveauScolaire): DomaineForm[] {
   const deep = (src: DomaineForm[]): DomaineForm[] =>
     src.map(d => ({
       nom: d.nom,
+      ...(d.section ? { section: d.section } : {}),
       competences: d.competences.map(c => ({ libelle: c.libelle, niveau: '' as NiveauCompetence | '' })),
     }));
   if (niveau === 'CRECHE') return deep(DOMAINES_CRECHE);
-  // PS / MS / GS : grilles officielles du Drive (échelle Acquis/En cours/Non acquis)
   const officiel = maternelleDomaines(niveau);
   return officiel ? (officiel as DomaineForm[]) : deep(DOMAINES_CRECHE);
 }
@@ -1180,8 +1181,17 @@ export default function Bulletins({ user }: Props) {
                     </div>
                   </div>
 
-                  {bulletinForm.domaines.map((domaine, di) => (
-                    <div key={di} className="border border-slate-100 rounded-2xl overflow-hidden">
+                  {bulletinForm.domaines.map((domaine, di) => {
+                    const prevDomaine = di > 0 ? bulletinForm.domaines![di - 1] : null;
+                    const showSection = domaine.section && domaine.section !== prevDomaine?.section;
+                    return (
+                    <React.Fragment key={di}>
+                    {showSection && (
+                      <div className="px-4 py-2 bg-slate-100 rounded-xl mt-2">
+                        <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em]">{domaine.section}</p>
+                      </div>
+                    )}
+                    <div className="border border-slate-100 rounded-2xl overflow-hidden">
                       <div className="px-5 py-3 bg-purple-50 border-b border-purple-100">
                         <h4 className="text-[10px] font-black text-purple-700 uppercase tracking-[0.2em]">{domaine.nom}</h4>
                       </div>
@@ -1219,7 +1229,9 @@ export default function Bulletins({ user }: Props) {
                         ))}
                       </div>
                     </div>
-                  ))}
+                    </React.Fragment>
+                    );
+                  })}
                 </div>
               )}
 

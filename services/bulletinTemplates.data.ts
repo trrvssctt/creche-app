@@ -1,12 +1,12 @@
 // GÉNÉRÉ depuis les templates du Drive (assets/Drive/*.docx) — ne pas éditer à la main.
 // Chaque niveau : liste de domaines, chaque domaine une liste de libellés de compétences.
 
-export interface TemplateDomaine { nom: string; competences: string[]; }
+export interface TemplateDomaine { nom: string; competences: string[]; section?: string; }
 
 export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
   PS: [
   { nom: 'APPRENDRE ET VIVRE ENSEMBLE', competences: [
-      'Je respecte les règles de politesse simple (dire bonjour, s’il te plaît, merci, au revoir…...) spontanément ou sur sollicitation de l’adulte.',
+      'Je respecte les règles de politesse simple (dire bonjour, s’il te plaît, merci, au revoir…) spontanément ou sur sollicitation de l’adulte.',
       'Je nomme mes camarades',
       'J’identifie les adultes de l’école et leur fonction',
       'Je respecte les autres',
@@ -18,7 +18,7 @@ export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
       'Je m’habille seul',
       'Je contrôle mes émotions',
   ] },
-  { nom: 'A- L’ORAL', competences: [
+  { nom: 'A- L’ORAL', section: '1-Mobiliser le langage dans toutes ses dimensions', competences: [
       'J’entre en relation avec les autres par la médiation de la parole',
       'Je prends la parole lors des moments collectifs',
       'Je chante une comptine devant les autres',
@@ -29,7 +29,7 @@ export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
       'J’utilise le JE pour expliquer ce que je fais',
       'Je produis des phrases simples',
   ] },
-  { nom: 'B- L’ECRIT', competences: [
+  { nom: 'B- L’ECRIT', section: '1-Mobiliser le langage dans toutes ses dimensions', competences: [
       'Je reconnais mon nom écrit en lettre capitales',
       'Je réalise des graphismes simples : points, traits, ronds',
       'Je tiens correctement l’instrument',
@@ -50,6 +50,7 @@ export const MATERNELLE_DOMAINES: Record<string, TemplateDomaine[]> = {
       'J’utilise les techniques apprises en classe',
       'Je tiens mes ciseaux correctement',
       'J’utilise la colle à bon escient',
+      'Je participe à l’observation d’une oeuvre plastique',
       'Je mémorise les comptines apprises en classe et je sais les dire ou les chanter',
       'Je chante avec les autres',
   ] },

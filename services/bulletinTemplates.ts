@@ -32,13 +32,14 @@ export function scaleForCycle(cycle: 'MATERNELLE' | 'ELEMENTAIRE' | 'CRECHE'): S
 
 // ── Convertisseurs vers les formes du composant ──────────────────────────────
 
-interface DomaineOut { nom: string; competences: { libelle: string; niveau: '' }[]; }
+interface DomaineOut { nom: string; section?: string; competences: { libelle: string; niveau: '' }[]; }
 interface SousMatiereOut { nom: string; coefficient: number; note: '' }
 interface MatiereOut { nom: string; coefficient: number; sousMatieres: SousMatiereOut[]; appreciation: string; }
 
 function toDomaines(list: TemplateDomaine[]): DomaineOut[] {
   return list.map(d => ({
     nom: d.nom,
+    ...(d.section ? { section: d.section } : {}),
     competences: d.competences.map(libelle => ({ libelle, niveau: '' as const })),
   }));
 }
