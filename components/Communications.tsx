@@ -258,6 +258,8 @@ export default function Communications() {
     const q = searchEleve.toLowerCase().trim();
     if (!q) return [];
     return eleves.filter(e => {
+      if (!['ACTIF', 'INSCRIT'].includes(e.statut)) return false;
+      if (!getElevePhone(e)) return false;
       const nomEnfant = `${e.prenom} ${e.nom}`.toLowerCase();
       const nomParent1 = `${e.parent1?.prenom || ''} ${e.parent1?.nom || ''}`.toLowerCase();
       const nomParent2 = `${e.parent2?.prenom || ''} ${e.parent2?.nom || ''}`.toLowerCase();
