@@ -35,9 +35,9 @@ export class CommunicationController {
       const eleveWhere = { tenantId };
       const isFinancier = CATEGORIES_FINANCIERES.includes(category) || TYPES_FINANCIERS.includes(type);
 
-      // Pour les messages financiers/pédagogiques : uniquement les élèves ACTIFS
+      // Pour les messages financiers/pédagogiques : élèves actifs ou inscrits (INSCRIT = actif dans l'école)
       if (isFinancier) {
-        eleveWhere.statut = 'ACTIF';
+        eleveWhere.statut = { [Op.in]: ['ACTIF', 'INSCRIT'] };
       } else {
         // Pour les annonces/événements : tous les élèves inscrits ou actifs
         eleveWhere.statut = { [Op.in]: ['ACTIF', 'INSCRIT'] };
@@ -95,7 +95,7 @@ export class CommunicationController {
         }
 
         // Vérification renforcée pour les messages financiers
-        if (isFinancier && eleve.statut !== 'ACTIF') {
+        if (isFinancier && !['ACTIF', 'INSCRIT'].includes(eleve.statut)) {
           skipped.push({ eleveId: eleve.id, nom: `${eleve.prenom} ${eleve.nom}`, reason: 'Élève non actif — message financier refusé' });
           continue;
         }
@@ -191,7 +191,7 @@ export class CommunicationController {
       const isFinancier = CATEGORIES_FINANCIERES.includes(category) || TYPES_FINANCIERS.includes(type);
 
       if (isFinancier) {
-        eleveWhere.statut = 'ACTIF';
+        eleveWhere.statut = { [Op.in]: ['ACTIF', 'INSCRIT'] };
       } else {
         eleveWhere.statut = { [Op.in]: ['ACTIF', 'INSCRIT'] };
       }
