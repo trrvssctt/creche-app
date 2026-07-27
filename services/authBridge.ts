@@ -21,7 +21,7 @@ const ALL_MODULES = [
   'categories', 'subcategories',
   'inventory', 'movements', 'inventorycampaigns',
   'services',
-  'eleves', 'classes', 'customers', 'admission', 'bulletins', 'whatsapp', 'certificats', 'emploidutemps', 'evenements',
+  'eleves', 'classes', 'customers', 'admission', 'bulletins', 'whatsapp', 'communications', 'certificats', 'emploidutemps', 'evenements',
   'suppliers', 'deliveries',
   'sales', 'recovery', 'payments', 'facturation',
   'rh',
@@ -73,7 +73,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   [UserRole.COMPTABLE]: [
     'dashboard',
     'eleves', 'classes', 'customers', 'admission',
-    'whatsapp', 'certificats',
+    'whatsapp', 'communications', 'certificats',
     'sales', 'recovery', 'payments', 'facturation',
     'rh',
     'rh.payroll.settings', 'rh.payroll.generation',
@@ -85,7 +85,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   [UserRole.ASSISTANTE]: [
     'dashboard',
     'eleves', 'classes', 'customers', 'admission',
-    'whatsapp', 'certificats', 'emploidutemps', 'evenements',
+    'whatsapp', 'communications', 'certificats', 'emploidutemps', 'evenements',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],

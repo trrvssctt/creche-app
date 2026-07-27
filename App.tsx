@@ -15,6 +15,7 @@ import Classes from './components/Classes';
 import Admission from './components/Admission';
 import Bulletins from './components/Bulletins';
 import WhatsApp from './components/WhatsApp';
+import Communications from './components/Communications';
 import Certificats from './components/Certificats';
 import EmploiDuTemps from './components/EmploiDuTemps';
 import Evenements from './components/Evenements';
@@ -447,7 +448,8 @@ const App: React.FC = () => {
       case 'classes':            return <Classes user={currentUser} currency={appSettings.currency} />;
       case 'admission':          return <Admission user={currentUser} currency={appSettings.currency} />;
       case 'bulletins':          return <Bulletins user={currentUser} />;
-      case 'whatsapp':           return <WhatsApp user={currentUser} />;
+      case 'whatsapp':
+      case 'communications':    return <Communications />;
       case 'certificats':        return <Certificats user={currentUser} />;
       case 'emploidutemps':      return <EmploiDuTemps user={currentUser} />;
       case 'evenements':         return <Evenements user={currentUser} />;

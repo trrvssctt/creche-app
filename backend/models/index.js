@@ -60,6 +60,8 @@ import { PlanningConfig } from './PlanningConfig.js';
 import { PlanningException } from './PlanningException.js';
 import { EleveDocument } from './EleveDocument.js';
 import { SchoolEvent } from './SchoolEvent.js';
+import { CommunicationLog } from './CommunicationLog.js';
+import { CommunicationTemplate } from './CommunicationTemplate.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
@@ -261,6 +263,15 @@ PerformanceReview.belongsTo(Employee, { foreignKey: 'reviewer_id', as: 'reviewer
 HRRule.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 Tenant.hasMany(HRRule, { foreignKey: 'tenant_id', as: 'hrRules' });
 
+// Communication logs & templates
+Tenant.hasMany(CommunicationLog, { foreignKey: 'tenant_id' });
+CommunicationLog.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+CommunicationLog.belongsTo(User, { foreignKey: 'sender_id', as: 'sender' });
+CommunicationLog.belongsTo(Eleve, { foreignKey: 'target_eleve_id', as: 'targetEleve' });
+CommunicationLog.belongsTo(Classe, { foreignKey: 'target_classe_id', as: 'targetClasse' });
+Tenant.hasMany(CommunicationTemplate, { foreignKey: 'tenant_id' });
+CommunicationTemplate.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+
 // Notification relations
 Notification.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 Tenant.hasMany(Notification, { foreignKey: 'tenant_id', as: 'notifications' });
@@ -341,4 +352,6 @@ export {
   PlanningConfig, PlanningException,
   EleveDocument,
   SchoolEvent,
+  CommunicationLog,
+  CommunicationTemplate,
 };
