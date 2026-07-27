@@ -355,7 +355,7 @@ export default function Communications() {
       showToast(`${(res.data || res).sent} message(s) envoyé(s).`, 'success');
       setShowPreview(false);
     } catch (err: any) {
-      showToast(err.response?.data?.message || err.data?.message || 'Erreur envoi.', 'error');
+      showToast(err.message || err.response?.data?.message || err.data?.message || 'Erreur envoi.', 'error');
     } finally { setSending(false); }
   };
 

@@ -75,7 +75,7 @@ export class CommunicationController {
       });
 
       if (eleves.length === 0) {
-        return res.status(404).json({ error: 'NoRecipients', message: 'Aucun destinataire trouvé avec ces critères.' });
+        return res.status(422).json({ error: 'NoRecipients', message: 'Aucun destinataire trouvé avec ces critères.' });
       }
 
       // ── Construction des messages personnalisés ───────────────────────────
