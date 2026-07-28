@@ -5,6 +5,11 @@
  * le rate-limiting et la synchronisation du contexte Botpress.
  */
 
+import { config as loadEnv } from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env') });
+
 import axios from 'axios';
 import { sequelize } from '../config/database.js';
 
