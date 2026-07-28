@@ -339,9 +339,9 @@ export default function Communications() {
     } finally { setLoading(false); }
   };
 
-  // ── Envoi via Botpress ────────────────────────────────────────────────────
+  // ── Envoi WhatsApp ────────────────────────────────────────────────────────
 
-  const handleSendBotpress = async () => {
+  const handleSend = async () => {
     if (!body.trim()) { showToast('Le message ne peut pas être vide.', 'error'); return; }
     try {
       setSending(true);
@@ -396,7 +396,7 @@ export default function Communications() {
             <span className="p-2 bg-green-500 rounded-xl text-white"><MessageSquare size={22} /></span>
             Communications WhatsApp
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Envoi de messages aux parents via Botpress / WhatsApp</p>
+          <p className="text-slate-500 text-sm mt-1">Envoi de messages aux parents via WhatsApp</p>
         </div>
       </div>
 
@@ -582,10 +582,10 @@ export default function Communications() {
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
                 Prévisualiser
               </button>
-              <button onClick={handleSendBotpress} disabled={sending || !body.trim()}
+              <button onClick={handleSend} disabled={sending || !body.trim()}
                 className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-all disabled:opacity-50">
                 {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                Envoyer via Botpress
+                Envoyer
               </button>
               <button onClick={resetComposer}
                 className="flex items-center gap-2 px-4 py-2.5 text-slate-500 text-sm hover:text-slate-700">
