@@ -1,24 +1,22 @@
 import axios from 'axios';
 
-const BOTPRESS_WEBHOOK_URL = process.env.BOTPRESS_WEBHOOK_URL;
-const BOTPRESS_BOT_ID = process.env.BOTPRESS_BOT_ID;
-const BOTPRESS_TOKEN = process.env.BOTPRESS_TOKEN;
-
-const BOTPRESS_API = 'https://api.botpress.cloud/v1';
+// Webhook n8n pour l'envoi de messages WhatsApp sortants
+const N8N_WHATSAPP_WEBHOOK = process.env.N8N_WHATSAPP_WEBHOOK || process.env.BOTPRESS_WEBHOOK_URL;
+const WHATSAPP_SENDER = process.env.WHATSAPP_SENDER_PHONE || '';
 
 export class BotpressService {
   /**
-   * Envoie un message WhatsApp proactif via l'API Botpress Cloud.
-   * Utilise createMessage sur une conversation existante ou en crée une nouvelle.
+   * Envoie un message WhatsApp via n8n.
+   * n8n reçoit le payload et déclenche l'envoi via l'API WhatsApp Business / Botpress.
    *
    * @param {string} phone - Numéro WhatsApp du destinataire
    * @param {string} message - Corps du message
    * @returns {{ success: boolean, messageId?: string, error?: string }}
    */
   static async sendWhatsApp(phone, message) {
-    if (!BOTPRESS_TOKEN) {
-      console.warn('[BOTPRESS] BOTPRESS_TOKEN non configuré — message non envoyé');
-      return { success: false, error: 'BOTPRESS_TOKEN non configuré' };
+    if (!N8N_WHATSAPP_WEBHOOK) {
+      console.warn('[WHATSAPP] N8N_WHATSAPP_WEBHOOK non configuré — message non envoyé');
+      return { success: false, error: 'Webhook WhatsApp non configuré (N8N_WHATSAPP_WEBHOOK)' };
     }
 
     const normalizedPhone = this.normalizePhone(phone);
@@ -27,124 +25,39 @@ export class BotpressService {
     }
 
     try {
-      // Méthode 1 : Webhook avec payload structuré pour message sortant
-      // Le webhook Botpress peut être configuré pour recevoir des messages sortants
-      // si un "Outgoing Webhook" est configuré dans les intégrations
-      const response = await axios.post(BOTPRESS_WEBHOOK_URL, {
-        type: 'text',
-        text: message,
-        userId: normalizedPhone,
-        conversationId: `wa-${normalizedPhone}`,
-        tags: {
-          'whatsapp:phoneNumber': normalizedPhone,
-        },
-        payload: {
-          type: 'text',
-          text: message,
-        },
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${BOTPRESS_TOKEN}`,
-          'x-bot-id': BOTPRESS_BOT_ID,
-        },
-        timeout: 15000,
+      const payload = {
+        action: 'send_whatsapp',
+        to: normalizedPhone,
+        message,
+        sender: WHATSAPP_SENDER,
+        timestamp: new Date().toISOString(),
+      };
+
+      console.log(`[WHATSAPP] Envoi vers ${normalizedPhone} via n8n...`);
+
+      const response = await axios.post(N8N_WHATSAPP_WEBHOOK, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 30000,
       });
 
-      if (response.status >= 200 && response.status < 300) {
+      // n8n retourne généralement un objet avec success ou un status 200
+      const data = response.data;
+      const success = response.status >= 200 && response.status < 300;
+
+      if (success) {
+        console.log(`[WHATSAPP] ✅ Message envoyé à ${normalizedPhone}`);
         return {
           success: true,
-          messageId: response.data?.messageId || response.data?.id || 'sent',
+          messageId: data?.messageId || data?.id || `n8n-${Date.now()}`,
         };
       }
 
-      return { success: false, error: `HTTP ${response.status}: ${JSON.stringify(response.data)}` };
+      return { success: false, error: `n8n a retourné: ${JSON.stringify(data)}` };
     } catch (err) {
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       const statusCode = err.response?.status;
-      console.error(`[BOTPRESS] Erreur envoi WhatsApp à ${normalizedPhone} (${statusCode}):`, errorMsg);
-
-      // Si le webhook classique ne fonctionne pas, tenter l'API directe
-      if (statusCode === 400 || statusCode === 404 || statusCode === 422) {
-        return this.sendViaConversationAPI(normalizedPhone, message);
-      }
-
+      console.error(`[WHATSAPP] ❌ Erreur envoi à ${normalizedPhone} (HTTP ${statusCode}):`, errorMsg);
       return { success: false, error: errorMsg };
-    }
-  }
-
-  /**
-   * Fallback : Envoie via l'API Conversations de Botpress Cloud.
-   * Crée ou retrouve une conversation avec le user WhatsApp et envoie un message.
-   */
-  static async sendViaConversationAPI(phone, message) {
-    try {
-      // Étape 1 : Créer ou récupérer l'utilisateur
-      const userRes = await axios.post(`${BOTPRESS_API}/chat/users`, {
-        tags: {
-          'whatsapp:userId': phone,
-          'whatsapp:phoneNumber': phone,
-        },
-      }, {
-        headers: {
-          'Authorization': `Bearer ${BOTPRESS_TOKEN}`,
-          'x-bot-id': BOTPRESS_BOT_ID,
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000,
-      });
-
-      const userId = userRes.data?.user?.id;
-      if (!userId) {
-        return { success: false, error: 'Impossible de créer/trouver le user Botpress' };
-      }
-
-      // Étape 2 : Créer une conversation
-      const convRes = await axios.post(`${BOTPRESS_API}/chat/conversations`, {
-        channel: 'whatsapp',
-        tags: {
-          'whatsapp:phoneNumber': phone,
-        },
-      }, {
-        headers: {
-          'Authorization': `Bearer ${BOTPRESS_TOKEN}`,
-          'x-bot-id': BOTPRESS_BOT_ID,
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000,
-      });
-
-      const conversationId = convRes.data?.conversation?.id;
-      if (!conversationId) {
-        return { success: false, error: 'Impossible de créer la conversation Botpress' };
-      }
-
-      // Étape 3 : Envoyer le message
-      const msgRes = await axios.post(`${BOTPRESS_API}/chat/messages`, {
-        conversationId,
-        userId,
-        type: 'text',
-        payload: { text: message },
-        tags: {
-          'whatsapp:phoneNumber': phone,
-        },
-      }, {
-        headers: {
-          'Authorization': `Bearer ${BOTPRESS_TOKEN}`,
-          'x-bot-id': BOTPRESS_BOT_ID,
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000,
-      });
-
-      return {
-        success: true,
-        messageId: msgRes.data?.message?.id || 'sent-via-api',
-      };
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
-      console.error(`[BOTPRESS] Erreur API Conversation:`, errorMsg);
-      return { success: false, error: `API Conversation: ${errorMsg}` };
     }
   }
 
@@ -192,7 +105,7 @@ export class BotpressService {
     if (digits.startsWith('221') && digits.length >= 12) return `+${digits}`;
     // Format local 7X... (9 chiffres)
     if (/^[7][0-9]{8}$/.test(digits)) return `+221${digits}`;
-    // Format local 7X... avec plus de chiffres (ex: 78263672882 → 11 chiffres)
+    // Format local 7X... avec plus de chiffres (ex: 78263672882 → tronquer à 9)
     if (/^7[0-9]+$/.test(digits) && digits.length > 9) return `+221${digits.slice(0, 9)}`;
     // Format 0X... (10 chiffres, préfixe local)
     if (digits.startsWith('0') && digits.length === 10) return `+221${digits.slice(1)}`;
