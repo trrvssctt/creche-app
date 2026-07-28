@@ -9,6 +9,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { StripeService } from '../services/StripeService.js';
 import { EmailService } from '../services/EmailService.js';
+import { BotpressService } from '../services/BotpressService.js';
 
 // ── Emails et domaines bloqués (spam / abus avérés) ──────────────────────────
 const BLOCKED_EMAILS = new Set([
@@ -1279,10 +1280,11 @@ static async login(req, res) {
       }
 
       // Valider que chaque eleveId appartient au tenant
+      let elevesLinked = [];
       if (eleveIds.length > 0) {
         const { Eleve } = await import('../models/index.js');
-        const eleves = await Eleve.findAll({ where: { id: eleveIds, tenantId }, attributes: ['id'] });
-        if (eleves.length !== eleveIds.length) {
+        elevesLinked = await Eleve.findAll({ where: { id: eleveIds, tenantId }, attributes: ['id', 'parent1', 'whatsappPrincipal'] });
+        if (elevesLinked.length !== eleveIds.length) {
           return res.status(400).json({ error: 'InvalidEleveIds', message: 'Un ou plusieurs élèves introuvables.' });
         }
       }
@@ -1326,6 +1328,15 @@ static async login(req, res) {
         emailSent = true;
       } catch (emailErr) {
         console.warn('[AUTH] Email de bienvenue non envoyé:', emailErr.message);
+      }
+
+      // WhatsApp au parent
+      const parentPhone = elevesLinked[0]?.whatsappPrincipal || elevesLinked[0]?.parent1?.whatsapp || elevesLinked[0]?.parent1?.telephone;
+      if (parentPhone) {
+        BotpressService.sendWhatsApp(parentPhone,
+          `🔑 *Votre compte parent est créé !*\n\nBonjour ${prenom} ${nom},\n\nVotre espace parent sur *${ecoleNom}* est prêt.\n\n👤 Email : ${email}\n🔗 Connexion : ${frontendUrl}/parents\n\nConnectez-vous pour suivre la scolarité de votre enfant.\n\n_${ecoleNom}_`,
+          { category: 'compte_parent', reference: `parent-account:${user.id}` }
+        ).catch(err => console.warn('[AUTH] WhatsApp parent account:', err.message));
       }
 
       return res.status(201).json({

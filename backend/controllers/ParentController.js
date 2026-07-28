@@ -15,6 +15,9 @@ import { User }   from '../models/User.js';
 import { uploadToCloudinary } from '../services/CloudinaryService.js';
 import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
+import { BotpressService } from '../services/BotpressService.js';
+
+const ADMIN_PHONE = '+221781311371';
 
 // Vérifie que l'eleveId appartient bien au parent connecté
 async function assertOwnsEleve(eleveId, req) {
@@ -668,6 +671,22 @@ export class ParentController {
           console.warn('[ParentController] Email confirmation admission non envoyé:', emailErr.message);
         }
       }
+
+      // WhatsApp au parent
+      const parentPhone = parent1?.whatsapp || parent1?.telephone;
+      const suiviUrl = `${frontendUrl}/suivi-inscription?ref=${ref}`;
+      if (parentPhone) {
+        BotpressService.sendWhatsApp(parentPhone,
+          `✅ *Candidature déposée*\n\nBonjour ${user?.name || 'Parent'},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement.\n\n_${ecoleNom}_`,
+          { category: 'inscription', reference: `admission:${ref}` }
+        ).catch(err => console.warn('[ParentController] WhatsApp parent:', err.message));
+      }
+
+      // WhatsApp à l'administration
+      BotpressService.sendWhatsApp(ADMIN_PHONE,
+        `📥 *Nouvelle candidature (portail parent)*\n\nEnfant : *${prenom} ${nom}*\nNiveau : ${niveau || 'PS'}\nParent : ${user?.name || 'N/A'}\nRéf : *${ref}*\n\nConnectez-vous pour traiter ce dossier.`,
+        { category: 'inscription', reference: `admission:${ref}` }
+      ).catch(err => console.warn('[ParentController] WhatsApp admin:', err.message));
 
       res.status(201).json({
         success: true,

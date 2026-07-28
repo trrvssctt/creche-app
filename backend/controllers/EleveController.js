@@ -5,6 +5,9 @@ import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
 import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
 import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
+import { BotpressService } from '../services/BotpressService.js';
+
+const ADMIN_PHONE = '+221781311371';
 
 // ── Création automatique des abonnements à l'inscription ────────────────────
 // Cherche les offres (MENSUALITE/BUS/CANTINE) applicables au niveau/options de
@@ -246,6 +249,31 @@ export class EleveController {
         eleve.classeId
       ) {
         await createAbonnementsAuto(req.user.tenantId, eleve);
+      }
+
+      // WhatsApp : notifier le parent si la candidature est validée
+      if (
+        !['INSCRIT', 'ACTIF'].includes(statutAvant) &&
+        ['INSCRIT', 'ACTIF'].includes(statutApres)
+      ) {
+        const parentPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+        const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+        const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+        const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name'] });
+        const ecoleNom = tenant?.name || 'Le Toit des Anges';
+
+        if (parentPhone) {
+          BotpressService.sendWhatsApp(parentPhone,
+            `🎉 *Candidature acceptée !*\n\nBonjour ${parentName},\n\nNous avons le plaisir de vous informer que *${enfantNom}* est désormais *${statutApres === 'INSCRIT' ? 'inscrit(e)' : 'actif/active'}* à *${ecoleNom}*.\n\nBienvenue dans notre établissement !\n\n_${ecoleNom}_`,
+            { category: 'inscription', reference: `validation:${eleve.id}` }
+          ).catch(err => console.warn('[EleveController] WhatsApp validation parent:', err.message));
+        }
+
+        // Notifier l'admin
+        BotpressService.sendWhatsApp(ADMIN_PHONE,
+          `✅ *Candidature validée*\n\nÉlève : *${enfantNom}*\nStatut : ${statutApres}\nParent : ${parentName}\n\nL'élève a été inscrit avec succès.`,
+          { category: 'inscription', reference: `validation:${eleve.id}` }
+        ).catch(err => console.warn('[EleveController] WhatsApp validation admin:', err.message));
       }
 
       return res.json(eleve);

@@ -5,6 +5,9 @@ import {
   validatePiecesJointes, createPiecesJointes, missingRequiredPieces,
 } from '../utils/eleveDedup.js';
 import { EmailService } from '../services/EmailService.js';
+import { BotpressService } from '../services/BotpressService.js';
+
+const ADMIN_PHONE = '+221781311371';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -182,6 +185,21 @@ export class PublicController {
           console.warn('[PublicController] Email confirmation non envoyé:', emailErr.message);
         }
       }
+
+      // WhatsApp au parent
+      const parentPhone = parent1?.whatsapp || parent1?.telephone;
+      if (parentPhone) {
+        BotpressService.sendWhatsApp(parentPhone,
+          `✅ *Candidature déposée*\n\nBonjour ${parentName},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement de votre dossier.\n\n_${ecoleNom}_`,
+          { category: 'inscription', reference: `admission:${ref}` }
+        ).catch(err => console.warn('[PublicController] WhatsApp parent:', err.message));
+      }
+
+      // WhatsApp à l'administration
+      BotpressService.sendWhatsApp(ADMIN_PHONE,
+        `📥 *Nouvelle candidature*\n\nEnfant : *${prenom} ${nom}*\nNiveau : ${niveau || 'PS'}\nParent : ${parentName}\nTél : ${parentPhone || 'non renseigné'}\nRéf : *${ref}*\n\nConnectez-vous pour traiter ce dossier.`,
+        { category: 'inscription', reference: `admission:${ref}` }
+      ).catch(err => console.warn('[PublicController] WhatsApp admin:', err.message));
 
       return res.status(201).json({
         success: true,
