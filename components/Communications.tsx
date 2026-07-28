@@ -353,8 +353,14 @@ export default function Communications() {
         targetEleveId: targetType === 'INDIVIDUEL' ? selectedEleve?.id : undefined,
         variables: customVars,
       });
-      setSendResult(res.data || res);
-      showToast(`${(res.data || res).sent} message(s) envoyé(s).`, 'success');
+      const data = res.data || res;
+      setSendResult(data);
+      if (data.sent > 0) {
+        showToast(`${data.sent} message(s) envoyé(s).`, 'success');
+      } else if (data.failed > 0) {
+        const errDetail = data.details?.find((d: any) => d.error)?.error || 'Échec envoi WhatsApp';
+        showToast(`Échec : ${errDetail}`, 'error');
+      }
       setShowPreview(false);
     } catch (err: any) {
       showToast(err.message || err.response?.data?.message || err.data?.message || 'Erreur envoi.', 'error');
