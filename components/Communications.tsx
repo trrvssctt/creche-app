@@ -77,9 +77,6 @@ const NIVEAUX = [
 const NIVEAUX_LABELS: Record<string, string> = Object.fromEntries(NIVEAUX.map(n => [n.value, n.label]));
 
 const TYPES_MESSAGE = [
-  { value: 'FACTURE', label: 'Facture mensuelle', category: 'FINANCIER', icon: '📄', color: 'blue' },
-  { value: 'RECU', label: 'Reçu de paiement', category: 'FINANCIER', icon: '✅', color: 'emerald' },
-  { value: 'RELANCE', label: 'Relance impayé', category: 'FINANCIER', icon: '⚠️', color: 'rose' },
   { value: 'BULLETIN', label: 'Bulletin disponible', category: 'PEDAGOGIQUE', icon: '📊', color: 'indigo' },
   { value: 'ANNONCE', label: 'Annonce générale', category: 'GENERAL', icon: '📢', color: 'teal' },
   { value: 'EVENEMENT', label: 'Événement', category: 'GENERAL', icon: '🎉', color: 'orange' },
@@ -89,44 +86,6 @@ const TYPES_MESSAGE = [
 const NOM_ECOLE = 'Le Toit des Anges';
 
 const DEFAULT_TEMPLATES = [
-  {
-    id: 'FACTURE_MENSUELLE', label: 'Facture mensuelle', category: 'FINANCIER',
-    variables: ['prenom_parent', 'prenom_enfant', 'nom_enfant', 'niveau', 'montant', 'mois', 'date_limite'],
-    body: `Bonjour {prenom_parent},
-
-Nous vous adressons la facture de scolarité du mois de *{mois}* pour *{prenom_enfant} {nom_enfant}* ({niveau}).
-
-💰 Montant dû : *{montant} FCFA*
-📅 Date limite de paiement : *{date_limite}*
-
-Merci de régulariser avant la date limite.
-— ${NOM_ECOLE} 🏫`,
-  },
-  {
-    id: 'RECU_DEFINITIF', label: 'Reçu de paiement', category: 'FINANCIER',
-    variables: ['prenom_parent', 'prenom_enfant', 'nom_enfant', 'niveau', 'montant', 'mois'],
-    body: `Bonjour {prenom_parent},
-
-Nous confirmons le règlement *complet* des frais de scolarité de *{prenom_enfant} {nom_enfant}* ({niveau}) pour le mois de *{mois}*.
-
-✅ Montant payé : *{montant} FCFA*
-
-Merci de votre confiance !
-— ${NOM_ECOLE} 🏫`,
-  },
-  {
-    id: 'RELANCE', label: 'Relance impayé', category: 'FINANCIER',
-    variables: ['prenom_parent', 'prenom_enfant', 'nom_enfant', 'niveau', 'montant', 'mois', 'nb_jours_retard'],
-    body: `Bonjour {prenom_parent},
-
-Les frais de scolarité de *{prenom_enfant} {nom_enfant}* ({niveau}) pour *{mois}* sont toujours en attente.
-
-💰 Montant dû : *{montant} FCFA*
-📅 Retard : *{nb_jours_retard} jour(s)*
-
-Merci de régulariser d'urgence ou de nous contacter.
-— ${NOM_ECOLE} 🏫`,
-  },
   {
     id: 'BULLETIN', label: 'Bulletin disponible', category: 'PEDAGOGIQUE',
     variables: ['prenom_parent', 'prenom_enfant', 'nom_enfant', 'niveau', 'trimestre'],
