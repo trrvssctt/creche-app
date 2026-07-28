@@ -1208,26 +1208,26 @@ export class AbonnementController {
             isPaid: totalDu <= totalPaye,
           });
 
-          await EmailService.sendInvoice({
-            to: parentEmail,
-            parentName,
-            ecoleNom,
-            logoUrl: tenant?.logoUrl,
-            enfantNom,
-            mois: periodLabel,
-            montant: totalDu,
-            currency,
-            echeances: echeances.map(e => ({
-              label: e.service?.name || 'Scolarité',
-              mois: periodLabel,
-              montant: parseFloat(e.montant) || 0,
-            })),
-            attachments: [{
+          // Email désactivé pour l'instant
+          // await EmailService.sendInvoice({ ... });
+
+          // Envoi WhatsApp de la facture
+          const waPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+          if (waPhone) {
+            const montantFmt = totalDu.toLocaleString('fr-FR');
+            const waMessage = `📄 *Facture mensuelle*\n\nBonjour ${parentName},\n\nVoici la facture de *${enfantNom}* pour *${periodLabel}*.\n\n💰 Total dû : *${montantFmt} ${currency}*\n📅 Échéance : fin du mois\n🧾 Réf : ${refFacture}\n\nVeuillez trouver la facture en pièce jointe.\n\n_${ecoleNom}_`;
+            await BotpressService.sendDocument(waPhone, waMessage, {
+              base64: pdfBuffer.toString('base64'),
               filename: `facture_${enfantNom.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`,
-              content: pdfBuffer,
-              contentType: 'application/pdf',
-            }],
-          });
+              mimeType: 'application/pdf',
+              caption: `Facture ${periodLabel} — ${enfantNom}`,
+            }, {
+              category: 'facture',
+              reference: `facture:${refFacture}`,
+              variables: [parentName, enfantNom, periodLabel, `${montantFmt} ${currency}`],
+            });
+          }
+
           results.sent++;
         } catch (emailErr) {
           results.errors.push({ eleveId: id, message: emailErr.message });
