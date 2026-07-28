@@ -62,6 +62,60 @@ export class BotpressService {
   }
 
   /**
+   * Envoie un document (PDF, image) via WhatsApp avec message accompagnant.
+   *
+   * @param {string} phone - Numéro WhatsApp du destinataire
+   * @param {string} message - Texte accompagnant le document
+   * @param {{ url?: string, base64?: string, filename: string, mimeType?: string, caption?: string }} document
+   * @returns {{ success: boolean, messageId?: string, error?: string }}
+   */
+  static async sendDocument(phone, message, document) {
+    if (!N8N_WHATSAPP_WEBHOOK) {
+      return { success: false, error: 'Webhook WhatsApp non configuré (N8N_WHATSAPP_WEBHOOK)' };
+    }
+
+    const normalizedPhone = this.normalizePhone(phone);
+    if (!normalizedPhone) {
+      return { success: false, error: `Numéro invalide: ${phone}` };
+    }
+
+    try {
+      const payload = {
+        action: 'send_whatsapp_document',
+        to: normalizedPhone,
+        message,
+        document: {
+          url: document.url || undefined,
+          base64: document.base64 || undefined,
+          filename: document.filename,
+          mimeType: document.mimeType || 'application/pdf',
+          caption: document.caption || document.filename,
+        },
+        sender: WHATSAPP_SENDER,
+        timestamp: new Date().toISOString(),
+      };
+
+      console.log(`[WHATSAPP] Envoi document "${document.filename}" vers ${normalizedPhone} via n8n...`);
+
+      const response = await axios.post(N8N_WHATSAPP_WEBHOOK, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        console.log(`[WHATSAPP] ✅ Document envoyé à ${normalizedPhone}`);
+        return { success: true, messageId: response.data?.messageId || `n8n-doc-${Date.now()}` };
+      }
+
+      return { success: false, error: `n8n a retourné: ${JSON.stringify(response.data)}` };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      console.error(`[WHATSAPP] ❌ Erreur envoi document à ${normalizedPhone}:`, errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
    * Envoi en masse avec rate-limiting.
    */
   static async sendBulk(recipients, options = {}) {
