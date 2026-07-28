@@ -152,67 +152,35 @@ export class BotpressService {
   }
 
   /**
-   * Envoi en lot — un seul appel à n8n qui séquence les envois.
+   * Envoi en lot — appelle sendWhatsApp pour chaque destinataire.
    */
   static async sendBulk(recipients, options = {}) {
-    const prepared = [];
-    const skipped = [];
+    const details = [];
+    let sent = 0;
+    let failed = 0;
 
     for (const r of recipients) {
-      const phone = normalizePhone(r.phone);
-      if (!phone) {
-        skipped.push({ eleveId: r.eleveId, phone: r.phone, status: 'FAILED', error: 'Numéro invalide' });
-        continue;
-      }
-      const inSession = await isInSession(phone);
-      prepared.push({
-        to: phone,
-        message: r.message,
-        inSession,
-        variables: r.variables || [],
+      const result = await BotpressService.sendWhatsApp(r.phone, r.message, {
         category: r.category || options.category || 'generique',
         reference: r.reference || null,
-        eleveId: r.eleveId,
+        template: options.template || null,
+        variables: r.variables || [],
       });
-    }
 
-    if (prepared.length === 0) {
-      return { sent: 0, failed: skipped.length, details: skipped };
-    }
-
-    const payload = {
-      action: 'send_whatsapp',
-      recipients: prepared,
-      template: options.template || null,
-      timestamp: new Date().toISOString(),
-    };
-
-    try {
-      const data = await callN8n(payload);
-      const details = [];
-      let sent = 0;
-      let failed = 0;
-
-      for (const result of (data.results || [])) {
-        if (result.success) {
-          sent++;
-          details.push({ eleveId: result.eleveId, phone: result.to, status: 'DELIVERED', messageId: result.messageId });
-        } else {
-          failed++;
-          details.push({ eleveId: result.eleveId, phone: result.to, status: 'FAILED', error: result.error });
-        }
+      if (result.success) {
+        sent++;
+        details.push({ eleveId: r.eleveId, phone: r.phone, status: 'DELIVERED', messageId: result.messageId });
+      } else {
+        failed++;
+        details.push({ eleveId: r.eleveId, phone: r.phone, status: 'FAILED', error: result.error });
       }
 
-      return { sent, failed: failed + skipped.length, details: [...details, ...skipped] };
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || err.message;
-      console.error('[WHATSAPP] ❌ Erreur envoi bulk:', errorMsg);
-      return {
-        sent: 0,
-        failed: prepared.length + skipped.length,
-        details: prepared.map(r => ({ eleveId: r.eleveId, phone: r.to, status: 'FAILED', error: errorMsg })).concat(skipped),
-      };
+      if (options.delayMs && recipients.indexOf(r) < recipients.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, options.delayMs));
+      }
     }
+
+    return { sent, failed, details };
   }
 
   /**
