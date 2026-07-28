@@ -250,6 +250,10 @@ async function sendPaymentReceiptWhatsApp({ tenantId, eleve, echeances, methodeP
       filename: `recu_${enfantNom.replace(/\s+/g, '_')}_${dateFmt.replace(/\//g, '-')}.pdf`,
       mimeType: 'application/pdf',
       caption: `Reçu de paiement — ${enfantNom}`,
+    }, {
+      category: 'recu',
+      reference: `vente:${saleRef}`,
+      variables: [parentName, `${montantFmt} ${currency}`, enfantNom, saleRef || 'N/A'],
     });
 
     if (!result.success) {

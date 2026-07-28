@@ -1,0 +1,955 @@
+{
+  "name": "WhatsApp Outbound - Le Toit des Anges",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-outbound",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "0b39efd1-6a29-4d6e-8db7-7309b9cc4d46",
+      "name": "Webhook GeStockPro",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ],
+      "webhookId": "whatsapp-outbound-letoitdesanges"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "db992d39-9c2a-456f-be53-1fbc93152675",
+              "name": "cfg.route",
+              "value": "meta",
+              "type": "string"
+            },
+            {
+              "id": "b6492ee7-bcc6-48a9-a9bc-0cd62400bde6",
+              "name": "cfg.graphBase",
+              "value": "https://graph.facebook.com/v23.0",
+              "type": "string"
+            },
+            {
+              "id": "627e9cf9-1a8c-4327-aea0-eac965e7398f",
+              "name": "cfg.phoneNumberId",
+              "value": "REMPLACER_PAR_VOTRE_PHONE_NUMBER_ID",
+              "type": "string"
+            },
+            {
+              "id": "2685598d-c727-44fe-b687-497ff91682e9",
+              "name": "cfg.botpressWebhookUrl",
+              "value": "https://webhook.botpress.cloud/REMPLACER_PAR_VOTRE_ID_WEBHOOK",
+              "type": "string"
+            },
+            {
+              "id": "3a03d0cf-0051-4ad2-90b2-afd4e4788c6d",
+              "name": "cfg.botpressSecret",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "562c9962-a016-4a76-b89b-0abe65fe8839",
+              "name": "cfg.defaultCountryCode",
+              "value": "221",
+              "type": "string"
+            },
+            {
+              "id": "129f884a-8c3d-4e58-adfc-9c373f877c62",
+              "name": "cfg.templateLanguage",
+              "value": "fr",
+              "type": "string"
+            },
+            {
+              "id": "ba5bb823-607e-4bfb-89c4-c51189424418",
+              "name": "cfg.templateFacture",
+              "value": "facture_mensuelle",
+              "type": "string"
+            },
+            {
+              "id": "1b2892de-7688-48d2-b972-75baed805543",
+              "name": "cfg.templateRecu",
+              "value": "recu_paiement",
+              "type": "string"
+            },
+            {
+              "id": "547f9d28-20c5-4b1c-aa23-997255d7dcb7",
+              "name": "cfg.templateRelance",
+              "value": "relance_redevance",
+              "type": "string"
+            },
+            {
+              "id": "a76ce3cb-8ccf-49d2-9328-97f85be19c61",
+              "name": "cfg.templateGenerique",
+              "value": "notification_ecole",
+              "type": "string"
+            },
+            {
+              "id": "937746f6-33e0-4b41-bb01-326ecd5c6420",
+              "name": "cfg.syncBotpress",
+              "value": "true",
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "71f28085-2ce6-41ae-93a3-c17064db4ed3",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n//  Normalisation + validation des payloads entrants\n//  Accepte 3 formats : BotpressService, NotificationService, et lot (recipients)\n// ============================================================================\nconst cfg = $json.cfg || {};\nconst out = [];\n\nfunction onlyDigits(v) {\n  return String(v == null ? '' : v).replace(/[^0-9]/g, '');\n}\n\n// Retourne le numero au format Meta (chiffres, sans '+') ou null si invalide\nfunction normalizePhone(raw) {\n  let d = onlyDigits(raw);\n  if (!d) return null;\n  if (d.startsWith('00')) d = d.slice(2);\n  // Numero senegalais saisi en local : 77 123 45 67 -> 221771234567\n  if (d.length === 9 && d.startsWith('7')) d = String(cfg.defaultCountryCode || '221') + d;\n  // Doublon d'indicatif eventuel : 221221...\n  if (d.startsWith('221221')) d = d.slice(3);\n  if (d.length < 10 || d.length > 15) return null;\n  return d;\n}\n\n// Aplatit les differents formats de payload vers une liste homogene\nfunction collect(body) {\n  const list = [];\n  if (!body || typeof body !== 'object') return list;\n\n  if (Array.isArray(body.recipients) && body.recipients.length) {\n    for (const r of body.recipients) {\n      list.push({\n        action: r.action || body.action || 'send_whatsapp',\n        to: r.to || r.phone || r.whatsapp,\n        message: r.message || body.message,\n        document: r.document || body.document || null,\n        template: r.template || body.template || null,\n        variables: r.variables || body.variables || null,\n        inSession: r.inSession === true || body.inSession === true,\n        category: r.category || body.category || 'generique',\n        reference: r.reference || body.reference || null,\n      });\n    }\n    return list;\n  }\n\n  // Format NotificationService : { channel, to, payload: { message, subject, ... } }\n  if (body.channel && body.payload) {\n    list.push({\n      action: body.action || (body.payload.document ? 'send_whatsapp_document' : 'send_whatsapp'),\n      to: body.to,\n      message: body.payload.message,\n      document: body.payload.document || null,\n      template: body.template || null,\n      variables: body.variables || null,\n      inSession: body.inSession === true,\n      category: body.payload.category || 'relance',\n      reference: body.payload.subject || null,\n    });\n    return list;\n  }\n\n  // Format BotpressService : { action, to, message, document? }\n  list.push({\n    action: body.action || 'send_whatsapp',\n    to: body.to || body.phone,\n    message: body.message,\n    document: body.document || null,\n    template: body.template || null,\n    variables: body.variables || null,\n    inSession: body.inSession === true,\n    category: body.category || 'generique',\n    reference: body.reference || null,\n  });\n  return list;\n}\n\nconst body = $json.body || $json;\nconst raw = collect(body);\n\nfor (const r of raw) {\n  const to = normalizePhone(r.to);\n  const hasDoc = !!(r.document && (r.document.url || r.document.base64));\n\n  if (!to) {\n    out.push({\n      json: {\n        cfg,\n        valid: false,\n        mode: 'invalide',\n        to: r.to || null,\n        toE164: null,\n        error: 'Numero de telephone invalide ou absent : ' + String(r.to),\n        category: r.category,\n        reference: r.reference,\n      },\n    });\n    continue;\n  }\n\n  if (!r.message && !hasDoc) {\n    out.push({\n      json: {\n        cfg,\n        valid: false,\n        mode: 'invalide',\n        to,\n        toE164: '+' + to,\n        error: 'Message vide et aucun document fourni',\n        category: r.category,\n        reference: r.reference,\n      },\n    });\n    continue;\n  }\n\n  // ---- Choix du mode d'envoi -------------------------------------------\n  // inSession = true  -> le parent a ecrit dans les dernieres 24h : texte libre OK\n  // sinon             -> WhatsApp impose un template pre-approuve\n  const route = (cfg.route || 'meta').toLowerCase();\n  const tplName = (r.template && r.template.name) || null;\n  const needTemplate = !r.inSession;\n\n  let mode;\n  if (route === 'botpress') {\n    mode = 'botpress';\n  } else if (needTemplate) {\n    mode = 'template';\n  } else if (hasDoc) {\n    mode = 'document';\n  } else {\n    mode = 'texte';\n  }\n\n  // Template par defaut selon la categorie fonctionnelle\n  const defaults = {\n    facture: cfg.templateFacture,\n    recu: cfg.templateRecu,\n    relance: cfg.templateRelance,\n    generique: cfg.templateGenerique,\n  };\n  const templateName = tplName || defaults[r.category] || cfg.templateGenerique;\n  const templateLang = (r.template && r.template.language) || cfg.templateLanguage || 'fr';\n  const variables = Array.isArray(r.variables) ? r.variables : [];\n\n  // Composants du template (entete document + variables de corps)\n  const components = [];\n  if (hasDoc && r.document.url) {\n    components.push({\n      type: 'header',\n      parameters: [\n        {\n          type: 'document',\n          document: {\n            link: r.document.url,\n            filename: r.document.filename || 'document.pdf',\n          },\n        },\n      ],\n    });\n  }\n  if (variables.length) {\n    components.push({\n      type: 'body',\n      parameters: variables.map((v) => ({ type: 'text', text: String(v) })),\n    });\n  }\n\n  if (mode === 'template' && !templateName) {\n    out.push({\n      json: {\n        cfg,\n        valid: false,\n        mode: 'invalide',\n        to,\n        toE164: '+' + to,\n        error: 'Envoi hors fenetre 24h : aucun template WhatsApp configure pour la categorie ' + r.category,\n        category: r.category,\n        reference: r.reference,\n      },\n    });\n    continue;\n  }\n\n  out.push({\n    json: {\n      cfg,\n      valid: true,\n      mode,\n      action: r.action,\n      to,\n      toE164: '+' + to,\n      message: r.message || (r.document && r.document.caption) || '',\n      category: r.category,\n      reference: r.reference,\n      inSession: r.inSession === true,\n      document: hasDoc\n        ? {\n            url: r.document.url || null,\n            base64: r.document.base64 || null,\n            filename: r.document.filename || 'document.pdf',\n            mimeType: r.document.mimeType || 'application/pdf',\n            caption: r.document.caption || r.message || '',\n            mediaId: null,\n          }\n        : null,\n      template: {\n        name: templateName,\n        language: templateLang,\n        components,\n        variables,\n      },\n    },\n  });\n}\n\nif (!out.length) {\n  out.push({\n    json: {\n      cfg,\n      valid: false,\n      mode: 'invalide',\n      to: null,\n      toE164: null,\n      error: 'Payload vide ou illisible',\n      category: 'generique',\n      reference: null,\n    },\n  });\n}\n\nreturn out;"
+      },
+      "id": "a3fe1f19-d307-41e4-ad1b-ee9133658f37",
+      "name": "Normaliser & valider",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "dc34706e-9e29-40fa-81ab-4f3656d47489",
+      "name": "Boucle destinataires",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9ee608d4-c1e9-4e0f-9c19-f2b0578a9958",
+              "leftValue": "={{ $json.document ? $json.document.base64 : '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "48cb6750-397b-4c0d-9f38-c9f6ae0b3805",
+      "name": "Document en base64 ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convertit le PDF base64 recu du backend en donnee binaire n8n,\n// pour l'upload vers l'endpoint /media de la Cloud API.\nconst item = $input.first().json;\nconst doc = item.document || {};\nconst b64 = String(doc.base64 || '').replace(/^data:[^;]+;base64,/, '');\n\nconst buffer = Buffer.from(b64, 'base64');\nconst binary = await this.helpers.prepareBinaryData(\n  buffer,\n  doc.filename || 'document.pdf',\n  doc.mimeType || 'application/pdf'\n);\n\nreturn [{ json: item, binary: { data: binary } }];"
+      },
+      "id": "260dbbc6-f994-4207-a434-d4eedbb08613",
+      "name": "Preparer le binaire",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.graphBase }}/{{ $json.cfg.phoneNumberId }}/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "type",
+              "value": "={{ $json.document.mimeType }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "4e337042-bf70-4d6d-959b-626afa0ed232",
+      "name": "Meta - Upload media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Meta WhatsApp Cloud API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recupere le media_id renvoye par Meta et l'injecte dans l'item d'origine.\nconst src = JSON.parse(JSON.stringify($('Boucle destinataires').first().json));\nconst res = $input.first().json || {};\n\nif (res.error) {\n  src.valid = false;\n  src.mode = 'invalide';\n  src.error = 'Echec upload media : ' + (res.error.message || JSON.stringify(res.error));\n  return [{ json: src }];\n}\n\nconst mediaId = res.id || null;\nif (!mediaId) {\n  src.valid = false;\n  src.mode = 'invalide';\n  src.error = 'Upload media : aucun id retourne par la Cloud API';\n  return [{ json: src }];\n}\n\nsrc.document.mediaId = mediaId;\nsrc.document.base64 = null; // on n'a plus besoin du base64 en memoire\n\n// Si on part sur un template, l'entete document utilise desormais le media_id\nif (src.mode === 'template') {\n  src.template.components = (src.template.components || []).filter((c) => c.type !== 'header');\n  src.template.components.unshift({\n    type: 'header',\n    parameters: [\n      { type: 'document', document: { id: mediaId, filename: src.document.filename } },\n    ],\n  });\n}\n\nreturn [{ json: src }];"
+      },
+      "id": "1c9a16ca-4a12-4bba-a0cb-a21c74727dad",
+      "name": "Injecter le media_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ecbaf381-5c60-4ff3-8bea-338ea55a53d8",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "template",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "template"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e8d37983-32fd-4112-901f-9a44dc948bee",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "texte",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "texte"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "95ea8f16-7ffe-40bc-9f28-417c0ef4f5d1",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "document",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "document"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "73b5ade2-5e95-4379-aa83-6fbdefa2d3d4",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "botpress",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "botpress"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "invalide"
+        }
+      },
+      "id": "d1bbd235-a544-41c0-8b9b-3e1e70204c2e",
+      "name": "Router selon le mode",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1300,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.graphBase }}/{{ $json.cfg.phoneNumberId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $json.to, type: 'template', template: { name: $json.template.name, language: { code: $json.template.language }, components: $json.template.components } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "da070c66-4935-4a6b-8649-aec8122621c1",
+      "name": "Meta - Envoyer template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Meta WhatsApp Cloud API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.graphBase }}/{{ $json.cfg.phoneNumberId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $json.to, type: 'text', text: { preview_url: true, body: $json.message } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "35df4c33-bc5b-4189-9e56-310484ac990c",
+      "name": "Meta - Envoyer texte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Meta WhatsApp Cloud API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.graphBase }}/{{ $json.cfg.phoneNumberId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $json.to, type: 'document', document: $json.document.mediaId ? { id: $json.document.mediaId, filename: $json.document.filename, caption: $json.document.caption } : { link: $json.document.url, filename: $json.document.filename, caption: $json.document.caption } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "01d9ba49-653c-473e-ad81-3bf8fb91b97e",
+      "name": "Meta - Envoyer document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Meta WhatsApp Cloud API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.cfg.botpressWebhookUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-bp-secret",
+              "value": "={{ $json.cfg.botpressSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'outbound_request', source: 'gestockpro', userPhone: $json.toE164, templateName: $json.template.name, templateLanguage: $json.template.language, templateVariables: $json.template.variables, message: $json.message, category: $json.category, reference: $json.reference, documentUrl: $json.document ? $json.document.url : null, documentFilename: $json.document ? $json.document.filename : null }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "73655e0f-db94-43a9-9be0-3423d77e2833",
+      "name": "Botpress - Envoi proactif",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        600
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const src = $input.first().json;\nreturn [\n  {\n    json: {\n      success: false,\n      to: src.toE164 || src.to || null,\n      action: src.action || null,\n      mode: 'invalide',\n      category: src.category || null,\n      reference: src.reference || null,\n      messageId: null,\n      error: src.error || 'Element rejete a la validation',\n      documentFilename: null,\n      sentAt: new Date().toISOString(),\n    },\n  },\n];"
+      },
+      "id": "cfedaf7a-5506-4728-922b-c09400cecad0",
+      "name": "Marquer comme invalide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalise la reponse de l'API en un resultat exploitable par le backend\n// (pour alimenter la table communication_logs).\nconst src = $('Boucle destinataires').first().json;\nconst res = $input.first().json || {};\n\nlet success = false;\nlet messageId = null;\nlet error = null;\n\nif (res.error) {\n  const e = res.error;\n  error = (e.message || e.error_user_msg || JSON.stringify(e));\n  if (e.code) error = '[' + e.code + '] ' + error;\n} else if (Array.isArray(res.messages) && res.messages.length) {\n  success = true;\n  messageId = res.messages[0].id || null;\n} else if (res.success === true || res.status === 'ok' || res.received === true) {\n  // Reponse de la route Botpress (integration Webhook)\n  success = true;\n  messageId = res.messageId || res.conversationId || null;\n} else {\n  error = 'Reponse inattendue de l API : ' + JSON.stringify(res).slice(0, 400);\n}\n\nreturn [\n  {\n    json: {\n      success,\n      to: src.toE164,\n      action: src.action,\n      mode: src.mode,\n      category: src.category,\n      reference: src.reference,\n      messageId,\n      error,\n      documentFilename: src.document ? src.document.filename : null,\n      sentAt: new Date().toISOString(),\n    },\n  },\n];"
+      },
+      "id": "a5cd095c-a150-4dbb-928d-992920f7e1f0",
+      "name": "Formatter le resultat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "439758ef-1c71-4d33-908f-b858f70f7e5c",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": "={{ true }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "b37346e7-02eb-420c-8e09-61ee447e03c4",
+              "leftValue": "={{ $('Boucle destinataires').first().json.cfg.syncBotpress }}",
+              "rightValue": "={{ true }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cc8ae6cc-c955-47fd-9cee-f2ca1c3f8931",
+      "name": "Envoi reussi ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Boucle destinataires').first().json.cfg.botpressWebhookUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-bp-secret",
+              "value": "={{ $('Boucle destinataires').first().json.cfg.botpressSecret }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'system_message_sent', source: 'gestockpro', userPhone: $json.to, category: $json.category, reference: $json.reference, summary: $('Boucle destinataires').first().json.message, documentFilename: $json.documentFilename, messageId: $json.messageId, sentAt: $json.sentAt }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "442f334a-4248-459f-8503-0cdad24a8f95",
+      "name": "Botpress - Synchroniser le contexte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        180
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 1.5,
+        "unit": "seconds"
+      },
+      "id": "3bc8763f-1732-4af1-a065-30ed07426002",
+      "name": "Pause anti-flood",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2440,
+        400
+      ],
+      "webhookId": "672a0f39-4a66-4f69-ba14-90711d6d3205"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reponse synchrone renvoyee au backend GeStockPro\nconst results = $input.all().map((i) => i.json);\nconst sent = results.filter((r) => r.success).length;\n\nreturn [\n  {\n    json: {\n      success: sent > 0,\n      total: results.length,\n      sent,\n      failed: results.length - sent,\n      results,\n      timestamp: new Date().toISOString(),\n    },\n  },\n];"
+      },
+      "id": "3291055a-f7ac-4be2-9adb-b1d14e158e4b",
+      "name": "Construire la reponse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "c8ba2d51-3949-41d5-a648-1ab4b340942d",
+      "name": "Repondre au backend",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook GeStockPro": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Normaliser & valider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliser & valider": {
+      "main": [
+        [
+          {
+            "node": "Boucle destinataires",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Boucle destinataires": {
+      "main": [
+        [
+          {
+            "node": "Construire la reponse",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Document en base64 ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document en base64 ?": {
+      "main": [
+        [
+          {
+            "node": "Preparer le binaire",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Router selon le mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparer le binaire": {
+      "main": [
+        [
+          {
+            "node": "Meta - Upload media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta - Upload media": {
+      "main": [
+        [
+          {
+            "node": "Injecter le media_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Injecter le media_id": {
+      "main": [
+        [
+          {
+            "node": "Router selon le mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router selon le mode": {
+      "main": [
+        [
+          {
+            "node": "Meta - Envoyer template",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Meta - Envoyer texte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Meta - Envoyer document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Botpress - Envoi proactif",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marquer comme invalide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta - Envoyer template": {
+      "main": [
+        [
+          {
+            "node": "Formatter le resultat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta - Envoyer texte": {
+      "main": [
+        [
+          {
+            "node": "Formatter le resultat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta - Envoyer document": {
+      "main": [
+        [
+          {
+            "node": "Formatter le resultat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Botpress - Envoi proactif": {
+      "main": [
+        [
+          {
+            "node": "Formatter le resultat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marquer comme invalide": {
+      "main": [
+        [
+          {
+            "node": "Pause anti-flood",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatter le resultat": {
+      "main": [
+        [
+          {
+            "node": "Envoi reussi ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envoi reussi ?": {
+      "main": [
+        [
+          {
+            "node": "Botpress - Synchroniser le contexte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pause anti-flood",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Botpress - Synchroniser le contexte": {
+      "main": [
+        [
+          {
+            "node": "Pause anti-flood",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause anti-flood": {
+      "main": [
+        [
+          {
+            "node": "Boucle destinataires",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire la reponse": {
+      "main": [
+        [
+          {
+            "node": "Repondre au backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "instanceId": "gestockpro-letoitdesanges"
+  }
+}
