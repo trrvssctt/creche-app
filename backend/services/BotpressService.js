@@ -8,7 +8,9 @@
 import axios from 'axios';
 import { sequelize } from '../config/database.js';
 
-const N8N_WEBHOOK = process.env.N8N_WHATSAPP_WEBHOOK || process.env.BOTPRESS_WEBHOOK_URL;
+function getWebhookUrl() {
+  return (process.env.N8N_WHATSAPP_WEBHOOK || process.env.BOTPRESS_WEBHOOK_URL || '').trim();
+}
 const N8N_TIMEOUT = parseInt(process.env.N8N_WHATSAPP_TIMEOUT || '30000', 10);
 const DEFAULT_CC = process.env.WHATSAPP_DEFAULT_CC || '221';
 
@@ -39,10 +41,11 @@ async function isInSession(phoneE164) {
 }
 
 async function callN8n(payload) {
-  if (!N8N_WEBHOOK) {
+  const url = getWebhookUrl();
+  if (!url) {
     throw new Error('N8N_WHATSAPP_WEBHOOK non défini');
   }
-  const { data } = await axios.post(N8N_WEBHOOK, payload, {
+  const { data } = await axios.post(url, payload, {
     timeout: N8N_TIMEOUT,
     headers: { 'Content-Type': 'application/json' },
   });
