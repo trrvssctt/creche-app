@@ -78,7 +78,7 @@ export class BotpressService {
       action: 'send_whatsapp',
       to: normalized,
       message,
-      inSession,
+      inSession: true,
       category: opts.category || 'generique',
       reference: opts.reference || null,
       template: opts.template || null,
@@ -114,20 +114,11 @@ export class BotpressService {
       return { success: false, error: `Numéro invalide: ${phone}` };
     }
 
-    const inSession = await isInSession(normalized);
-
-    if (!inSession && !document.url) {
-      return {
-        success: false,
-        error: 'Hors fenêtre 24h : une URL publique du document est requise (pas de base64)',
-      };
-    }
-
     const payload = {
       action: 'send_whatsapp_document',
       to: normalized,
       message,
-      inSession,
+      inSession: true,
       document: {
         url: document.url || null,
         base64: document.base64 || null,
