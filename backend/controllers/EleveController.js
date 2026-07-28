@@ -461,6 +461,22 @@ export class EleveController {
         } catch (emailErr) {
           console.warn('[EleveController.factureInscription] Email non envoyé:', emailErr.message);
         }
+
+        // WhatsApp reçu inscription au parent
+        const waPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+        if (waPhone) {
+          const montantFmt = totalHt.toLocaleString('fr-FR');
+          BotpressService.sendDocument(waPhone,
+            `🧾 *Reçu — Frais d'inscription*\n\nBonjour ${parentName},\n\nNous confirmons le paiement des frais d'inscription de *${enfantNom}*.\n\n💰 Montant : *${montantFmt} F CFA*\n💳 Méthode : ${methodePaiement}\n📋 Réf : ${ref}\n\nLe reçu est joint à ce message.\n\n_${ecoleNom}_`,
+            {
+              base64: pdfBuffer.toString('base64'),
+              filename: `recu_inscription_${enfantNom.replace(/\s+/g, '_')}.pdf`,
+              mimeType: 'application/pdf',
+              caption: `Reçu inscription — ${enfantNom}`,
+            },
+            { category: 'inscription', reference: `inscription:${ref}`, variables: [parentName, montantFmt + ' F CFA', enfantNom, ref] }
+          ).catch(err => console.warn('[EleveController.factureInscription] WhatsApp reçu:', err.message));
+        }
       }
 
       return res.status(201).json({
