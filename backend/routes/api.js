@@ -73,6 +73,15 @@ router.get('/public/ecole',                    PublicController.getEcoleBranding
 router.post('/public/admission',               PublicController.submitAdmission);
 router.get('/public/admission/:reference',     PublicController.trackAdmission);
 
+// ── Webhook WhatsApp entrant (public, appelé par Botpress pour tracker la fenêtre 24h) ──
+import { BotpressService } from '../services/BotpressService.js';
+router.post('/whatsapp/inbound', async (req, res) => {
+  const phone = req.body?.userPhone || req.body?.from;
+  if (!phone) return res.status(400).json({ error: 'Numéro manquant' });
+  await BotpressService.recordInbound(phone);
+  return res.json({ ok: true });
+});
+
 // --- PROTECTION JWT ---
 router.use(authenticateJWT);
 
