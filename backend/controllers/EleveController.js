@@ -276,6 +276,26 @@ export class EleveController {
         ).catch(err => console.warn('[EleveController] WhatsApp validation admin:', err.message));
       }
 
+      // WhatsApp : notifier le parent si la candidature est rejetée
+      if (statutAvant !== 'REJETE' && statutApres === 'REJETE') {
+        const parentPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+        const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+        const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+        const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name'] });
+        const ecoleNom = tenant?.name || 'Le Toit des Anges';
+
+        // Extraire le motif de rejet depuis les notes
+        const rejetMatch = (eleve.notes || '').match(/\[REJET [^\]]+\] (.+?)$/m);
+        const motif = rejetMatch ? rejetMatch[1].trim() : 'Non précisé';
+
+        if (parentPhone) {
+          BotpressService.sendWhatsApp(parentPhone,
+            `📋 *Dossier d'inscription — Décision*\n\nBonjour ${parentName},\n\nAprès examen du dossier de *${enfantNom}*, nous avons le regret de vous informer que la candidature n'a pas été retenue.\n\n📌 *Motif :* ${motif}\n\nVous pouvez nous contacter pour plus d'informations ou resoumettre un dossier corrigé.\n\n_${ecoleNom}_`,
+            { category: 'inscription', reference: `rejet:${eleve.id}` }
+          ).catch(err => console.warn('[EleveController] WhatsApp rejet parent:', err.message));
+        }
+      }
+
       return res.json(eleve);
     } catch (err) {
       return res.status(500).json({ error: 'UpdateError', message: err.message });
