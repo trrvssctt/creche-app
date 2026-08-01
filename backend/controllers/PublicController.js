@@ -186,12 +186,17 @@ export class PublicController {
         }
       }
 
-      // WhatsApp au parent
+      // WhatsApp au parent (via template Meta pour les nouveaux contacts)
       const parentPhone = parent1?.whatsapp || parent1?.telephone;
       if (parentPhone) {
         BotpressService.sendWhatsApp(parentPhone,
           `✅ *Candidature déposée*\n\nBonjour ${parentName},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement de votre dossier.\n\n_${ecoleNom}_`,
-          { category: 'inscription', reference: `admission:${ref}` }
+          {
+            category: 'inscription',
+            reference: `admission:${ref}`,
+            template: 'candidature_recue',
+            variables: [parentName, `${prenom} ${nom}`, ref, suiviUrl],
+          }
         ).catch(err => console.warn('[PublicController] WhatsApp parent:', err.message));
       }
 

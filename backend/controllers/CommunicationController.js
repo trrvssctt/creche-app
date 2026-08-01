@@ -140,8 +140,16 @@ export class CommunicationController {
         status: 'SENDING',
       });
 
-      // ── Envoi via Botpress ────────────────────────────────────────────────
-      const result = await BotpressService.sendBulk(recipients, { delayMs: 1000 });
+      // ── Envoi via Botpress (avec template pour atteindre les contacts hors session)
+      const TEMPLATE_MAP = {
+        BULLETIN: 'notification_bulletin',
+        ANNONCE: 'annonce_generale',
+        EVENEMENT: 'annonce_generale',
+      };
+      const result = await BotpressService.sendBulk(recipients, {
+        delayMs: 1000,
+        template: TEMPLATE_MAP[type] || 'annonce_generale',
+      });
 
       // Mise à jour du log avec les résultats
       await log.update({

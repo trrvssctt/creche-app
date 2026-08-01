@@ -73,12 +73,13 @@ export class BotpressService {
     }
 
     const inSession = await isInSession(normalized);
+    const hasTemplate = !!opts.template;
 
     const payload = {
       action: 'send_whatsapp',
       to: normalized,
       message,
-      inSession: true,
+      inSession: hasTemplate ? false : (inSession || true),
       category: opts.category || 'generique',
       reference: opts.reference || null,
       template: opts.template || null,
@@ -114,11 +115,13 @@ export class BotpressService {
       return { success: false, error: `Numéro invalide: ${phone}` };
     }
 
+    const hasTemplate = !!opts.template;
+
     const payload = {
       action: 'send_whatsapp_document',
       to: normalized,
       message,
-      inSession: true,
+      inSession: hasTemplate ? false : true,
       document: {
         url: document.url || null,
         base64: document.base64 || null,

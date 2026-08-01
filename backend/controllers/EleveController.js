@@ -265,7 +265,12 @@ export class EleveController {
         if (parentPhone) {
           BotpressService.sendWhatsApp(parentPhone,
             `🎉 *Candidature acceptée !*\n\nBonjour ${parentName},\n\nNous avons le plaisir de vous informer que *${enfantNom}* est désormais *${statutApres === 'INSCRIT' ? 'inscrit(e)' : 'actif/active'}* à *${ecoleNom}*.\n\nBienvenue dans notre établissement !\n\n_${ecoleNom}_`,
-            { category: 'inscription', reference: `validation:${eleve.id}` }
+            {
+              category: 'inscription',
+              reference: `validation:${eleve.id}`,
+              template: 'candidature_acceptee',
+              variables: [parentName, enfantNom, ecoleNom],
+            }
           ).catch(err => console.warn('[EleveController] WhatsApp validation parent:', err.message));
         }
 
@@ -291,7 +296,12 @@ export class EleveController {
         if (parentPhone) {
           BotpressService.sendWhatsApp(parentPhone,
             `📋 *Dossier d'inscription — Décision*\n\nBonjour ${parentName},\n\nAprès examen du dossier de *${enfantNom}*, nous avons le regret de vous informer que la candidature n'a pas été retenue.\n\n📌 *Motif :* ${motif}\n\nVous pouvez nous contacter pour plus d'informations ou resoumettre un dossier corrigé.\n\n_${ecoleNom}_`,
-            { category: 'inscription', reference: `rejet:${eleve.id}` }
+            {
+              category: 'inscription',
+              reference: `rejet:${eleve.id}`,
+              template: 'candidature_rejetee',
+              variables: [parentName, enfantNom, motif],
+            }
           ).catch(err => console.warn('[EleveController] WhatsApp rejet parent:', err.message));
         }
       }
@@ -494,7 +504,7 @@ export class EleveController {
               mimeType: 'application/pdf',
               caption: `Reçu inscription — ${enfantNom}`,
             },
-            { category: 'inscription', reference: `inscription:${ref}`, variables: [parentName, montantFmt + ' F CFA', enfantNom, ref] }
+            { category: 'inscription', reference: `inscription:${ref}`, template: 'recu_inscription', variables: [parentName, montantFmt + ' F CFA', enfantNom, ref] }
           ).catch(err => console.warn('[EleveController.factureInscription] WhatsApp reçu:', err.message));
         }
       }

@@ -253,6 +253,7 @@ async function sendPaymentReceiptWhatsApp({ tenantId, eleve, echeances, methodeP
     }, {
       category: 'recu',
       reference: `vente:${saleRef}`,
+      template: 'recu_paiement',
       variables: [parentName, `${montantFmt} ${currency}`, enfantNom, saleRef || 'N/A'],
     });
 
@@ -794,7 +795,11 @@ export class AbonnementController {
           const message = `Bonjour ${parentNom},\n\nNous vous rappelons qu'une redevance de *${montantFmt} ${currency}* pour *${ech.service?.name || 'scolarité'}* (${ech.periodeLabel}) est due le ${dateFmt} pour l'élève *${eleve.prenom} ${eleve.nom}*.\n\nMerci de vous en acquitter auprès de notre caisse.\n\n_${ecoleNom}_`;
           const recipient = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
           if (recipient) {
-            const result = await BotpressService.sendWhatsApp(recipient, message);
+            const result = await BotpressService.sendWhatsApp(recipient, message, {
+              category: 'relance',
+              template: 'relance_paiement',
+              variables: [parentNom, `${montantFmt} ${currency}`, `${eleve.prenom} ${eleve.nom}`, ech.periodeLabel || '', dateFmt],
+            });
             if (result.success) {
               await ech.update({ reminderSentAt: new Date() });
               sent++;
@@ -1224,6 +1229,7 @@ export class AbonnementController {
             }, {
               category: 'facture',
               reference: `facture:${refFacture}`,
+              template: 'facture_mensuelle',
               variables: [parentName, enfantNom, periodLabel, `${montantFmt} ${currency}`],
             });
           }

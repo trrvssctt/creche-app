@@ -1335,7 +1335,12 @@ static async login(req, res) {
       if (parentPhone) {
         BotpressService.sendWhatsApp(parentPhone,
           `🔑 *Votre compte parent est créé !*\n\nBonjour ${prenom} ${nom},\n\nVotre espace parent sur *${ecoleNom}* est prêt.\n\n👤 Email : ${email}\n🔗 Connexion : ${frontendUrl}/parents\n\nConnectez-vous pour suivre la scolarité de votre enfant.\n\n_${ecoleNom}_`,
-          { category: 'compte_parent', reference: `parent-account:${user.id}` }
+          {
+            category: 'compte_parent',
+            reference: `parent-account:${user.id}`,
+            template: 'compte_parent_cree',
+            variables: [`${prenom} ${nom}`, email, `${frontendUrl}/parents`],
+          }
         ).catch(err => console.warn('[AUTH] WhatsApp parent account:', err.message));
       }
 

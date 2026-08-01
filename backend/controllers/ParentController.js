@@ -678,7 +678,12 @@ export class ParentController {
       if (parentPhone) {
         BotpressService.sendWhatsApp(parentPhone,
           `✅ *Candidature déposée*\n\nBonjour ${user?.name || 'Parent'},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement.\n\n_${ecoleNom}_`,
-          { category: 'inscription', reference: `admission:${ref}` }
+          {
+            category: 'inscription',
+            reference: `admission:${ref}`,
+            template: 'candidature_recue',
+            variables: [user?.name || 'Parent', `${prenom} ${nom}`, ref, suiviUrl],
+          }
         ).catch(err => console.warn('[ParentController] WhatsApp parent:', err.message));
       }
 

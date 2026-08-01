@@ -80,7 +80,6 @@ const TYPES_MESSAGE = [
   { value: 'BULLETIN', label: 'Bulletin disponible', category: 'PEDAGOGIQUE', icon: '📊', color: 'indigo' },
   { value: 'ANNONCE', label: 'Annonce générale', category: 'GENERAL', icon: '📢', color: 'teal' },
   { value: 'EVENEMENT', label: 'Événement', category: 'GENERAL', icon: '🎉', color: 'orange' },
-  { value: 'LIBRE', label: 'Message libre', category: 'GENERAL', icon: '💬', color: 'slate' },
 ];
 
 const NOM_ECOLE = 'Le Toit des Anges';
@@ -152,7 +151,7 @@ export default function Communications() {
   const [loading, setLoading] = useState(false);
 
   // Composer
-  const [messageType, setMessageType] = useState('LIBRE');
+  const [messageType, setMessageType] = useState('ANNONCE');
   const [targetType, setTargetType] = useState<'ALL' | 'NIVEAU' | 'CLASSE' | 'INDIVIDUEL'>('ALL');
   const [targetNiveau, setTargetNiveau] = useState('');
   const [targetClasseId, setTargetClasseId] = useState('');
@@ -330,7 +329,7 @@ export default function Communications() {
   // ── Reset ─────────────────────────────────────────────────────────────────
 
   const resetComposer = () => {
-    setBody(''); setSubject(''); setMessageType('LIBRE'); setTargetType('ALL');
+    setBody(''); setSubject(''); setMessageType('ANNONCE'); setTargetType('ALL');
     setTargetNiveau(''); setTargetClasseId(''); setSelectedEleve(null);
     setSearchEleve(''); setPreview(null); setShowPreview(false); setSendResult(null);
     setCustomVars({ mois: MOIS_LABELS[new Date().getMonth()], montant: '', date_limite: '', trimestre: '' });
