@@ -60,10 +60,11 @@ const HORAIRES = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'grille' | 'calendrier' | 'mon-planning' | 'cahier';
+type Tab = 'grille' | 'calendrier' | 'mon-planning' | 'cahier' | 'matieres';
 
 interface ClasseInfo { id: string; nom: string; niveau: string; }
 interface EmpInfo    { id: string; firstName: string; lastName: string; }
+interface MatiereAPI { id: string; classeId: string; nom: string; enseignantId?: string | null; couleur: string; coefficient: number; enseignant?: EmpInfo | null; classe?: ClasseInfo | null; }
 
 interface Creneau {
   id: string;
@@ -425,6 +426,14 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
 
   const [tab, setTab] = useState<Tab>(isTeacher ? 'mon-planning' : 'grille');
 
+  // Matières dynamiques (API)
+  const [matieresAPI, setMatieresAPI] = useState<MatiereAPI[]>([]);
+  const [loadingMatieres, setLoadingMatieres] = useState(false);
+  const [matiereForm, setMatiereForm] = useState<{ nom: string; enseignantId: string; couleur: string; coefficient: string }>({ nom: '', enseignantId: '', couleur: 'blue', coefficient: '1' });
+  const [editingMatiere, setEditingMatiere] = useState<MatiereAPI | null>(null);
+  const [showMatiereModal, setShowMatiereModal] = useState(false);
+  const [savingMatiere, setSavingMatiere] = useState(false);
+
   // Données
   const [classes, setClasses]   = useState<ClasseInfo[]>([]);
   const [employees, setEmployees] = useState<EmpInfo[]>([]);
@@ -539,6 +548,19 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
     init();
   }, [anneeEffective]);
 
+  // ── Charger matières dynamiques pour la classe sélectionnée ──────────────────
+  const fetchMatieres = useCallback(async (classeId: string) => {
+    if (!classeId) { setMatieresAPI([]); return; }
+    setLoadingMatieres(true);
+    try {
+      const data = await apiClient.get('/matieres', { params: { classeId } });
+      setMatieresAPI(Array.isArray(data) ? data : []);
+    } catch { setMatieresAPI([]); }
+    finally { setLoadingMatieres(false); }
+  }, []);
+
+  useEffect(() => { fetchMatieres(selectedClasseId); }, [selectedClasseId, fetchMatieres]);
+
   // ── Charger exceptions pour la semaine affichée ─────────────────────────────
   useEffect(() => {
     if ((tab !== 'calendrier' && tab !== 'grille') || !selectedClasseId) return;
@@ -648,7 +670,9 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       setForm({ classeId: c.classeId, enseignantId: c.enseignantId || '', jour: c.jour, heureDebut: c.heureDebut, heureFin: c.heureFin, matiere: c.matiere, couleur: c.couleur });
     } else {
       setEditing(null);
-      const mats = sel ? (MATIERES[sel.niveau] || []) : [];
+      const mats = matieresAPI.length > 0
+        ? matieresAPI.map(m => m.nom)
+        : (sel ? (MATIERES[sel.niveau] || []) : []);
       setForm({ classeId: selectedClasseId, enseignantId: '', jour: 0, heureDebut: '08:00', heureFin: '09:00', matiere: mats[0] || '', couleur: 'blue' });
     }
     setShowModal(true);
@@ -700,9 +724,12 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       });
     } else {
       setEditingCahier(null);
+      const cahierMats = matieresAPI.length > 0 && cahierClasseId === selectedClasseId
+        ? matieresAPI.map(m => m.nom)
+        : (cl ? (MATIERES[cl.niveau] || []) : []);
       setCahierForm({
         date: isoToday(), classeId: cahierClasseId,
-        matiere: (cl ? (MATIERES[cl.niveau] || []) : [])[0] || '',
+        matiere: cahierMats[0] || '',
         objectif: '', contenu: '', devoirs: '', observations: '', auteur: user.name || '',
       });
     }
@@ -728,6 +755,51 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
     saveCahier(updated);
     setConfirmDeleteCahier(null);
     toast('Entrée supprimée.', 'info');
+  };
+
+  // ── Matières CRUD ──────────────────────────────────────────────────────────
+  const openMatiereModal = (m?: MatiereAPI) => {
+    if (m) {
+      setEditingMatiere(m);
+      setMatiereForm({ nom: m.nom, enseignantId: m.enseignantId || '', couleur: m.couleur || 'blue', coefficient: String(m.coefficient ?? 1) });
+    } else {
+      setEditingMatiere(null);
+      setMatiereForm({ nom: '', enseignantId: '', couleur: 'blue', coefficient: '1' });
+    }
+    setShowMatiereModal(true);
+  };
+
+  const saveMatiere = async () => {
+    if (!matiereForm.nom.trim()) { toast('Le nom de la matière est requis.', 'error'); return; }
+    if (!selectedClasseId) { toast('Sélectionnez une classe.', 'error'); return; }
+    setSavingMatiere(true);
+    try {
+      const payload = {
+        classeId: selectedClasseId,
+        nom: matiereForm.nom.trim(),
+        enseignantId: matiereForm.enseignantId || null,
+        couleur: matiereForm.couleur,
+        coefficient: parseFloat(matiereForm.coefficient) || 1,
+      };
+      if (editingMatiere) {
+        await apiClient.put(`/matieres/${editingMatiere.id}`, payload);
+        toast('Matière mise à jour.', 'success');
+      } else {
+        await apiClient.post('/matieres', payload);
+        toast('Matière ajoutée.', 'success');
+      }
+      setShowMatiereModal(false);
+      fetchMatieres(selectedClasseId);
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
+    finally { setSavingMatiere(false); }
+  };
+
+  const deleteMatiere = async (id: string) => {
+    try {
+      await apiClient.delete(`/matieres/${id}`);
+      toast('Matière supprimée.', 'info');
+      fetchMatieres(selectedClasseId);
+    } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
   };
 
   // ── WhatsApp ───────────────────────────────────────────────────────────────
@@ -890,7 +962,9 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
 
   // ── Classe sélectionnée ────────────────────────────────────────────────────
   const selectedClasse = classes.find(c => c.id === selectedClasseId);
-  const matieres = selectedClasse ? (MATIERES[selectedClasse.niveau] || []) : [];
+  const matieres = matieresAPI.length > 0
+    ? matieresAPI.map(m => m.nom)
+    : (selectedClasse ? (MATIERES[selectedClasse.niveau] || []) : []);
 
   if (loading) {
     return (
@@ -966,6 +1040,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
           ['calendrier',   'Calendrier',     Calendar],
           ['mon-planning', 'Mon Planning',   CalendarDays],
           ['cahier',       'Cahier de Texte',BookOpen],
+          ...(isDirecteur ? [['matieres', 'Matières', GraduationCap] as [Tab, string, any]] : []),
         ] as [Tab, string, any][]).map(([key, label, Icon]) => (
           <button
             key={key}
@@ -1800,6 +1875,135 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
         </div>
       )}
 
+      {/* ══════════════════════════════════════════════════════════════════════
+          TAB — MATIÈRES (gestion CRUD)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {tab === 'matieres' && isDirecteur && (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <ClassePickerPanel classes={classes} selected={selectedClasseId} onSelect={setSelectedClasseId} />
+
+          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-50 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center">
+                  <GraduationCap size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Matières — {selectedClasse?.nom || '…'}</h3>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{matieresAPI.length} matière{matieresAPI.length > 1 ? 's' : ''} configurée{matieresAPI.length > 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <button onClick={() => openMatiereModal()}
+                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100">
+                <Plus size={12} /> Ajouter une matière
+              </button>
+            </div>
+
+            {loadingMatieres ? (
+              <div className="py-12 flex items-center justify-center">
+                <RefreshCw size={20} className="animate-spin text-indigo-400" />
+              </div>
+            ) : matieresAPI.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune matière configurée pour cette classe</p>
+                <p className="text-xs text-slate-400 mt-2">Les matières par défaut du niveau ({selectedClasse?.niveau}) seront utilisées dans l'emploi du temps.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {matieresAPI.map(m => {
+                  const col = COULEURS[m.couleur] || COULEURS.blue;
+                  return (
+                    <div key={m.id} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50/50 transition-all group">
+                      <div className={`w-3 h-8 rounded-full ${col.bar}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-slate-800 truncate">{m.nom}</p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          {m.enseignant && (
+                            <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+                              <UserIcon size={9} /> {empNom(m.enseignant)}
+                            </span>
+                          )}
+                          <span className="text-[9px] font-bold text-slate-300">Coef. {m.coefficient}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => openMatiereModal(m)}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                          <Edit3 size={14} />
+                        </button>
+                        <button onClick={() => deleteMatiere(m.id)}
+                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL MATIÈRE ═════════════════════════════════════════════════════ */}
+      {showMatiereModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowMatiereModal(false); }}>
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase">
+                {editingMatiere ? 'Modifier la matière' : 'Nouvelle matière'}
+              </h3>
+              <button onClick={() => setShowMatiereModal(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
+            </div>
+            <div className="p-8 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Nom <span className="text-rose-400">*</span></label>
+                <input value={matiereForm.nom} onChange={e => setMatiereForm(f => ({ ...f, nom: e.target.value }))}
+                  placeholder="Ex : Français, Mathématiques…"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Enseignant (optionnel)</label>
+                <select value={matiereForm.enseignantId} onChange={e => setMatiereForm(f => ({ ...f, enseignantId: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                  <option value="">— Aucun —</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>{empNom(e)}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Couleur</label>
+                  <div className="flex flex-wrap gap-2 px-2">
+                    {Object.keys(COULEURS).map(c => (
+                      <button key={c} onClick={() => setMatiereForm(f => ({ ...f, couleur: c }))}
+                        className={`w-7 h-7 rounded-full border-2 transition-all ${COULEURS[c].bar} ${matiereForm.couleur === c ? 'ring-2 ring-offset-2 ring-indigo-500 scale-110' : 'opacity-60 hover:opacity-100'}`} />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Coefficient</label>
+                  <input type="number" step="0.5" min="0.5" max="10" value={matiereForm.coefficient}
+                    onChange={e => setMatiereForm(f => ({ ...f, coefficient: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowMatiereModal(false)}
+                  className="flex-1 px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                  Annuler
+                </button>
+                <button onClick={saveMatiere} disabled={savingMatiere}
+                  className="flex-1 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
+                  {savingMatiere ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                  {editingMatiere ? 'Mettre à jour' : 'Créer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ MODAL CRÉNEAU ══════════════════════════════════════════════════════ */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4">
@@ -1962,9 +2166,11 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
                         onChange={e => setCahierForm(f => ({ ...f, matiere: e.target.value }))}
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-200">
                         <option value="">— Sélectionner —</option>
-                        {(classes.find(c => c.id === cahierForm.classeId)
-                          ? MATIERES[classes.find(c => c.id === cahierForm.classeId)!.niveau] || []
-                          : []
+                        {(matieresAPI.length > 0 && cahierForm.classeId === selectedClasseId
+                          ? matieresAPI.map(m => m.nom)
+                          : (classes.find(c => c.id === cahierForm.classeId)
+                            ? MATIERES[classes.find(c => c.id === cahierForm.classeId)!.niveau] || []
+                            : [])
                         ).map((m: string) => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>

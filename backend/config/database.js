@@ -616,6 +616,28 @@ export const connectDB = async () => {
       console.warn('⚠️ Note tables schedule/planning:', scheduleErr.message);
     }
 
+    // Table matières (sujets par classe)
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS matieres (
+          id             UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id      UUID          NOT NULL,
+          classe_id      UUID          NOT NULL,
+          nom            VARCHAR(100)  NOT NULL,
+          enseignant_id  UUID,
+          couleur        VARCHAR(20)   DEFAULT 'blue',
+          coefficient    DECIMAL(3,1)  DEFAULT 1,
+          created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_matieres_tenant ON matieres (tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_matieres_classe ON matieres (classe_id);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Table matieres vérifiée');
+    } catch (matieresErr) {
+      console.warn('⚠️ Note table matieres:', matieresErr.message);
+    }
+
     // Table événements scolaires (agenda admin → portail parent)
     // Si la table a été créée avec des colonnes camelCase (avant les field overrides Sequelize),
     // on la supprime et recrée avec le schéma snake_case correct (table vide → aucune perte).

@@ -62,6 +62,7 @@ import { EleveDocument } from './EleveDocument.js';
 import { SchoolEvent } from './SchoolEvent.js';
 import { CommunicationLog } from './CommunicationLog.js';
 import { CommunicationTemplate } from './CommunicationTemplate.js';
+import { Matiere } from './Matiere.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
@@ -324,6 +325,14 @@ Sale.hasOne(Invoice, { foreignKey: 'sale_id', as: 'invoice' });
 Invoice.hasMany(InvoiceItem, { foreignKey: 'invoice_id', as: 'items' });
 InvoiceItem.belongsTo(Invoice, { foreignKey: 'invoice_id' });
 
+// --- MATIÈRES (sujets par classe) ---
+Tenant.hasMany(Matiere, { foreignKey: 'tenant_id' });
+Matiere.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Matiere.belongsTo(Classe, { foreignKey: 'classe_id', as: 'classe' });
+Classe.hasMany(Matiere, { foreignKey: 'classe_id', as: 'matieres' });
+Matiere.belongsTo(Employee, { foreignKey: 'enseignant_id', as: 'enseignant' });
+Employee.hasMany(Matiere, { foreignKey: 'enseignant_id', as: 'matieresEnseignees' });
+
 // Stocks & Catégories
 StockItem.hasMany(ProductMovement, { foreignKey: 'stock_item_id' });
 ProductMovement.belongsTo(StockItem, { foreignKey: 'stock_item_id' });
@@ -354,4 +363,5 @@ export {
   SchoolEvent,
   CommunicationLog,
   CommunicationTemplate,
+  Matiere,
 };
