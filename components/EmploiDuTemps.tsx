@@ -429,7 +429,9 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
   // Matières dynamiques (API)
   const [matieresAPI, setMatieresAPI] = useState<MatiereAPI[]>([]);
   const [loadingMatieres, setLoadingMatieres] = useState(false);
-  const [matiereForm, setMatiereForm] = useState<{ nom: string; enseignantId: string; couleur: string; coefficient: string }>({ nom: '', enseignantId: '', couleur: 'blue', coefficient: '1' });
+  const [allMatieres, setAllMatieres] = useState<MatiereAPI[]>([]);
+  const [matiereClasseFilter, setMatiereClasseFilter] = useState('');
+  const [matiereForm, setMatiereForm] = useState<{ nom: string; classeId: string; enseignantId: string; couleur: string; coefficient: string }>({ nom: '', classeId: '', enseignantId: '', couleur: 'blue', coefficient: '1' });
   const [editingMatiere, setEditingMatiere] = useState<MatiereAPI | null>(null);
   const [showMatiereModal, setShowMatiereModal] = useState(false);
   const [savingMatiere, setSavingMatiere] = useState(false);
@@ -560,6 +562,15 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
   }, []);
 
   useEffect(() => { fetchMatieres(selectedClasseId); }, [selectedClasseId, fetchMatieres]);
+
+  const fetchAllMatieres = useCallback(async () => {
+    try {
+      const data = await apiClient.get('/matieres');
+      setAllMatieres(Array.isArray(data) ? data : []);
+    } catch { setAllMatieres([]); }
+  }, []);
+
+  useEffect(() => { if (tab === 'matieres') fetchAllMatieres(); }, [tab, fetchAllMatieres]);
 
   // ── Charger exceptions pour la semaine affichée ─────────────────────────────
   useEffect(() => {
@@ -761,21 +772,21 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
   const openMatiereModal = (m?: MatiereAPI) => {
     if (m) {
       setEditingMatiere(m);
-      setMatiereForm({ nom: m.nom, enseignantId: m.enseignantId || '', couleur: m.couleur || 'blue', coefficient: String(m.coefficient ?? 1) });
+      setMatiereForm({ nom: m.nom, classeId: m.classeId, enseignantId: m.enseignantId || '', couleur: m.couleur || 'blue', coefficient: String(m.coefficient ?? 1) });
     } else {
       setEditingMatiere(null);
-      setMatiereForm({ nom: '', enseignantId: '', couleur: 'blue', coefficient: '1' });
+      setMatiereForm({ nom: '', classeId: matiereClasseFilter || (classes[0]?.id || ''), enseignantId: '', couleur: 'blue', coefficient: '1' });
     }
     setShowMatiereModal(true);
   };
 
   const saveMatiere = async () => {
     if (!matiereForm.nom.trim()) { toast('Le nom de la matière est requis.', 'error'); return; }
-    if (!selectedClasseId) { toast('Sélectionnez une classe.', 'error'); return; }
+    if (!matiereForm.classeId) { toast('Sélectionnez une classe.', 'error'); return; }
     setSavingMatiere(true);
     try {
       const payload = {
-        classeId: selectedClasseId,
+        classeId: matiereForm.classeId,
         nom: matiereForm.nom.trim(),
         enseignantId: matiereForm.enseignantId || null,
         couleur: matiereForm.couleur,
@@ -789,6 +800,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
         toast('Matière ajoutée.', 'success');
       }
       setShowMatiereModal(false);
+      fetchAllMatieres();
       fetchMatieres(selectedClasseId);
     } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
     finally { setSavingMatiere(false); }
@@ -798,6 +810,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
     try {
       await apiClient.delete(`/matieres/${id}`);
       toast('Matière supprimée.', 'info');
+      fetchAllMatieres();
       fetchMatieres(selectedClasseId);
     } catch (err: any) { toast(err.message || 'Erreur', 'error'); }
   };
@@ -1878,72 +1891,108 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       {/* ══════════════════════════════════════════════════════════════════════
           TAB — MATIÈRES (gestion CRUD)
       ══════════════════════════════════════════════════════════════════════ */}
-      {tab === 'matieres' && isDirecteur && (
-        <div className="space-y-4 animate-in fade-in duration-300">
-          <ClassePickerPanel classes={classes} selected={selectedClasseId} onSelect={setSelectedClasseId} />
+      {tab === 'matieres' && isDirecteur && (() => {
+        const filteredMatieres = matiereClasseFilter
+          ? allMatieres.filter(m => m.classeId === matiereClasseFilter)
+          : allMatieres;
 
-          <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-50 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center">
-                  <GraduationCap size={18} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Matières — {selectedClasse?.nom || '…'}</h3>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{matieresAPI.length} matière{matieresAPI.length > 1 ? 's' : ''} configurée{matieresAPI.length > 1 ? 's' : ''}</p>
-                </div>
-              </div>
-              <button onClick={() => openMatiereModal()}
-                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100">
-                <Plus size={12} /> Ajouter une matière
-              </button>
-            </div>
+        const groupedByClasse = classes.reduce<Record<string, MatiereAPI[]>>((acc, cl) => {
+          acc[cl.id] = filteredMatieres.filter(m => m.classeId === cl.id);
+          return acc;
+        }, {});
 
-            {loadingMatieres ? (
-              <div className="py-12 flex items-center justify-center">
-                <RefreshCw size={20} className="animate-spin text-indigo-400" />
+        return (
+          <div className="space-y-4 animate-in fade-in duration-300">
+
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-50 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center">
+                    <GraduationCap size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Gestion des Matières</h3>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{allMatieres.length} matière{allMatieres.length > 1 ? 's' : ''} au total</p>
+                  </div>
+                </div>
+                <button onClick={() => openMatiereModal()}
+                  className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100">
+                  <Plus size={12} /> Ajouter une matière
+                </button>
               </div>
-            ) : matieresAPI.length === 0 ? (
-              <div className="py-12 text-center">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune matière configurée pour cette classe</p>
-                <p className="text-xs text-slate-400 mt-2">Les matières par défaut du niveau ({selectedClasse?.niveau}) seront utilisées dans l'emploi du temps.</p>
+
+              {/* Filtre par classe */}
+              <div className="px-6 py-4 border-b border-slate-50 flex items-center gap-3 flex-wrap">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtrer :</span>
+                <button onClick={() => setMatiereClasseFilter('')}
+                  className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${!matiereClasseFilter ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}>
+                  Toutes
+                </button>
+                {classes.map(cl => (
+                  <button key={cl.id} onClick={() => setMatiereClasseFilter(cl.id)}
+                    className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${matiereClasseFilter === cl.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}>
+                    {cl.nom}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {matieresAPI.map(m => {
-                  const col = COULEURS[m.couleur] || COULEURS.blue;
-                  return (
-                    <div key={m.id} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50/50 transition-all group">
-                      <div className={`w-3 h-8 rounded-full ${col.bar}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-slate-800 truncate">{m.nom}</p>
-                        <div className="flex items-center gap-3 mt-0.5">
-                          {m.enseignant && (
-                            <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
-                              <UserIcon size={9} /> {empNom(m.enseignant)}
-                            </span>
-                          )}
-                          <span className="text-[9px] font-bold text-slate-300">Coef. {m.coefficient}</span>
-                        </div>
+
+              {allMatieres.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune matière configurée</p>
+                  <p className="text-xs text-slate-400 mt-2">Ajoutez des matières pour les utiliser dans l'emploi du temps.</p>
+                </div>
+              ) : filteredMatieres.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune matière pour cette classe</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {(matiereClasseFilter ? [{ id: matiereClasseFilter, nom: classes.find(c => c.id === matiereClasseFilter)?.nom || '', niveau: '' }] : classes.filter(cl => groupedByClasse[cl.id]?.length > 0)).map(cl => (
+                    <div key={cl.id}>
+                      <div className="px-6 py-3 bg-slate-50/50 flex items-center gap-2">
+                        <School size={12} className="text-slate-400" />
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{cl.nom}</span>
+                        <span className="text-[8px] font-bold text-slate-300">· {groupedByClasse[cl.id]?.length || 0} matière{(groupedByClasse[cl.id]?.length || 0) > 1 ? 's' : ''}</span>
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={() => openMatiereModal(m)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
-                          <Edit3 size={14} />
-                        </button>
-                        <button onClick={() => deleteMatiere(m.id)}
-                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                          <Trash2 size={14} />
-                        </button>
+                      <div className="divide-y divide-slate-50">
+                        {(groupedByClasse[cl.id] || []).map(m => {
+                          const col = COULEURS[m.couleur] || COULEURS.blue;
+                          return (
+                            <div key={m.id} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50/50 transition-all group">
+                              <div className={`w-3 h-8 rounded-full ${col.bar}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-black text-slate-800 truncate">{m.nom}</p>
+                                <div className="flex items-center gap-3 mt-0.5">
+                                  {m.enseignant && (
+                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+                                      <UserIcon size={9} /> {empNom(m.enseignant)}
+                                    </span>
+                                  )}
+                                  <span className="text-[9px] font-bold text-slate-300">Coef. {m.coefficient}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onClick={() => openMatiereModal(m)}
+                                  className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                                  <Edit3 size={14} />
+                                </button>
+                                <button onClick={() => deleteMatiere(m.id)}
+                                  className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ══ MODAL MATIÈRE ═════════════════════════════════════════════════════ */}
       {showMatiereModal && (
@@ -1957,6 +2006,14 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
               <button onClick={() => setShowMatiereModal(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"><X size={18} /></button>
             </div>
             <div className="p-8 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Classe <span className="text-rose-400">*</span></label>
+                <select value={matiereForm.classeId} onChange={e => setMatiereForm(f => ({ ...f, classeId: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10">
+                  <option value="">— Sélectionner une classe —</option>
+                  {classes.map(cl => <option key={cl.id} value={cl.id}>{cl.nom} ({cl.niveau})</option>)}
+                </select>
+              </div>
               <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2">Nom <span className="text-rose-400">*</span></label>
                 <input value={matiereForm.nom} onChange={e => setMatiereForm(f => ({ ...f, nom: e.target.value }))}
