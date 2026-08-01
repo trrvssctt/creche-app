@@ -570,7 +570,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
     } catch { setAllMatieres([]); }
   }, []);
 
-  useEffect(() => { if (tab === 'matieres') fetchAllMatieres(); }, [tab, fetchAllMatieres]);
+  useEffect(() => { fetchAllMatieres(); }, [fetchAllMatieres]);
 
   // ── Charger exceptions pour la semaine affichée ─────────────────────────────
   useEffect(() => {
@@ -681,9 +681,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       setForm({ classeId: c.classeId, enseignantId: c.enseignantId || '', jour: c.jour, heureDebut: c.heureDebut, heureFin: c.heureFin, matiere: c.matiere, couleur: c.couleur });
     } else {
       setEditing(null);
-      const mats = matieresAPI.length > 0
-        ? matieresAPI.map(m => m.nom)
-        : (sel ? (MATIERES[sel.niveau] || []) : []);
+      const mats = matieresAPI.map(m => m.nom);
       setForm({ classeId: selectedClasseId, enseignantId: '', jour: 0, heureDebut: '08:00', heureFin: '09:00', matiere: mats[0] || '', couleur: 'blue' });
     }
     setShowModal(true);
@@ -735,9 +733,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
       });
     } else {
       setEditingCahier(null);
-      const cahierMats = matieresAPI.length > 0 && cahierClasseId === selectedClasseId
-        ? matieresAPI.map(m => m.nom)
-        : (cl ? (MATIERES[cl.niveau] || []) : []);
+      const cahierMats = allMatieres.filter(m => m.classeId === cahierClasseId).map(m => m.nom);
       setCahierForm({
         date: isoToday(), classeId: cahierClasseId,
         matiere: cahierMats[0] || '',
@@ -975,9 +971,8 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
 
   // ── Classe sélectionnée ────────────────────────────────────────────────────
   const selectedClasse = classes.find(c => c.id === selectedClasseId);
-  const matieres = matieresAPI.length > 0
-    ? matieresAPI.map(m => m.nom)
-    : (selectedClasse ? (MATIERES[selectedClasse.niveau] || []) : []);
+  const matieres = matieresAPI.map(m => m.nom);
+  const classeHasMatieres = matieresAPI.length > 0;
 
   if (loading) {
     return (
@@ -1150,10 +1145,15 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
 
               <div className="w-px h-6 bg-slate-200 mx-1" />
 
-              {canEdit && (
+              {canEdit && classeHasMatieres && (
                 <button onClick={() => openModal()} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100">
                   <Plus size={12} /> Ajouter créneau
                 </button>
+              )}
+              {canEdit && !classeHasMatieres && !loadingMatieres && (
+                <span className="px-4 py-2.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                  <AlertCircle size={12} /> Ajoutez des matières à cette classe (onglet Matières)
+                </span>
               )}
               <button onClick={openWA} className="p-2.5 bg-green-50 text-green-600 border border-green-200 rounded-xl hover:bg-green-100 transition-all" title="Envoyer WhatsApp">
                 <MessageCircle size={16} />
@@ -2223,12 +2223,9 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
                         onChange={e => setCahierForm(f => ({ ...f, matiere: e.target.value }))}
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-200">
                         <option value="">— Sélectionner —</option>
-                        {(matieresAPI.length > 0 && cahierForm.classeId === selectedClasseId
-                          ? matieresAPI.map(m => m.nom)
-                          : (classes.find(c => c.id === cahierForm.classeId)
-                            ? MATIERES[classes.find(c => c.id === cahierForm.classeId)!.niveau] || []
-                            : [])
-                        ).map((m: string) => <option key={m} value={m}>{m}</option>)}
+                        {allMatieres.filter(m => m.classeId === cahierForm.classeId).map(m => (
+                          <option key={m.id} value={m.nom}>{m.nom}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
