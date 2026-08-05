@@ -565,7 +565,7 @@ const ContractList: React.FC<ContractListProps> = ({ onNavigate }) => {
 
       setIsTerminateModalOpen(false);
       setTerminationForm({ reason: '' });
-      setSuccessMessage(response.data.message || 'Contrat résilié avec succès. L\'employé peut maintenant être désactivé si nécessaire.');
+      setSuccessMessage(response.message || 'Contrat résilié avec succès. L\'employé peut maintenant être désactivé si nécessaire.');
       setShowSuccessAlert(true);
       setTimeout(() => setShowSuccessAlert(false), 5000);
       await loadData();
