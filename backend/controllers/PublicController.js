@@ -221,42 +221,172 @@ export class PublicController {
   static async trackAdmission(req, res) {
     const raw = (req.params.reference || '').toUpperCase().trim();
 
-    // Format attendu : PRE-YYYY-XXXXXX (6 chars alphanumériques)
     const match = raw.match(/^PRE-(\d{4})-([A-Z0-9]{6})$/);
     if (!match) {
       return res.status(400).json({ error: 'Format de référence invalide. Exemple : PRE-2026-C0C91A' });
     }
 
-    const idPrefix = match[2]; // ex: C0C91A — première partie de l'UUID
+    const idPrefix = match[2];
 
     try {
       const tenant = await resolveTenantFromRequest(req);
       if (!tenant) return res.status(404).json({ error: 'École introuvable.' });
 
-      // Cherche l'élève dont l'UUID commence par idPrefix (6 premiers chars en majuscules)
       const eleve = await Eleve.findOne({
         where: {
           tenantId: tenant.id,
           [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${idPrefix}'`),
         },
-        attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'photoUrl', 'createdAt'],
+        attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'photoUrl', 'createdAt', 'notes',
+          'dateNaissance', 'lieuNaissance', 'sexe', 'cantine', 'transportBus', 'garderie',
+          'besoinSpecifique', 'ficheSanitaire', 'parent1', 'parent2', 'contactUrgence',
+          'personneAutorisee', 'situationMatrimoniale', 'parentsMemeResidence'],
       });
 
       if (!eleve) {
         return res.status(404).json({ error: 'Dossier introuvable. Vérifiez votre numéro de référence.' });
       }
 
-      return res.json({
+      const statut = eleve.statut || 'EN_ATTENTE';
+      let motifRejet = null;
+      if (statut === 'REJETE') {
+        const rejetMatch = (eleve.notes || '').match(/\[REJET [^\]]+\] (.+?)(?:\n|$)/);
+        motifRejet = rejetMatch ? rejetMatch[1].trim() : null;
+      }
+
+      // Code désactivé si admis/inscrit/actif
+      const codeActif = !['ADMIS', 'INSCRIT', 'ACTIF'].includes(statut);
+
+      const response = {
         reference: raw,
         prenom:      eleve.prenom,
         nomInitiale: (eleve.nom || 'X')[0].toUpperCase() + '.',
         niveau:      eleve.niveau,
-        statut:      eleve.statut || 'EN_ATTENTE',
+        statut,
         photoUrl:    eleve.photoUrl || null,
         dateDepot:   eleve.createdAt,
-      });
+        motifRejet,
+        codeActif,
+      };
+
+      // Si REJETE → renvoyer les données complètes pour permettre la modification
+      if (statut === 'REJETE') {
+        response.dossierComplet = {
+          nom: eleve.nom, prenom: eleve.prenom,
+          dateNaissance: eleve.dateNaissance, lieuNaissance: eleve.lieuNaissance,
+          sexe: eleve.sexe, niveau: eleve.niveau,
+          cantine: eleve.cantine, transportBus: eleve.transportBus, garderie: eleve.garderie,
+          besoinSpecifique: eleve.besoinSpecifique,
+          ficheSanitaire: eleve.ficheSanitaire,
+          parent1: eleve.parent1, parent2: eleve.parent2,
+          contactUrgence: eleve.contactUrgence, personneAutorisee: eleve.personneAutorisee,
+          situationMatrimoniale: eleve.situationMatrimoniale,
+          parentsMemeResidence: eleve.parentsMemeResidence,
+          photoUrl: eleve.photoUrl,
+        };
+      }
+
+      return res.json(response);
     } catch (err) {
       console.error('[PublicController.trackAdmission]', err);
+      return res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
+  // PUT /api/public/admission/:reference — resoumission d'un dossier rejeté
+  static async resubmitAdmission(req, res) {
+    const raw = (req.params.reference || '').toUpperCase().trim();
+
+    const match = raw.match(/^PRE-(\d{4})-([A-Z0-9]{6})$/);
+    if (!match) {
+      return res.status(400).json({ error: 'Format de référence invalide.' });
+    }
+
+    const idPrefix = match[2];
+
+    try {
+      const tenant = await resolveTenantFromRequest(req);
+      if (!tenant) return res.status(404).json({ error: 'École introuvable.' });
+
+      const eleve = await Eleve.findOne({
+        where: {
+          tenantId: tenant.id,
+          [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${idPrefix}'`),
+        },
+      });
+
+      if (!eleve) {
+        return res.status(404).json({ error: 'Dossier introuvable.' });
+      }
+
+      if (eleve.statut !== 'REJETE') {
+        return res.status(400).json({
+          error: 'Ce dossier ne peut pas être resoumis.',
+          message: eleve.statut === 'EN_ATTENTE'
+            ? 'Ce dossier est déjà en attente d\'examen.'
+            : 'Ce dossier a déjà été validé.',
+        });
+      }
+
+      const {
+        nom, prenom, dateNaissance, lieuNaissance, sexe, niveau,
+        cantine, transportBus, garderie, besoinSpecifique,
+        ficheSanitaire, parent1, parent2, contactUrgence, personneAutorisee,
+        photoUrl, piecesJointes, notes,
+        situationMatrimoniale, parentsMemeResidence,
+      } = req.body;
+
+      // Pièces justificatives
+      const pj = validatePiecesJointes(piecesJointes);
+      if (!pj.ok) return res.status(400).json({ error: pj.error });
+
+      const date = new Date().toLocaleDateString('fr-FR');
+      const resubNote = `[RESOUMISSION ${date}] Dossier mis à jour et resoumis par le parent.`;
+      const updatedNotes = [eleve.notes, resubNote, notes ? notes.trim() : null].filter(Boolean).join('\n');
+
+      await eleve.update({
+        nom:             nom?.trim()      || eleve.nom,
+        prenom:          prenom?.trim()    || eleve.prenom,
+        dateNaissance:   dateNaissance     ?? eleve.dateNaissance,
+        lieuNaissance:   lieuNaissance     ?? eleve.lieuNaissance,
+        sexe:            sexe              ?? eleve.sexe,
+        niveau:          niveau            || eleve.niveau,
+        cantine:         cantine           ?? eleve.cantine,
+        transportBus:    transportBus      ?? eleve.transportBus,
+        garderie:        garderie          ?? eleve.garderie,
+        besoinSpecifique: besoinSpecifique ?? eleve.besoinSpecifique,
+        ficheSanitaire:  ficheSanitaire    ?? eleve.ficheSanitaire,
+        parent1:         parent1           ?? eleve.parent1,
+        parent2:         parent2           ?? eleve.parent2,
+        contactUrgence:  contactUrgence    ?? eleve.contactUrgence,
+        personneAutorisee: personneAutorisee ?? eleve.personneAutorisee,
+        photoUrl:        photoUrl          ?? eleve.photoUrl,
+        situationMatrimoniale: situationMatrimoniale ?? eleve.situationMatrimoniale,
+        parentsMemeResidence: parentsMemeResidence ?? eleve.parentsMemeResidence,
+        statut:          'EN_ATTENTE',
+        notes:           updatedNotes,
+      });
+
+      // Nouvelles pièces jointes
+      if (pj.list.length) await createPiecesJointes(eleve, pj.list);
+
+      const parentName = [parent1?.prenom || eleve.parent1?.prenom, parent1?.nom || eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+      const enfantNom = `${eleve.prenom} ${eleve.nom}`;
+      const ecoleNom = tenant.name || "L'école";
+
+      // WhatsApp notification admin
+      BotpressService.sendWhatsApp(ADMIN_PHONE,
+        `📥 *Dossier resoumis*\n\nEnfant : *${enfantNom}*\nNiveau : ${eleve.niveau}\nParent : ${parentName}\nRéf : *${raw}*\n\nLe parent a corrigé et resoumis le dossier après rejet.`,
+        { category: 'inscription', reference: `resoumission:${raw}` }
+      ).catch(err => console.warn('[PublicController] WhatsApp admin resoumission:', err.message));
+
+      return res.json({
+        success: true,
+        reference: raw,
+        message: `Votre dossier a été mis à jour et resoumis. L'école l'examinera à nouveau.`,
+      });
+    } catch (err) {
+      console.error('[PublicController.resubmitAdmission]', err);
       return res.status(500).json({ error: 'Erreur serveur', message: err.message });
     }
   }

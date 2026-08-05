@@ -74,6 +74,7 @@ router.get('/files', UploadController.serveFile);
 router.get('/public/ecole',                    PublicController.getEcoleBranding);
 router.post('/public/admission',               PublicController.submitAdmission);
 router.get('/public/admission/:reference',     PublicController.trackAdmission);
+router.put('/public/admission/:reference',     PublicController.resubmitAdmission);
 
 // ── Webhook WhatsApp entrant (public, appelé par Botpress pour tracker la fenêtre 24h) ──
 import { BotpressService } from '../services/BotpressService.js';

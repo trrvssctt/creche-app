@@ -4,7 +4,7 @@ import {
   X, AlertCircle, Loader2, ArrowRight, UserCheck, UserX,
   Clock, GraduationCap, Baby, Phone, Mail, Save,
   Info, ChevronLeft, Edit3, MapPin, Heart, Shield, Stethoscope, Camera, Ban, UserPlus, Copy,
-  Globe, Building2, Users, Lock,
+  Globe, Building2, Users, Lock, FileText, Paperclip, Download, ZoomIn, ChevronDown,
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
@@ -12,7 +12,7 @@ import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
 import { User, Eleve, NiveauScolaire, RegimeFinancier, StatutAdmission } from '../types';
 import { compressImageToDataUrl } from '../services/photoUtils';
-import { missingRequiredPieces, PieceJointe } from '../services/piecesJustificatives';
+import { missingRequiredPieces, PieceJointe, piecesForNiveau } from '../services/piecesJustificatives';
 import PiecesJointes from './PiecesJointes';
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
@@ -32,14 +32,10 @@ const NIVEAUX: { value: NiveauScolaire; label: string; cycle: string }[] = [
   { value: 'CM2',    label: 'CM2',                  cycle: 'Élémentaire' },
 ];
 
-const STATUTS_ADMISSION: { value: StatutAdmission; label: string; color: string; icon: any }[] = [
+const STATUTS_ADMISSION: { value: string; label: string; color: string; icon: any }[] = [
   { value: 'EN_ATTENTE', label: 'Candidature', color: 'bg-amber-50 text-amber-700 border-amber-200',         icon: Clock },
   { value: 'ADMIS',      label: 'Admis',       color: 'bg-blue-50 text-blue-700 border-blue-200',            icon: CheckCircle2 },
-  { value: 'INSCRIT',    label: 'Inscrit',     color: 'bg-violet-50 text-violet-700 border-violet-200',      icon: UserCheck },
-  { value: 'ACTIF',      label: 'Actif',       color: 'bg-emerald-50 text-emerald-700 border-emerald-200',   icon: UserCheck },
-  { value: 'REJETE',     label: 'Refusé',      color: 'bg-rose-50 text-rose-700 border-rose-200',            icon: Ban },
-  { value: 'SUSPENDU',   label: 'Suspendu',    color: 'bg-slate-100 text-slate-600 border-slate-200',        icon: UserX },
-  { value: 'RADIE',      label: 'Radié',       color: 'bg-slate-100 text-slate-500 border-slate-200',        icon: UserX },
+  { value: 'REJETE',     label: 'Rejeté',      color: 'bg-rose-50 text-rose-700 border-rose-200',            icon: Ban },
 ];
 
 const REGIMES: { value: RegimeFinancier; label: string }[] = [
@@ -50,19 +46,15 @@ const REGIMES: { value: RegimeFinancier; label: string }[] = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Résout le statut d'un dossier quelle que soit la source (statut custom, status API, isActive)
+const ALL_STATUTS: Set<string> = new Set([
+  'EN_ATTENTE', 'ADMIS', 'INSCRIT', 'ACTIF', 'REJETE', 'SUSPENDU', 'RADIE',
+]);
+
 function getStatut(d: any): StatutAdmission {
-  const s = d.statut || '';
-  if (STATUTS_ADMISSION.some(x => x.value === s)) return s as StatutAdmission;
-  // Fallback sur le champ status de l'API Customer
-  const apiStatus = (d.status || '').toLowerCase();
-  if (apiStatus === 'actif')      return 'ACTIF';
-  if (apiStatus === 'inscrit')    return 'INSCRIT';
-  if (apiStatus === 'admis')      return 'ADMIS';
-  if (apiStatus === 'radie')      return 'RADIE';
-  if (apiStatus === 'suspendu')   return 'SUSPENDU';
-  if (apiStatus === 'en_attente') return 'EN_ATTENTE';
-  // Dernier recours : isActive seulement si aucun autre indice
+  const s = (d.statut || '').toUpperCase();
+  if (ALL_STATUTS.has(s)) return s as StatutAdmission;
+  const apiStatus = (d.status || '').toUpperCase();
+  if (ALL_STATUTS.has(apiStatus)) return apiStatus as StatutAdmission;
   return 'EN_ATTENTE';
 }
 
@@ -121,7 +113,8 @@ function normalizeEleve(e: any): any {
 }
 
 function StatutBadge({ statut }: { statut: StatutAdmission }) {
-  const s = STATUTS_ADMISSION.find(x => x.value === statut);
+  const lookup = (statut === 'INSCRIT' || statut === 'ACTIF') ? 'ADMIS' : statut;
+  const s = STATUTS_ADMISSION.find(x => x.value === lookup);
   if (!s) return null;
   const Icon = s.icon;
   return (
@@ -279,6 +272,10 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
   const [resetPwLoading, setResetPwLoading] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   const [modeInscription, setModeInscription] = useState(false);
+  const [viewDocuments, setViewDocuments] = useState<any[]>([]);
+  const [viewDocsLoading, setViewDocsLoading] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [showRadies, setShowRadies] = useState(false);
 
   const showToast = useToast();
   const { isReadOnly } = useAnnee();
@@ -313,38 +310,41 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
 
   // ── Filtrage avec statut correctement résolu ───────────────────────────────
 
+  const visibleDossiers = useMemo(() => {
+    return dossiers.filter(d => getStatut(d) !== 'RADIE');
+  }, [dossiers]);
+
+  const radies = useMemo(() => {
+    return dossiers.filter(d => getStatut(d) === 'RADIE');
+  }, [dossiers]);
+
   const filtered = useMemo(() => {
-    return dossiers.filter(d => {
+    return visibleDossiers.filter(d => {
       const nom = (d.companyName || d.name || '').toLowerCase();
       const matchSearch = nom.includes(search.toLowerCase()) ||
         (d.mainContact || '').toLowerCase().includes(search.toLowerCase());
       const statut = getStatut(d);
-      const matchStatut = filterStatut === 'ALL' || statut === filterStatut;
+      const matchStatut = filterStatut === 'ALL'
+        || (filterStatut === 'ADMIS' ? (statut === 'ADMIS' || statut === 'INSCRIT' || statut === 'ACTIF') : statut === filterStatut);
       const niveauVal = d.niveau || '';
       const matchNiveau = filterNiveau === 'ALL' || niveauVal === filterNiveau;
       const fromParent = isFromParent(d);
       const matchSource = filterSource === 'ALL' || (filterSource === 'PARENT' ? fromParent : !fromParent);
       return matchSearch && matchStatut && matchNiveau && matchSource;
     });
-  }, [dossiers, search, filterStatut, filterNiveau, filterSource]);
+  }, [visibleDossiers, search, filterStatut, filterNiveau, filterSource]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
   const kpis = useMemo(() => ({
-    total:      dossiers.length,
-    enAttente:  dossiers.filter(d => getStatut(d) === 'EN_ATTENTE').length,
-    admis:      dossiers.filter(d => getStatut(d) === 'ADMIS').length,
-    inscrits:   dossiers.filter(d => getStatut(d) === 'INSCRIT').length,
-    actifs:     dossiers.filter(d => getStatut(d) === 'ACTIF').length,
-    rejetes:    dossiers.filter(d => getStatut(d) === 'REJETE').length,
-    garcons:    dossiers.filter(d => d.sexe === 'M').length,
-    filles:     dossiers.filter(d => d.sexe === 'F').length,
-    portail:    dossiers.filter(d => isFromParent(d)).length,
-    ceJour:     dossiers.filter(d => {
-      const created = d.createdAt || d.created_at || '';
-      return created && new Date(created).toDateString() === new Date().toDateString();
-    }).length,
-  }), [dossiers]);
+    total:      visibleDossiers.length,
+    enAttente:  visibleDossiers.filter(d => getStatut(d) === 'EN_ATTENTE').length,
+    admis:      visibleDossiers.filter(d => { const s = getStatut(d); return s === 'ADMIS' || s === 'INSCRIT' || s === 'ACTIF'; }).length,
+    rejetes:    visibleDossiers.filter(d => getStatut(d) === 'REJETE').length,
+    garcons:    visibleDossiers.filter(d => d.sexe === 'M').length,
+    filles:     visibleDossiers.filter(d => d.sexe === 'F').length,
+    portail:    visibleDossiers.filter(d => isFromParent(d)).length,
+  }), [visibleDossiers]);
 
   // ── Construire le payload API depuis le formulaire ─────────────────────────
 
@@ -614,7 +614,16 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
 
   // ── Ouvrir les modals ──────────────────────────────────────────────────────
 
-  const openView = (d: any) => { setSelected(d); setModalMode('VIEW'); };
+  const openView = (d: any) => {
+    setSelected(d);
+    setModalMode('VIEW');
+    setViewDocuments([]);
+    setViewDocsLoading(true);
+    apiClient.get(`/eleves/${d.id}/dossier/admin`)
+      .then((docs: any) => setViewDocuments(Array.isArray(docs) ? docs : []))
+      .catch(() => setViewDocuments([]))
+      .finally(() => setViewDocsLoading(false));
+  };
 
   const openCreate = () => {
     setForm(emptyDossier());
@@ -759,21 +768,28 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       )}
 
       {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {[
-          { label: 'Total dossiers',   value: kpis.total,     color: 'bg-slate-900 text-white',          icon: ClipboardList },
-          { label: 'Candidatures',     value: kpis.enAttente, color: 'bg-amber-50 text-amber-700',       icon: Clock },
-          { label: 'Admis',            value: kpis.admis,     color: 'bg-blue-50 text-blue-700',         icon: CheckCircle2 },
-          { label: 'Inscrits',         value: kpis.inscrits,  color: 'bg-violet-50 text-violet-700',     icon: UserCheck },
-          { label: 'Actifs',           value: kpis.actifs,    color: 'bg-emerald-50 text-emerald-700',   icon: UserCheck },
-          { label: 'Refusés',          value: kpis.rejetes,   color: 'bg-rose-50 text-rose-700',         icon: Ban },
-          { label: 'Portail parents',  value: kpis.portail,   color: 'bg-purple-50 text-purple-700',     icon: Globe },
-          { label: 'Garçons',          value: kpis.garcons,   color: 'bg-sky-50 text-sky-700',           icon: UserCheck, prefix: '♂' },
-          { label: 'Filles',           value: kpis.filles,    color: 'bg-pink-50 text-pink-600',         icon: UserCheck, prefix: '♀' },
+          { label: 'Total dossiers',   value: kpis.total,     color: 'bg-slate-900 text-white',      icon: ClipboardList, action: () => { setFilterStatut('ALL'); setFilterSource('ALL'); } },
+          { label: 'Candidatures',     value: kpis.enAttente, color: 'bg-amber-50 text-amber-700',   icon: Clock,         action: () => { setFilterStatut('EN_ATTENTE'); setFilterSource('ALL'); } },
+          { label: 'Admis / Inscrits', value: kpis.admis,     color: 'bg-blue-50 text-blue-700',     icon: CheckCircle2,  action: () => { setFilterStatut('ADMIS'); setFilterSource('ALL'); } },
+          { label: 'Rejetés',          value: kpis.rejetes,   color: 'bg-rose-50 text-rose-700',     icon: Ban,           action: () => { setFilterStatut('REJETE'); setFilterSource('ALL'); } },
+          { label: 'Portail parents',  value: kpis.portail,   color: 'bg-purple-50 text-purple-700', icon: Globe,         action: () => { setFilterSource(filterSource === 'PARENT' ? 'ALL' : 'PARENT'); setFilterStatut('ALL'); } },
+          { label: 'Garçons',          value: kpis.garcons,   color: 'bg-sky-50 text-sky-700',       icon: UserCheck,     prefix: '♂' },
+          { label: 'Filles',           value: kpis.filles,    color: 'bg-pink-50 text-pink-600',     icon: UserCheck,     prefix: '♀' },
         ].map(k => {
           const Icon = k.icon;
+          const isClickable = !!(k as any).action;
+          const isActive = (k.label === 'Portail parents' && filterSource === 'PARENT')
+            || (k.label === 'Candidatures' && filterStatut === 'EN_ATTENTE')
+            || (k.label === 'Admis / Inscrits' && filterStatut === 'ADMIS')
+            || (k.label === 'Rejetés' && filterStatut === 'REJETE');
           return (
-            <div key={k.label} className={`${k.color} p-5 rounded-3xl shadow-sm flex flex-col gap-2`}>
+            <div key={k.label}
+              onClick={(k as any).action}
+              className={`${k.color} p-5 rounded-3xl shadow-sm flex flex-col gap-2 transition-all ${
+                isClickable ? 'cursor-pointer hover:shadow-lg hover:scale-[1.02]' : ''
+              } ${isActive ? 'ring-2 ring-offset-2 ring-indigo-400' : ''}`}>
               {(k as any).prefix
                 ? <span className="text-2xl font-black opacity-70">{(k as any).prefix}</span>
                 : <Icon size={20} className="opacity-60" />}
@@ -810,10 +826,12 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               ? 'bg-slate-900 text-white border-slate-900'
               : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
           }`}>
-          Tous <span className="ml-1 opacity-60">({dossiers.length})</span>
+          Tous <span className="ml-1 opacity-60">({visibleDossiers.length})</span>
         </button>
         {STATUTS_ADMISSION.map(s => {
-          const count = dossiers.filter(d => getStatut(d) === s.value).length;
+          const count = s.value === 'ADMIS'
+            ? visibleDossiers.filter(d => { const st = getStatut(d); return st === 'ADMIS' || st === 'INSCRIT' || st === 'ACTIF'; }).length
+            : visibleDossiers.filter(d => getStatut(d) === s.value).length;
           const active = filterStatut === s.value;
           return (
             <button key={s.value}
@@ -837,9 +855,9 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
         ] as const).map(s => {
           const Icon = s.icon;
           const active = filterSource === s.value;
-          const count = s.value === 'ALL' ? dossiers.length
-            : s.value === 'PARENT' ? dossiers.filter(d => isFromParent(d)).length
-            : dossiers.filter(d => !isFromParent(d)).length;
+          const count = s.value === 'ALL' ? visibleDossiers.length
+            : s.value === 'PARENT' ? visibleDossiers.filter(d => isFromParent(d)).length
+            : visibleDossiers.filter(d => !isFromParent(d)).length;
           return (
             <button key={s.value} onClick={() => setFilterSource(s.value)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${
@@ -913,10 +931,10 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               const statut = getStatut(d);
               const avecCantine = !!d.cantine;
               const avecBus = !!(d.transportBus || d.transport_bus);
-              const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE';
+              const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE' && statut !== 'REJETE';
               const fromParent = isFromParent(d);
               return (
-                <tr key={d.id} className={`group transition-all ${statut === 'RADIE' ? 'opacity-50 bg-slate-50/60' : 'hover:bg-slate-50/60'} ${fromParent ? 'border-l-2 border-l-purple-400' : ''}`}>
+                <tr key={d.id} className={`group transition-all hover:bg-slate-50/60 ${fromParent ? 'border-l-2 border-l-purple-400' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       {d.photoUrl ? (
@@ -998,6 +1016,87 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
           </tbody>
         </table>
       </div>
+
+      {/* ── Section Dossiers radiés ── */}
+      {radies.length > 0 && (
+        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/50 overflow-hidden">
+          <button
+            onClick={() => setShowRadies(!showRadies)}
+            className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-100 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-slate-200 flex items-center justify-center">
+                <Lock size={14} className="text-slate-500" />
+              </div>
+              <div className="text-left">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dossiers radiés</p>
+                <p className="text-[9px] text-slate-400 font-bold">{radies.length} dossier{radies.length > 1 ? 's' : ''} — consultation uniquement</p>
+              </div>
+            </div>
+            <ChevronDown size={18} className={`text-slate-400 transition-transform duration-200 ${showRadies ? 'rotate-180' : ''}`} />
+          </button>
+          {showRadies && (
+            <div className="border-t border-slate-200">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-400 text-[9px] font-black uppercase tracking-widest border-b border-slate-200">
+                    <th className="px-6 py-3">Enfant</th>
+                    <th className="px-6 py-3">Niveau</th>
+                    <th className="px-6 py-3">Parent / Contact</th>
+                    <th className="px-6 py-3 text-center">Date radiation</th>
+                    <th className="px-6 py-3 text-right">Consulter</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {radies.map(d => {
+                    const nomEnfant = d.companyName || d.name || '—';
+                    const contact = d.mainContact || '—';
+                    const niveau = d.niveau as NiveauScolaire | undefined;
+                    return (
+                      <tr key={d.id} className="opacity-60 bg-slate-50/60">
+                        <td className="px-6 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-400 flex items-center justify-center font-black text-xs shrink-0 grayscale">
+                              {nomEnfant.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-black text-slate-500 text-sm uppercase">{nomEnfant}</p>
+                              {d.sexe && (
+                                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black border ${
+                                  d.sexe === 'M' ? 'bg-sky-50 text-sky-600 border-sky-100' : 'bg-pink-50 text-pink-500 border-pink-100'
+                                }`}>{d.sexe === 'M' ? '♂ G' : '♀ F'}</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3">
+                          {niveau
+                            ? <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-black uppercase">{niveauLabel(niveau)}</span>
+                            : <span className="text-slate-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-6 py-3">
+                          <p className="font-bold text-slate-500 text-xs">{contact}</p>
+                          {d.phone && <p className="text-[9px] text-slate-400 font-bold flex items-center gap-1"><Phone size={9}/> {d.phone}</p>}
+                        </td>
+                        <td className="px-6 py-3 text-center">
+                          <span className="text-[10px] font-bold text-slate-400">
+                            {d.dateRadiation ? new Date(d.dateRadiation).toLocaleDateString('fr-FR') : '—'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-right">
+                          <button onClick={() => openView(d)}
+                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Consulter le dossier">
+                            <Eye size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══ MODAL CRÉER / MODIFIER — WIZARD 4 ÉTAPES ══════════════════════════ */}
       {(modalMode === 'CREATE' || modalMode === 'EDIT') && (
@@ -1853,7 +1952,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
       {/* ══ MODAL VUE DÉTAILLÉE DU DOSSIER ════════════════════════════════════ */}
       {modalMode === 'VIEW' && selected && (() => {
         const statut = getStatut(selected);
-        const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE';
+        const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE' && statut !== 'REJETE';
         const peutAnnuler = canModify && (statut === 'INSCRIT' || statut === 'ACTIF');
         const nomEnfant = selected.companyName || selected.name || '—';
         const niveau = selected.niveau as NiveauScolaire | undefined;
@@ -1912,7 +2011,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                       </button>
                     );
                   })()}
-                  {canModify && (statut === 'EN_ATTENTE' || statut === 'ADMIS') && isFromParent(selected) && (
+                  {canModify && (statut === 'EN_ATTENTE' || statut === 'ADMIS') && (
                     <button onClick={() => setShowRejetModal({ dossier: selected, motif: '' })}
                       className="px-4 py-2 bg-rose-500/80 hover:bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2">
                       <Ban size={14}/> Rejeter
@@ -2228,6 +2327,234 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
                   );
                 })()}
 
+                {/* ── Dossier numérique — Pièces justificatives ── */}
+                <section>
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Paperclip size={12} className="text-amber-500"/> Dossier numérique — Pièces justificatives
+                  </h4>
+                  {viewDocsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 size={20} className="animate-spin text-indigo-400" />
+                      <span className="ml-2 text-xs text-slate-400 font-bold">Chargement des documents…</span>
+                    </div>
+                  ) : (() => {
+                    const requiredPieces = piecesForNiveau(niveau);
+                    const docsByType: Record<string, any> = {};
+                    viewDocuments.forEach(doc => {
+                      const t = doc.typeDoc || doc.type_doc || 'AUTRE';
+                      if (!docsByType[t]) docsByType[t] = [];
+                      docsByType[t].push(doc);
+                    });
+                    const totalRequired = requiredPieces.filter(p => p.obligatoire).length;
+                    const totalProvided = requiredPieces.filter(p => p.obligatoire && docsByType[p.code]?.length > 0).length;
+                    const isComplete = totalProvided >= totalRequired;
+
+                    return (
+                      <div className="space-y-3">
+                        {/* Barre de progression */}
+                        <div className={`flex items-center gap-3 p-3 rounded-2xl border ${isComplete ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                          {isComplete
+                            ? <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                            : <AlertCircle size={18} className="text-amber-500 shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${isComplete ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {isComplete ? 'Dossier complet' : 'Dossier incomplet'}
+                            </p>
+                            <p className="text-[9px] text-slate-500 font-bold">
+                              {totalProvided}/{totalRequired} pièces obligatoires fournies — {viewDocuments.length} document{viewDocuments.length !== 1 ? 's' : ''} au total
+                            </p>
+                          </div>
+                          <div className="w-20 h-2 bg-slate-200 rounded-full overflow-hidden shrink-0">
+                            <div className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                              style={{ width: `${totalRequired > 0 ? (totalProvided / totalRequired) * 100 : 0}%` }} />
+                          </div>
+                        </div>
+
+                        {/* Liste des pièces requises */}
+                        <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
+                          {requiredPieces.map(p => {
+                            const docs = docsByType[p.code] || [];
+                            const hasDoc = docs.length > 0;
+                            return (
+                              <div key={p.code} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition ${
+                                hasDoc ? 'bg-emerald-50 border-emerald-200' : p.obligatoire ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200'}`}>
+                                {hasDoc
+                                  ? <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                                  : p.obligatoire
+                                    ? <AlertCircle size={16} className="text-rose-400 shrink-0" />
+                                    : <FileText size={16} className="text-slate-300 shrink-0" />}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] font-bold text-slate-700 leading-tight">
+                                    {p.label}
+                                    {p.obligatoire
+                                      ? <span className="text-rose-500 ml-1">*</span>
+                                      : <span className="text-slate-400 font-medium ml-1">(optionnel)</span>}
+                                  </p>
+                                  {hasDoc && (
+                                    <p className="text-[9px] text-emerald-600 font-bold mt-0.5">
+                                      Fourni — {docs.length} fichier{docs.length > 1 ? 's' : ''}
+                                      {docs[0].fileSize ? ` — ${(Number(docs[0].fileSize) / 1024).toFixed(0)} Ko` : ''}
+                                    </p>
+                                  )}
+                                  {!hasDoc && p.obligatoire && (
+                                    <p className="text-[9px] text-rose-500 font-bold mt-0.5">Manquant</p>
+                                  )}
+                                </div>
+                                {hasDoc && (
+                                  <div className="flex gap-1 shrink-0">
+                                    {docs.map((doc: any, i: number) => {
+                                      const mime = (doc.mimeType || doc.mime_type || '').toLowerCase();
+                                      const url = doc.fileUrl || doc.file_url || '';
+                                      const isImage = mime.startsWith('image/') || /^data:image\//.test(url);
+                                      const isPdf = mime === 'application/pdf' || /^data:application\/pdf/.test(url);
+                                      return (
+                                        <button key={doc.id || i}
+                                          onClick={() => setPreviewDoc(doc)}
+                                          className="group relative w-14 h-14 rounded-xl border-2 border-slate-200 hover:border-indigo-400 overflow-hidden transition-all hover:shadow-lg cursor-pointer bg-white"
+                                          title={`Voir : ${doc.nom || p.label}`}>
+                                          {isImage ? (
+                                            <img src={url} alt={doc.nom || p.label}
+                                              className="w-full h-full object-cover" />
+                                          ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                                              <FileText size={18} className="text-rose-400" />
+                                              <span className="text-[7px] font-bold text-slate-400 mt-0.5 uppercase">
+                                                {isPdf ? 'PDF' : 'DOC'}
+                                              </span>
+                                            </div>
+                                          )}
+                                          <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/30 transition-all flex items-center justify-center">
+                                            <ZoomIn size={16} className="text-white opacity-0 group-hover:opacity-100 transition-all drop-shadow" />
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Documents supplémentaires non dans la liste requise */}
+                          {(() => {
+                            const knownCodes = new Set(requiredPieces.map(p => p.code));
+                            const extras = viewDocuments.filter(d => !knownCodes.has(d.typeDoc || d.type_doc || ''));
+                            if (extras.length === 0) return null;
+                            return (
+                              <>
+                                <div className="border-t border-slate-200 pt-2 mt-2">
+                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Documents supplémentaires</p>
+                                </div>
+                                {extras.map((doc: any, i: number) => {
+                                  const mime = (doc.mimeType || doc.mime_type || '').toLowerCase();
+                                  const url = doc.fileUrl || doc.file_url || '';
+                                  const isImage = mime.startsWith('image/') || /^data:image\//.test(url);
+                                  const isPdf = mime === 'application/pdf' || /^data:application\/pdf/.test(url);
+                                  return (
+                                    <div key={doc.id || i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border bg-white border-slate-200">
+                                      <FileText size={16} className="text-indigo-400 shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-bold text-slate-700 truncate">{doc.nom || 'Document'}</p>
+                                        <p className="text-[9px] text-slate-400 font-bold">
+                                          {doc.typeDoc || doc.type_doc || 'AUTRE'}
+                                          {doc.fileSize ? ` — ${(Number(doc.fileSize) / 1024).toFixed(0)} Ko` : ''}
+                                        </p>
+                                      </div>
+                                      <button onClick={() => setPreviewDoc(doc)}
+                                        className="group relative w-14 h-14 rounded-xl border-2 border-slate-200 hover:border-indigo-400 overflow-hidden transition-all hover:shadow-lg cursor-pointer bg-white"
+                                        title={`Voir : ${doc.nom || 'Document'}`}>
+                                        {isImage ? (
+                                          <img src={url} alt={doc.nom} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                                            <FileText size={18} className="text-rose-400" />
+                                            <span className="text-[7px] font-bold text-slate-400 mt-0.5 uppercase">{isPdf ? 'PDF' : 'DOC'}</span>
+                                          </div>
+                                        )}
+                                        <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/30 transition-all flex items-center justify-center">
+                                          <ZoomIn size={16} className="text-white opacity-0 group-hover:opacity-100 transition-all drop-shadow" />
+                                        </div>
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        {viewDocuments.length === 0 && (
+                          <div className="text-center py-6">
+                            <Paperclip size={28} className="text-slate-300 mx-auto mb-2" />
+                            <p className="text-xs text-slate-400 font-bold">Aucun document n'a été versé au dossier.</p>
+                            <p className="text-[9px] text-slate-400 mt-1">Les pièces justificatives seront ajoutées lors de l'inscription ou du formulaire parent.</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </section>
+
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ══ LIGHTBOX PREVIEW DOCUMENT ══════════════════════════════════════════ */}
+      {previewDoc && (() => {
+        const url = previewDoc.fileUrl || previewDoc.file_url || '';
+        const mime = (previewDoc.mimeType || previewDoc.mime_type || '').toLowerCase();
+        const isImage = mime.startsWith('image/') || /^data:image\//.test(url);
+        const isPdf = mime === 'application/pdf' || /^data:application\/pdf/.test(url);
+        const nom = previewDoc.nom || 'Document';
+        return (
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200"
+            onClick={() => setPreviewDoc(null)}>
+            <div className="relative w-full max-w-4xl max-h-[90vh] m-4 flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-3 bg-slate-900/80 rounded-t-3xl">
+                <div className="min-w-0 flex-1">
+                  <p className="text-white text-sm font-bold truncate">{nom}</p>
+                  <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest">
+                    {previewDoc.typeDoc || previewDoc.type_doc || 'Document'}
+                    {previewDoc.fileSize ? ` — ${(Number(previewDoc.fileSize) / 1024).toFixed(0)} Ko` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-4">
+                  {url && (
+                    <a href={url} download={nom}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all" title="Télécharger">
+                      <Download size={16} className="text-white" />
+                    </a>
+                  )}
+                  <button onClick={() => setPreviewDoc(null)}
+                    className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
+                    <X size={16} className="text-white" />
+                  </button>
+                </div>
+              </div>
+              {/* Content */}
+              <div className="flex-1 overflow-auto bg-slate-800 rounded-b-3xl flex items-center justify-center min-h-[300px]">
+                {isImage ? (
+                  <img src={url} alt={nom}
+                    className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl" />
+                ) : isPdf ? (
+                  <iframe src={url} title={nom}
+                    className="w-full h-[75vh] rounded-lg bg-white" />
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText size={48} className="text-slate-500 mx-auto mb-3" />
+                    <p className="text-slate-400 text-sm font-bold">{nom}</p>
+                    <p className="text-slate-500 text-[10px] mt-1">Aperçu non disponible pour ce type de fichier</p>
+                    {url && (
+                      <a href={url} download={nom}
+                        className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition">
+                        <Download size={14} /> Télécharger
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

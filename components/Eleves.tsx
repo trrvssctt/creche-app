@@ -362,8 +362,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         apiClient.get('/admin/parent-accounts').catch(() => ({ byEleveId: {} })),
       ]);
       const rawEleves = (Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? elevesData?.eleves ?? []))
-        // Les candidatures (EN_ATTENTE/ADMIS) n'appartiennent pas à la liste des élèves inscrits
-        .filter((e: any) => e.statut !== 'EN_ATTENTE' && e.statut !== 'ADMIS');
+        .filter((e: any) => e.statut !== 'EN_ATTENTE' && e.statut !== 'ADMIS' && e.statut !== 'RADIE');
       setEleves([...new Map(rawEleves.map((e: any) => [e.id, e])).values()]);
       setClasses(Array.isArray(classesData) ? classesData : []);
       setParentsByEleveId((parentData as any)?.byEleveId || {});
