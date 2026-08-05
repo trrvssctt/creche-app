@@ -515,6 +515,7 @@ export interface Eleve {
   contactUrgence?: ContactUrgence;
   personneAutorisee?: PersonneAutorisee;
   whatsappPrincipal: string;
+  indicatifPays?: string;
   anneeScolaire: string;
   photoUrl?: string;
   parentsMemeResidence?: boolean | null;

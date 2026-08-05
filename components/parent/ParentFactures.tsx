@@ -14,7 +14,8 @@ interface ServiceInfo {
 
 interface Echeance {
   id: string; eleveId: string; mois: string; montant: number | string;
-  statut: 'EN_ATTENTE' | 'PAYE' | 'EN_RETARD' | 'ANNULE';
+  amountPaid?: number | string; amountRemaining?: number | string;
+  statut: 'EN_ATTENTE' | 'PAYE' | 'EN_RETARD' | 'ANNULE' | 'SOLDEE' | 'EN_GRACE' | 'DUE' | 'A_ECHOIR';
   dateEcheance?: string; datePaiement?: string; paidAt?: string;
   eleve?: { nom: string; prenom: string };
   service?: ServiceInfo;
@@ -35,11 +36,28 @@ interface InvoiceFromApi {
 
 interface Props { echeances: Echeance[]; enfants?: any[]; ecole?: any; onRefresh?: () => void; }
 
-const STATUT_CFG = {
+const STATUT_CFG: Record<string, { label: string; cls: string; icon: any }> = {
   PAYE:       { label: 'Payé',       cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
+  SOLDEE:     { label: 'Soldée',     cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
   EN_ATTENTE: { label: 'En attente', cls: 'bg-amber-50  text-amber-700  border-amber-200',    icon: Clock },
+  A_ECHOIR:   { label: 'À échoir',   cls: 'bg-amber-50  text-amber-700  border-amber-200',    icon: Clock },
+  DUE:        { label: 'Due',        cls: 'bg-orange-50 text-orange-700 border-orange-200',    icon: Clock },
+  EN_GRACE:   { label: 'En grâce',   cls: 'bg-orange-50 text-orange-700 border-orange-200',    icon: Clock },
   EN_RETARD:  { label: 'En retard',  cls: 'bg-red-50    text-red-700    border-red-200',      icon: AlertCircle },
   ANNULE:     { label: 'Annulé',     cls: 'bg-gray-50   text-gray-500   border-gray-200',     icon: AlertCircle },
+  ANNULEE:    { label: 'Annulée',    cls: 'bg-gray-50   text-gray-500   border-gray-200',     icon: AlertCircle },
+};
+
+const PAID_STATUTS = ['PAYE', 'SOLDEE'];
+const CANCEL_STATUTS = ['ANNULE', 'ANNULEE'];
+const echRemaining = (e: Echeance) => {
+  if (PAID_STATUTS.includes(e.statut) || CANCEL_STATUTS.includes(e.statut)) return 0;
+  return Number(e.amountRemaining ?? e.montant) || 0;
+};
+const echPaid = (e: Echeance) => {
+  const ap = Number(e.amountPaid || 0);
+  if (ap > 0) return ap;
+  return PAID_STATUTS.includes(e.statut) ? Number(e.montant) || 0 : 0;
 };
 
 const METHODES = ['Wave', 'Orange Money', 'Free Money', 'Espèces', 'Virement'];
@@ -67,6 +85,7 @@ function detectServiceType(service?: ServiceInfo, periodeLabel?: string): {
 }
 
 const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRefresh }) => {
+  const currency = ecole?.currency || '{currency}';
   const [modalEch, setModalEch] = useState<Echeance | null>(null);
   const [methode, setMethode] = useState('Wave');
   const [reference, setReference] = useState('');
@@ -118,10 +137,10 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
   };
 
   // Données calculées
-  const impayees = echeances.filter(e => e.statut !== 'PAYE' && e.statut !== 'ANNULE');
-  const payees = echeances.filter(e => e.statut === 'PAYE');
-  const totalDu = impayees.reduce((s, e) => s + Number(e.montant || 0), 0);
-  const totalPaye = payees.reduce((s, e) => s + Number(e.montant || 0), 0);
+  const impayees = echeances.filter(e => !PAID_STATUTS.includes(e.statut) && !CANCEL_STATUTS.includes(e.statut));
+  const payees = echeances.filter(e => PAID_STATUTS.includes(e.statut));
+  const totalDu = impayees.reduce((s, e) => s + echRemaining(e), 0);
+  const totalPaye = echeances.reduce((s, e) => s + echPaid(e), 0);
   const retard = impayees.filter(e => e.statut === 'EN_RETARD').length;
   const totalGlobal = totalDu + totalPaye;
 
@@ -140,8 +159,8 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
       }
       const rec = map.get(key)!;
       rec.nbEcheances++;
-      if (e.statut === 'PAYE') rec.totalPaye += Number(e.montant || 0);
-      else if (e.statut !== 'ANNULE') rec.totalDu += Number(e.montant || 0);
+      rec.totalPaye += echPaid(e);
+      if (!PAID_STATUTS.includes(e.statut) && !CANCEL_STATUTS.includes(e.statut)) rec.totalDu += echRemaining(e);
     }
     return [...map.values()];
   }, [echeances, enfants]);
@@ -173,9 +192,9 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
     try {
       await apiClient.post('/parent/paiement/demander', {
         echeanceId: modalEch.id, eleveId: modalEch.eleveId,
-        montant: modalEch.montant, methode, reference: reference || undefined,
+        montant: echRemaining(modalEch), methode, reference: reference || undefined,
       });
-      setSuccessMsg(`Demande transmise ! L'école validera votre paiement de ${fmt(modalEch.montant)} FCFA.`);
+      setSuccessMsg(`Demande transmise ! L'école validera votre paiement de ${fmt(echRemaining(modalEch))} ${currency}.`);
       setModalEch(null); setReference(''); onRefresh?.();
     } catch (err: any) {
       alert(err?.message || "Erreur lors de l'envoi.");
@@ -204,17 +223,17 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
         <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total facturé</p>
           <p className="text-xl font-black text-slate-800 mt-1">{fmt(totalGlobal)}</p>
-          <p className="text-[10px] text-slate-400 font-bold">F CFA</p>
+          <p className="text-[10px] text-slate-400 font-bold">{currency}</p>
         </div>
         <div className="bg-white rounded-2xl border border-emerald-100 p-4 shadow-sm">
           <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Total versé</p>
           <p className="text-xl font-black text-emerald-600 mt-1">{fmt(totalPaye)}</p>
-          <p className="text-[10px] text-emerald-400 font-bold">F CFA</p>
+          <p className="text-[10px] text-emerald-400 font-bold">{currency}</p>
         </div>
         <div className="bg-white rounded-2xl border border-red-100 p-4 shadow-sm">
           <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Reste à payer</p>
           <p className="text-xl font-black text-red-600 mt-1">{fmt(totalDu)}</p>
-          <p className="text-[10px] text-red-400 font-bold">F CFA</p>
+          <p className="text-[10px] text-red-400 font-bold">{currency}</p>
         </div>
         <div className={`rounded-2xl border p-4 shadow-sm ${retard > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100'}`}>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">En retard</p>
@@ -320,8 +339,8 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-2xl font-black text-gray-900">{fmt(e.montant)}</p>
-                      <p className="text-sm text-gray-400 font-medium">F CFA</p>
+                      <p className="text-2xl font-black text-gray-900">{fmt(echRemaining(e))}</p>
+                      <p className="text-sm text-gray-400 font-medium">{currency}</p>
                     </div>
                   </div>
                 </div>
@@ -416,7 +435,7 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                      <p className="font-black text-slate-700 text-sm">{fmt(e.montant)} <span className="text-[9px] text-slate-400">F</span></p>
+                      <p className="font-black text-slate-700 text-sm">{fmt(echPaid(e))} <span className="text-[9px] text-slate-400">{currency}</span></p>
                       <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border ${st.cls}`}>
                         <StatusIcon className="w-3 h-3" /> {st.label}
                       </span>
@@ -471,8 +490,8 @@ const ParentFactures: React.FC<Props> = ({ echeances, enfants = [], ecole, onRef
                 </div>
                 <div className="text-center pt-2 border-t border-current/10">
                   <p className="text-sm font-semibold text-gray-600 mb-1">Montant à régler</p>
-                  <p className={`text-3xl sm:text-4xl font-black ${svc.color}`}>{fmt(modalEch.montant)}</p>
-                  <p className={`text-base font-bold ${svc.color} opacity-70`}>F CFA</p>
+                  <p className={`text-3xl sm:text-4xl font-black ${svc.color}`}>{fmt(echRemaining(modalEch))}</p>
+                  <p className={`text-base font-bold ${svc.color} opacity-70`}>{currency}</p>
                   {modalEch.eleve && <p className="text-sm text-gray-500 mt-2">Pour {modalEch.eleve.prenom} {modalEch.eleve.nom}</p>}
                 </div>
               </div>

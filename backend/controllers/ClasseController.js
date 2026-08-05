@@ -30,7 +30,10 @@ export class ClasseController {
             as: 'eleves',
             attributes: ['id'],
             required: false,
-            where: anneeScolaire ? { anneeScolaire } : undefined,
+            where: {
+              ...(anneeScolaire ? { anneeScolaire } : {}),
+              statut: { [Op.notIn]: ['RADIE', 'EN_ATTENTE', 'ADMIS'] },
+            },
           },
           { model: Employee, as: 'enseignant', attributes: ['id', 'firstName', 'lastName'] }
         ],

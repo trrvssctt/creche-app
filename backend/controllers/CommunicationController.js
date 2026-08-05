@@ -111,7 +111,7 @@ export class CommunicationController {
           prenom_parent: parentPrenom ? `${parentPrenom} ${parentNom}`.trim() : 'Parent',
         });
 
-        recipients.push({ phone, message: personalizedBody, eleveId: eleve.id });
+        recipients.push({ phone, message: personalizedBody, eleveId: eleve.id, indicatifPays: eleve.indicatifPays || '221' });
       }
 
       if (recipients.length === 0) {

@@ -135,6 +135,19 @@ app.listen(PORT, async () => {
   }, { timezone: 'Africa/Dakar' });
   console.log('✅ Cron échéances scolaires planifié : tous les jours à 07:00 (Africa/Dakar)');
 
+  // ── Batch nocturne Finance V2 (01:00 chaque jour) ──────────────────────
+  cron.schedule('0 1 * * *', async () => {
+    console.log('[CRON] ▶ Batch nocturne Finance V2…');
+    try {
+      const { NightlyBatchService } = await import('./services/NightlyBatchService.js');
+      const result = await NightlyBatchService.run();
+      console.log(`[CRON] ✅ Batch Finance V2 terminé:`, result);
+    } catch (err) {
+      console.error('[CRON] ❌ Échec batch Finance V2:', err.message);
+    }
+  }, { timezone: 'Africa/Dakar' });
+  console.log('✅ Cron batch Finance V2 planifié : tous les jours à 01:00 (Africa/Dakar)');
+
   // ── Sauvegarde automatique quotidienne à 02:00 ──────────────────────────
   // Rétention : 7 jours (purge automatique dans BackupService.runSystemBackup)
   // Sauvegarde système complète (toutes les tables) — tous les jours à 02:00

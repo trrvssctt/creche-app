@@ -63,6 +63,17 @@ import { SchoolEvent } from './SchoolEvent.js';
 import { CommunicationLog } from './CommunicationLog.js';
 import { CommunicationTemplate } from './CommunicationTemplate.js';
 import { Matiere } from './Matiere.js';
+import { AcademicYear } from './AcademicYear.js';
+import { CivilPeriod } from './CivilPeriod.js';
+import { TariffPlanSnapshot } from './TariffPlanSnapshot.js';
+import { CashSession } from './CashSession.js';
+import { FinanceAuditEvent } from './FinanceAuditEvent.js';
+import { PaymentAllocation } from './PaymentAllocation.js';
+import { CreditNote } from './CreditNote.js';
+import { Refund } from './Refund.js';
+import { OtherRevenue } from './OtherRevenue.js';
+import { CollectionCase } from './CollectionCase.js';
+import { CollectionAction } from './CollectionAction.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
@@ -333,6 +344,89 @@ Classe.hasMany(Matiere, { foreignKey: 'classe_id', as: 'matieres' });
 Matiere.belongsTo(Employee, { foreignKey: 'enseignant_id', as: 'enseignant' });
 Employee.hasMany(Matiere, { foreignKey: 'enseignant_id', as: 'matieresEnseignees' });
 
+// --- MODULE FINANCE V2 ---
+
+// Années scolaires
+Tenant.hasMany(AcademicYear, { foreignKey: 'tenant_id' });
+AcademicYear.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+
+// Périodes civiles
+AcademicYear.hasMany(CivilPeriod, { foreignKey: 'academic_year_id', as: 'periods' });
+CivilPeriod.belongsTo(AcademicYear, { foreignKey: 'academic_year_id', as: 'academicYear' });
+CivilPeriod.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+
+// Snapshot tarifaire
+TariffPlanSnapshot.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+TariffPlanSnapshot.belongsTo(Service, { foreignKey: 'service_id', as: 'service' });
+TariffPlanSnapshot.belongsTo(AcademicYear, { foreignKey: 'academic_year_id', as: 'academicYear' });
+Service.hasMany(TariffPlanSnapshot, { foreignKey: 'service_id', as: 'snapshots' });
+AcademicYear.hasMany(TariffPlanSnapshot, { foreignKey: 'academic_year_id', as: 'tariffSnapshots' });
+
+// Engagements → année scolaire + snapshot
+AbonnementEleve.belongsTo(AcademicYear, { foreignKey: 'academic_year_id', as: 'academicYear' });
+AcademicYear.hasMany(AbonnementEleve, { foreignKey: 'academic_year_id', as: 'commitments' });
+AbonnementEleve.belongsTo(TariffPlanSnapshot, { foreignKey: 'tariff_snapshot_id', as: 'tariffSnapshot' });
+
+// Échéances → période civile
+EcheancePaiement.belongsTo(CivilPeriod, { foreignKey: 'civil_period_id', as: 'civilPeriod' });
+CivilPeriod.hasMany(EcheancePaiement, { foreignKey: 'civil_period_id', as: 'installments' });
+
+// Allocations paiement (many-to-many Payment ↔ Échéance)
+Payment.hasMany(PaymentAllocation, { foreignKey: 'payment_id', as: 'allocations' });
+PaymentAllocation.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
+EcheancePaiement.hasMany(PaymentAllocation, { foreignKey: 'echeance_id', as: 'allocations' });
+PaymentAllocation.belongsTo(EcheancePaiement, { foreignKey: 'echeance_id', as: 'echeance' });
+PaymentAllocation.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+
+// Sessions de caisse
+CashSession.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Tenant.hasMany(CashSession, { foreignKey: 'tenant_id' });
+CashSession.belongsTo(User, { foreignKey: 'opened_by', as: 'opener' });
+CashSession.belongsTo(User, { foreignKey: 'closed_by', as: 'closer' });
+Payment.belongsTo(CashSession, { foreignKey: 'cash_session_id', as: 'cashSession' });
+CashSession.hasMany(Payment, { foreignKey: 'cash_session_id', as: 'payments' });
+
+// Avoirs
+CreditNote.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+CreditNote.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+CreditNote.belongsTo(EcheancePaiement, { foreignKey: 'echeance_id', as: 'echeance' });
+CreditNote.belongsTo(AbonnementEleve, { foreignKey: 'abonnement_id', as: 'abonnement' });
+CreditNote.belongsTo(User, { foreignKey: 'issued_by', as: 'issuer' });
+Eleve.hasMany(CreditNote, { foreignKey: 'eleve_id', as: 'creditNotes' });
+
+// Remboursements
+Refund.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+Refund.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+Refund.belongsTo(CreditNote, { foreignKey: 'credit_note_id', as: 'creditNote' });
+Refund.belongsTo(Payment, { foreignKey: 'payment_id', as: 'originalPayment' });
+Refund.belongsTo(CashSession, { foreignKey: 'cash_session_id', as: 'cashSession' });
+Eleve.hasMany(Refund, { foreignKey: 'eleve_id', as: 'refunds' });
+
+// Recettes diverses
+OtherRevenue.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+OtherRevenue.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+OtherRevenue.belongsTo(Payment, { foreignKey: 'payment_id', as: 'payment' });
+OtherRevenue.belongsTo(CivilPeriod, { foreignKey: 'civil_period_id', as: 'civilPeriod' });
+OtherRevenue.belongsTo(CashSession, { foreignKey: 'cash_session_id', as: 'cashSession' });
+Tenant.hasMany(OtherRevenue, { foreignKey: 'tenant_id' });
+
+// Dossiers de recouvrement
+CollectionCase.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+CollectionCase.belongsTo(Eleve, { foreignKey: 'eleve_id', as: 'eleve' });
+CollectionCase.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignee' });
+CollectionCase.hasMany(CollectionAction, { foreignKey: 'case_id', as: 'actions' });
+Eleve.hasMany(CollectionCase, { foreignKey: 'eleve_id', as: 'collectionCases' });
+Tenant.hasMany(CollectionCase, { foreignKey: 'tenant_id' });
+
+CollectionAction.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+CollectionAction.belongsTo(CollectionCase, { foreignKey: 'case_id', as: 'collectionCase' });
+CollectionAction.belongsTo(User, { foreignKey: 'performed_by', as: 'performer' });
+
+// Audit financier
+FinanceAuditEvent.belongsTo(Tenant, { foreignKey: 'tenant_id' });
+FinanceAuditEvent.belongsTo(User, { foreignKey: 'user_id', as: 'actor' });
+Tenant.hasMany(FinanceAuditEvent, { foreignKey: 'tenant_id' });
+
 // Stocks & Catégories
 StockItem.hasMany(ProductMovement, { foreignKey: 'stock_item_id' });
 ProductMovement.belongsTo(StockItem, { foreignKey: 'stock_item_id' });
@@ -364,4 +458,15 @@ export {
   CommunicationLog,
   CommunicationTemplate,
   Matiere,
+  AcademicYear,
+  CivilPeriod,
+  TariffPlanSnapshot,
+  CashSession,
+  FinanceAuditEvent,
+  PaymentAllocation,
+  CreditNote,
+  Refund,
+  OtherRevenue,
+  CollectionCase,
+  CollectionAction,
 };

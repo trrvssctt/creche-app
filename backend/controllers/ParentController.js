@@ -408,7 +408,7 @@ export class ParentController {
         montant,
         methode,
         reference: reference || null,
-        message: `💳 Demande de paiement\nParent : ${name}\nMontant : ${montant} FCFA\nMéthode : ${methode}${reference ? `\nRéférence : ${reference}` : ''}`,
+        message: `💳 Demande de paiement\nParent : ${name}\nMontant : ${montant}\nMéthode : ${methode}${reference ? `\nRéférence : ${reference}` : ''}`,
         timestamp: new Date().toISOString(),
       };
 
@@ -851,8 +851,14 @@ export class ParentController {
     const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl', 'address', 'phone', 'email'] });
     const eleve = echeances[0].eleve;
     const currency = tenant?.currency || 'F CFA';
-    const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
-    const totalDuCalc = echeances.filter(e => e.statut !== 'PAYE' && e.statut !== 'ANNULE').reduce((s, e) => s + (parseFloat(e.montant) || 0), 0);
+    const totalPaye = echeances.reduce((s, e) => {
+      const paid = parseFloat(e.amountPaid ?? 0);
+      if (paid > 0) return s + paid;
+      return s + (['PAYE','SOLDEE'].includes(e.statut) ? (parseFloat(e.montant) || 0) : 0);
+    }, 0);
+    const totalDuCalc = echeances.filter(e => !['PAYE','SOLDEE','ANNULE','ANNULEE'].includes(e.statut)).reduce((s, e) => {
+      return s + parseFloat(e.amountRemaining ?? e.montant ?? 0);
+    }, 0);
     const total = totalPaye + totalDuCalc;
     const allPaid = totalDuCalc === 0 && totalPaye > 0;
     const dateStr = new Date().toLocaleDateString('fr-FR');
@@ -881,7 +887,9 @@ export class ParentController {
         periode: e.periodeLabel || '',
         echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : dateStr,
         montant: parseFloat(e.montant || 0),
-        statut: e.statut === 'PAYE' ? 'Payé' : e.statut === 'EN_RETARD' ? 'En retard' : 'En attente',
+        amountPaid: parseFloat(e.amountPaid ?? 0),
+        amountRemaining: parseFloat(e.amountRemaining ?? e.montant ?? 0),
+        statut: ['PAYE','SOLDEE'].includes(e.statut) ? 'Payé' : e.statut === 'EN_RETARD' ? 'En retard' : 'En attente',
       })),
       totalDu: total,
       totalPaye,
@@ -949,6 +957,8 @@ export class ParentController {
           label: e.service?.name || 'Scolarité',
           mois: e.periodeLabel,
           montant: parseFloat(e.montant) || 0,
+          amountPaid: parseFloat(e.amountPaid ?? 0),
+          amountRemaining: parseFloat(e.amountRemaining ?? e.montant ?? 0),
         })),
         subject: allPaid ? `Reçu de paiement — ${enfantNom} — ${tenant?.name || ''}` : `Facture — ${enfantNom} — ${tenant?.name || ''}`,
         attachments: [{

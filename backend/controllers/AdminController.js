@@ -1037,12 +1037,23 @@ export class AdminController {
       if (!tenantId) return res.status(400).json({ error: 'tenantId manquant' });
 
       const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
       // Toujours utiliser l'année active du tenant pour le dashboard
-      const tenant = await Tenant.findByPk(tenantId, { attributes: ['anneeActive'] });
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['anneeActive', 'name', 'currency'] });
       const annee  = tenant?.anneeActive || '2025-2026';
+      const tenantName = tenant?.name || '';
+      const tenantCurrency = tenant?.currency || 'F CFA';
+
+      // Date calendaire réelle (pour admissions, etc.)
+      const calendarStartOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      // Mois civil cohérent avec l'année scolaire pour les échéances
+      // (même logique que syncMensuel / Recovery : mois >= 9 → startYear, sinon endYear)
+      const currentMonth = now.getMonth() + 1;
+      const [scolStart, scolEnd] = annee.split('-').map(Number);
+      const civYear = currentMonth >= 8 ? scolStart : scolEnd;
+      const startOfMonth = new Date(civYear, currentMonth - 1, 1);
+      const endOfMonth   = new Date(civYear, currentMonth, 0, 23, 59, 59);
 
       // ── Effectifs par classe ─────────────────────────────────────────
       const classesRows = await sequelize.query(`
@@ -1071,39 +1082,52 @@ export class AdminController {
           COUNT(*) FILTER (WHERE transport_bus = true AND statut IN ('INSCRIT','ACTIF')) AS avec_bus,
           COUNT(*) FILTER (WHERE cantine = true AND statut IN ('INSCRIT','ACTIF'))       AS avec_cantine,
           COUNT(*) FILTER (WHERE regime_financier = 'CAS_SOCIAL')       AS cas_sociaux,
-          COUNT(*) FILTER (WHERE date_admission >= :startOfMonth)        AS nouvelles_admissions
+          COUNT(*) FILTER (WHERE date_admission >= :calendarStartOfMonth)  AS nouvelles_admissions
         FROM eleves
         WHERE tenant_id = :tenantId AND annee_scolaire = :annee
-      `, { replacements: { tenantId, annee, startOfMonth }, type: sequelize.QueryTypes.SELECT });
+      `, { replacements: { tenantId, annee, calendarStartOfMonth }, type: sequelize.QueryTypes.SELECT });
 
       // ── Finance du mois (basé sur les échéances de paiement) ─────────
       const financeStats = await sequelize.query(`
         SELECT
           COALESCE(SUM(ep.montant) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth), 0) AS ca_mois,
-          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE' AND ep.paid_at BETWEEN :startOfMonth AND :endOfMonth), 0) AS encaisse_mois,
-          COUNT(*) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth AND ep.statut != 'PAYE') AS nb_impayes,
-          COALESCE(SUM(ep.montant) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth AND ep.statut != 'PAYE'), 0) AS montant_impayes
+          COALESCE(SUM(
+            COALESCE(NULLIF(ep.amount_paid, 0), CASE WHEN ep.statut IN ('PAYE','SOLDEE') THEN ep.montant ELSE 0 END)
+          ) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth), 0) AS encaisse_mois,
+          COUNT(*) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth
+            AND ep.statut NOT IN ('PAYE','SOLDEE','ANNULE','ANNULEE')
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0) AS nb_impayes,
+          COALESCE(SUM(
+            COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant)
+          ) FILTER (WHERE ep.date_echeance BETWEEN :startOfMonth AND :endOfMonth
+            AND ep.statut NOT IN ('PAYE','SOLDEE','ANNULE','ANNULEE')
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0), 0) AS montant_impayes
         FROM echeances_paiements ep
         JOIN eleves el ON el.id = ep.eleve_id
         WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee
       `, { replacements: { tenantId, startOfMonth, endOfMonth, annee }, type: sequelize.QueryTypes.SELECT });
 
-      // ── Top débiteurs ────────────────────────────────────────────────
+      // ── Top débiteurs (échéances dues ou en retard, pas les futures) ──
       const topDebtors = await sequelize.query(`
         SELECT
-          c.company_name AS nom,
-          c.phone        AS whatsapp,
-          SUM(s.total_ttc - COALESCE(s.amount_paid, 0)) AS dette
-        FROM sales s
-        JOIN customers c ON c.id = s.customer_id
-        WHERE s.tenant_id = :tenantId
-          AND s.status NOT IN ('ANNULE', 'PAYE')
-          AND s.amount_paid < s.total_ttc
-        GROUP BY c.id, c.company_name, c.phone
-        HAVING SUM(s.total_ttc - COALESCE(s.amount_paid, 0)) > 0
+          el.prenom || ' ' || el.nom AS nom,
+          el.whatsapp_principal AS whatsapp,
+          el.niveau,
+          SUM(COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant)) AS dette,
+          COUNT(*) AS nb_echeances,
+          MIN(ep.date_echeance) AS plus_ancienne
+        FROM echeances_paiements ep
+        JOIN eleves el ON el.id = ep.eleve_id
+        WHERE ep.tenant_id = :tenantId
+          AND el.annee_scolaire = :annee
+          AND ep.date_echeance <= :endOfMonth
+          AND ep.statut NOT IN ('PAYE', 'SOLDEE', 'ANNULE', 'ANNULEE')
+          AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0
+        GROUP BY el.id, el.prenom, el.nom, el.whatsapp_principal, el.niveau
+        HAVING SUM(COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant)) > 0
         ORDER BY dette DESC
         LIMIT 8
-      `, { replacements: { tenantId }, type: sequelize.QueryTypes.SELECT });
+      `, { replacements: { tenantId, annee, endOfMonth }, type: sequelize.QueryTypes.SELECT });
 
       // ── Dernières admissions ─────────────────────────────────────────
       const recentAdmissions = await sequelize.query(`
@@ -1158,36 +1182,121 @@ export class AdminController {
         LIMIT 8
       `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
 
-      // ── Taux de recouvrement global (écheances) ──────────────────────
-      // Filtre par annee_scolaire via la table eleves (echeances_paiements n'a pas annee_scolaire)
+      // ── Taux de recouvrement global (échéances) ──────────────────────
       const echeancesStats = await sequelize.query(`
         SELECT
-          COALESCE(SUM(ep.montant), 0)                                            AS total_facture,
-          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE'), 0)          AS total_encaisse,
-          COUNT(*) FILTER (WHERE ep.statut IN ('EN_ATTENTE','EN_RETARD'))         AS nb_en_attente,
-          COUNT(*) FILTER (WHERE ep.statut = 'EN_RETARD')                         AS nb_en_retard,
-          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut = 'EN_RETARD'), 0)     AS montant_en_retard,
-          COALESCE(SUM(ep.montant) FILTER (WHERE ep.statut IN ('EN_ATTENTE','EN_RETARD')), 0) AS montant_restant
+          COALESCE(SUM(ep.montant), 0) AS total_facture,
+          COALESCE(SUM(
+            COALESCE(NULLIF(ep.amount_paid, 0), CASE WHEN ep.statut IN ('PAYE','SOLDEE') THEN ep.montant ELSE 0 END)
+          ), 0) AS total_encaisse,
+          COUNT(*) FILTER (WHERE ep.statut NOT IN ('PAYE','SOLDEE','ANNULE','ANNULEE')
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0) AS nb_en_attente,
+          COUNT(*) FILTER (WHERE ep.statut = 'EN_RETARD'
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0) AS nb_en_retard,
+          COALESCE(SUM(
+            COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant)
+          ) FILTER (WHERE ep.statut = 'EN_RETARD'
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0), 0) AS montant_en_retard,
+          COALESCE(SUM(
+            COALESCE(NULLIF(ep.amount_remaining, 0), CASE WHEN ep.statut IN ('PAYE','SOLDEE') THEN 0 ELSE ep.montant END)
+          ) FILTER (WHERE ep.statut NOT IN ('PAYE','SOLDEE','ANNULE','ANNULEE')), 0) AS montant_restant
         FROM echeances_paiements ep
         JOIN eleves el ON el.id = ep.eleve_id
         WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee
+          AND ep.statut NOT IN ('ANNULE', 'ANNULEE')
       `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
 
-      // ── CA annuel global (scolarité via écheances + ventes/stock) ──────
+      // ── CA annuel global (scolarité via échéances + ventes/stock) ──────
       const [sy] = annee.split('-');
-      const startYear = `${sy}-09-01`;
-      const endYear   = `${parseInt(sy) + 1}-09-01`;
+      const startYear = `${sy}-08-01`;
+      const endYear   = `${parseInt(sy) + 1}-08-01`;
       const caAnnuelStats = await sequelize.query(`
         SELECT
-          COALESCE((SELECT SUM(ep.montant) FILTER (WHERE ep.statut = 'PAYE')
+          COALESCE((SELECT SUM(
+              COALESCE(NULLIF(ep.amount_paid, 0), CASE WHEN ep.statut IN ('PAYE','SOLDEE') THEN ep.montant ELSE 0 END)
+            )
             FROM echeances_paiements ep
             JOIN eleves el ON el.id = ep.eleve_id
-            WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee), 0) AS ca_scolarite,
+            WHERE ep.tenant_id = :tenantId AND el.annee_scolaire = :annee
+              AND ep.statut NOT IN ('ANNULE','ANNULEE')), 0) AS ca_scolarite,
           COALESCE((SELECT SUM(s.amount_paid)
             FROM sales s
             WHERE s.tenant_id = :tenantId AND s.status != 'ANNULE'
               AND s.sale_date >= :startYear AND s.sale_date < :endYear), 0) AS ca_ventes
       `, { replacements: { tenantId, annee, startYear, endYear }, type: sequelize.QueryTypes.SELECT });
+
+      // ── Finance V2 : balance âgée + créances à échoir ──────────────
+      let balanceAgee = [];
+      let creancesAEchoir = [];
+      let caEngagementNet = 0;
+      let caComptableAnnee = 0;
+      try {
+        balanceAgee = await sequelize.query(`
+          SELECT
+            CASE
+              WHEN ep.date_echeance >= DATE_TRUNC('month', CURRENT_DATE) THEN '0'
+              WHEN CURRENT_DATE - ep.date_echeance <= 30 THEN '1-30'
+              WHEN CURRENT_DATE - ep.date_echeance <= 60 THEN '31-60'
+              WHEN CURRENT_DATE - ep.date_echeance <= 90 THEN '61-90'
+              WHEN CURRENT_DATE - ep.date_echeance <= 180 THEN '91-180'
+              ELSE '>180'
+            END AS tranche,
+            COUNT(*) AS nb_echeances,
+            COUNT(DISTINCT ep.eleve_id) AS nb_eleves,
+            COALESCE(SUM(COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant)), 0) AS total_impaye
+          FROM echeances_paiements ep
+          JOIN eleves el ON el.id = ep.eleve_id
+          WHERE ep.tenant_id = :tenantId
+            AND el.annee_scolaire = :annee
+            AND ep.date_echeance <= :endOfMonth
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0
+            AND ep.statut NOT IN ('PAYE', 'ANNULE', 'ANNULEE', 'SOLDEE')
+          GROUP BY tranche
+          ORDER BY MIN(CURRENT_DATE - ep.date_echeance)
+        `, { replacements: { tenantId, annee, endOfMonth }, type: sequelize.QueryTypes.SELECT });
+
+        creancesAEchoir = await sequelize.query(`
+          SELECT
+            TO_CHAR(ep.date_echeance, 'YYYY-MM') AS mois,
+            COALESCE(SUM(COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant)), 0) AS total,
+            COUNT(*) AS nb_echeances
+          FROM echeances_paiements ep
+          JOIN eleves el ON el.id = ep.eleve_id
+          WHERE ep.tenant_id = :tenantId
+            AND el.annee_scolaire = :annee
+            AND ep.date_echeance > :endOfMonth
+            AND COALESCE(NULLIF(ep.amount_remaining, 0), ep.montant) > 0
+            AND ep.statut NOT IN ('PAYE', 'ANNULE', 'ANNULEE', 'SOLDEE')
+          GROUP BY TO_CHAR(ep.date_echeance, 'YYYY-MM')
+          ORDER BY mois
+        `, { replacements: { tenantId, annee, endOfMonth }, type: sequelize.QueryTypes.SELECT });
+
+        // CA engagement net (depuis abonnements_eleves si les colonnes existent)
+        const [caEngRow] = await sequelize.query(`
+          SELECT COALESCE(SUM(COALESCE(ae.montant_net, ae.montant)), 0) AS ca_net
+          FROM abonnements_eleves ae
+          JOIN eleves el ON el.id = ae.eleve_id
+          WHERE ae.tenant_id = :tenantId
+            AND el.annee_scolaire = :annee
+            AND ae.is_active = true
+        `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
+        caEngagementNet = parseFloat(caEngRow?.ca_net || 0);
+
+        // CA comptable année civile courante
+        const civilYear = now.getFullYear();
+        const [caCompRow] = await sequelize.query(`
+          SELECT COALESCE(SUM(ep.montant), 0) AS ca_comptable
+          FROM echeances_paiements ep
+          JOIN eleves el ON el.id = ep.eleve_id
+          WHERE ep.tenant_id = :tenantId
+            AND el.annee_scolaire = :annee
+            AND EXTRACT(YEAR FROM COALESCE(ep.service_period_start, ep.date_echeance)) = :civilYear
+            AND ep.statut NOT IN ('ANNULE', 'ANNULEE')
+        `, { replacements: { tenantId, annee, civilYear }, type: sequelize.QueryTypes.SELECT });
+        caComptableAnnee = parseFloat(caCompRow?.ca_comptable || 0);
+      } catch (finV2Err) {
+        console.warn('[SchoolDashboard] Finance V2 partiel:', finV2Err.message);
+      }
 
       return res.json({
         classes:             classesRows,
@@ -1201,7 +1310,17 @@ export class AdminController {
         recentPayments,
         staffStats:          staffStats[0] || {},
         candidaturesPortail,
-        annee
+        annee,
+        tenantName,
+        tenantCurrency,
+        financeV2: {
+          balanceAgee,
+          creancesAEchoir,
+          caEngagementNet,
+          caComptableAnnee,
+          totalImpaye: balanceAgee.reduce((s, r) => s + parseFloat(r.total_impaye || 0), 0),
+          totalAEchoir: creancesAEchoir.reduce((s, r) => s + parseFloat(r.total || 0), 0),
+        },
       });
     } catch (error) {
       console.error('SchoolDashboard error:', error);

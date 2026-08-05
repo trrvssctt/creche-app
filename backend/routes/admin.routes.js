@@ -69,4 +69,22 @@ router.get(   '/backups/:id/download',  checkRole(['SUPER_ADMIN']), BackupContro
 router.post(  '/backups/:id/restore',   checkRole(['SUPER_ADMIN']), BackupController.restoreBackup);
 router.delete('/backups/:id',           checkRole(['SUPER_ADMIN']), BackupController.deleteBackup);
 
+// ── Purge données financières élèves (dev/test uniquement) ──
+router.delete('/purge-finance-eleves', async (req, res) => {
+  try {
+    const { EcheancePaiement, AbonnementEleve, Eleve } = await import('../models/index.js');
+    const tenantId = req.user.tenantId;
+    const echDel = await EcheancePaiement.destroy({ where: { tenantId } });
+    const aboDel = await AbonnementEleve.destroy({ where: { tenantId } });
+    const [radieCount] = await Eleve.update(
+      { statut: 'INSCRIT', dateRadiation: null },
+      { where: { tenantId, statut: 'RADIE' } }
+    );
+    res.json({ message: `Purgé : ${echDel} échéances, ${aboDel} abonnements supprimés. ${radieCount} élèves radiés restaurés.` });
+  } catch (err) {
+    console.error('[PURGE]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

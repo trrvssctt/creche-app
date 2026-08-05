@@ -5,7 +5,8 @@ import {
   RefreshCw, ChevronRight, Baby, Phone, BookOpen,
   UserCheck, UserX, Search, Plus, Edit3, Trash2,
   Filter, Calendar, User as UserIcon, MoreVertical,
-  ArrowRight, ShieldCheck, Info, Save, X
+  ArrowRight, ShieldCheck, Info, Save, X,
+  Banknote, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
@@ -65,15 +66,20 @@ function getAdmissionStatut(d: any): StatutAdmission {
   return 'EN_ATTENTE';
 }
 
-function computeCAFromEcheances(echeances: any[], elevesIds: Set<string>): number {
-  let total = 0;
+function computeFinanceV2(echeances: any[], elevesIds: Set<string>): { totalDu: number; encaisse: number; resteARecouvrer: number } {
+  let totalDu = 0;
+  let encaisse = 0;
   for (const ech of echeances) {
     const id = ech.eleveId || ech.eleve_id;
     if (!id || !elevesIds.has(id)) continue;
-    if (ech.statut === 'ANNULE') continue;
-    total += Number(ech.montant || 0);
+    if (['ANNULE','ANNULEE'].includes(ech.statut)) continue;
+    const montant = Number(ech.montant || 0);
+    totalDu += montant;
+    const ap = Number(ech.amountPaid ?? ech.amount_paid ?? 0);
+    if (ap > 0) { encaisse += ap; }
+    else if (['PAYE','SOLDEE'].includes(ech.statut)) { encaisse += montant; }
   }
-  return total;
+  return { totalDu, encaisse, resteARecouvrer: totalDu - encaisse };
 }
 
 // ─── Composant ───────────────────────────────────────────────────────────────
@@ -114,6 +120,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
   const [newMatiereEntry, setNewMatiereEntry] = useState<EnseignantMatiere>({ enseignantId: '', matiere: '' });
 
   const fetchAll = async () => {
+    if (!ANNEE_COURANTE) return;
     setLoading(true);
     try {
       const [elevesData, admissionsData, servicesData, classesData, empData, contractsData, echeancesData] = await Promise.all([
@@ -123,7 +130,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
         apiClient.get('/classes', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(() => []),
         apiClient.get('/hr/employees').catch(() => []),
         apiClient.get('/hr/contracts').catch(() => []),
-        apiClient.get('/abonnements/echeances', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(() => []),
+        apiClient.get('/abonnements/echeances', { params: { anneeScolaire: ANNEE_COURANTE } }).catch(err => { console.error('[Classes] echeances fetch error:', err); return []; }),
       ]);
       setEleves(Array.isArray(elevesData) ? elevesData : (elevesData?.rows ?? []));
       setAdmissions(Array.isArray(admissionsData) ? admissionsData : (admissionsData?.rows ?? []));
@@ -132,14 +139,15 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
       setEmployees(Array.isArray(empData) ? empData : (empData?.rows ?? []));
       setContracts(Array.isArray(contractsData) ? contractsData : (contractsData?.rows ?? []));
 
-      // Calculer dette par élève (somme des échéances non payées)
       const echeances = Array.isArray(echeancesData) ? echeancesData : [];
+      console.log('[Classes] echeances loaded:', echeances.length, 'sample:', echeances[0]);
       setAllEcheances(echeances);
       const dettes: Record<string, number> = {};
       for (const ech of echeances) {
-        if (ech.statut !== 'PAYE' && ech.statut !== 'ANNULE') {
+        if (!['PAYE','SOLDEE','ANNULE','ANNULEE'].includes(ech.statut)) {
           const id = ech.eleveId || ech.eleve_id;
-          if (id) dettes[id] = (dettes[id] || 0) + Number(ech.montant || 0);
+          const rem = Number(ech.amountRemaining ?? ech.amount_remaining ?? ech.montant ?? 0);
+          if (id && rem > 0) dettes[id] = (dettes[id] || 0) + rem;
         }
       }
       setDettesParEleve(dettes);
@@ -150,7 +158,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [ANNEE_COURANTE]);
 
   // ── Actions CRUD Classes ────────────────────────────────────────────────────
 
@@ -202,6 +210,70 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
     }
   };
 
+  const [isAutoAffecting, setIsAutoAffecting] = useState(false);
+  const [autoAffectData, setAutoAffectData] = useState<{
+    nonAffectes: Eleve[];
+    toAssign: Eleve[];
+    spotsParClasse: { id: string; nom: string; remaining: number }[];
+    overflow: number;
+  } | null>(null);
+
+  const handleAutoAffectPrepare = () => {
+    if (!selectedNiveau) return;
+    const nonAffectes = elevesNiveau.filter(e => !e.classeId);
+    if (nonAffectes.length === 0) {
+      addToast('Tous les élèves sont déjà affectés à une classe', 'info');
+      return;
+    }
+    const spotsParClasse = classesNiveau.map(c => ({
+      id: c.id,
+      nom: c.nom,
+      remaining: c.capaciteMax - (c.nbEleves || 0),
+    })).filter(c => c.remaining > 0);
+
+    if (spotsParClasse.length === 0) {
+      addToast('Aucune place disponible dans les classes de ce niveau', 'error');
+      return;
+    }
+
+    const totalSpots = spotsParClasse.reduce((s, c) => s + c.remaining, 0);
+    const toAssign = nonAffectes.slice(0, totalSpots);
+    const overflow = nonAffectes.length - toAssign.length;
+    setAutoAffectData({ nonAffectes, toAssign, spotsParClasse, overflow });
+  };
+
+  const handleAutoAffectConfirm = async () => {
+    if (!autoAffectData) return;
+    const { toAssign, spotsParClasse, overflow } = autoAffectData;
+    setAutoAffectData(null);
+    setIsAutoAffecting(true);
+    let assigned = 0;
+    let errors = 0;
+    let classIdx = 0;
+
+    for (const eleve of toAssign) {
+      while (classIdx < spotsParClasse.length && spotsParClasse[classIdx].remaining <= 0) classIdx++;
+      if (classIdx >= spotsParClasse.length) break;
+
+      try {
+        await apiClient.put(`/eleves/${eleve.id}`, { classeId: spotsParClasse[classIdx].id });
+        spotsParClasse[classIdx].remaining--;
+        assigned++;
+      } catch {
+        errors++;
+      }
+    }
+
+    setIsAutoAffecting(false);
+    await fetchAll();
+    addToast(
+      `${assigned} élève${assigned > 1 ? 's' : ''} affecté${assigned > 1 ? 's' : ''}` +
+      (errors > 0 ? ` · ${errors} erreur${errors > 1 ? 's' : ''}` : '') +
+      (overflow > 0 ? ` · ${overflow} sans place` : ''),
+      errors > 0 ? 'warning' : 'success'
+    );
+  };
+
   // ── Mémos / Stats ──────────────────────────────────────────────────────────
 
   const globalStats = useMemo(() => {
@@ -210,8 +282,8 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
     const garcons           = inscrits.filter(e => e.sexe === 'M').length;
     const filles            = inscrits.filter(e => e.sexe === 'F').length;
     const allIds = new Set<string>(inscrits.map(e => e.id));
-    const totalCA = computeCAFromEcheances(allEcheances, allIds);
-    return { totalInscrits, garcons, filles, totalCA, totalClasses: classes.length };
+    const finance = computeFinanceV2(allEcheances, allIds);
+    return { totalInscrits, garcons, filles, ...finance, totalClasses: classes.length };
   }, [eleves, allEcheances, classes]);
 
   const statsParNiveau = useMemo(() => {
@@ -220,9 +292,9 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
       const garcons      = inscrits.filter(e => e.sexe === 'M').length;
       const filles       = inscrits.filter(e => e.sexe === 'F').length;
       const niveauIds    = new Set<string>(inscrits.map(e => e.id));
-      const ca           = computeCAFromEcheances(allEcheances, niveauIds);
+      const finance      = computeFinanceV2(allEcheances, niveauIds);
       const classesNiv   = classes.filter(c => c.niveau === n.value);
-      return { ...n, inscrits, garcons, filles, ca, classes: classesNiv };
+      return { ...n, inscrits, garcons, filles, ...finance, classes: classesNiv };
     });
   }, [eleves, allEcheances, classes]);
 
@@ -239,7 +311,7 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
 
   // ── Données dérivées pour la vue détail ──────────────────────────────────
   const detailDef = selectedNiveau ? NIVEAUX_DEF.find(n => n.value === selectedNiveau)! : null;
-  const elevesNiveau = selectedNiveau ? eleves.filter(e => e.niveau === selectedNiveau) : [];
+  const elevesNiveau = selectedNiveau ? eleves.filter(e => e.niveau === selectedNiveau && STATUTS_INSCRITS.includes(e.statut)) : [];
   const classesNiveau = selectedNiveau ? classes.filter(c => c.niveau === selectedNiveau) : [];
   const filteredEleves = (detailSearch
     ? elevesNiveau.filter(e => `${e.nom} ${e.prenom}`.toLowerCase().includes(detailSearch.toLowerCase()))
@@ -296,6 +368,16 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
               </div>
             </div>
             <div className="flex gap-2">
+              {isAdmin && classesNiveau.length > 0 && (
+                <button
+                  onClick={handleAutoAffectPrepare}
+                  disabled={isAutoAffecting}
+                  className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isAutoAffecting ? <RefreshCw size={14} className="animate-spin" /> : <UserCheck size={14} />}
+                  Affecter automatiquement
+                </button>
+              )}
               {isAdmin && (
                 <button
                   onClick={() => { setEditingClasse({ niveau: selectedNiveau, nom: `${detailDef.label} ` }); setShowClasseModal(true); }}
@@ -430,13 +512,15 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
       </div>
 
       {/* Stats rapides */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
          {[
            { label: 'Inscrits & Actifs', value: globalStats.totalInscrits, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
            { label: 'Garçons', value: globalStats.garcons, icon: Users, color: 'text-sky-600', bg: 'bg-sky-50', sub: globalStats.totalInscrits > 0 ? `${Math.round(globalStats.garcons / globalStats.totalInscrits * 100)}%` : '—', prefix: '♂' },
            { label: 'Filles', value: globalStats.filles, icon: Users, color: 'text-pink-600', bg: 'bg-pink-50', sub: globalStats.totalInscrits > 0 ? `${Math.round(globalStats.filles / globalStats.totalInscrits * 100)}%` : '—', prefix: '♀' },
            { label: 'Classes Physiques', value: globalStats.totalClasses, icon: GraduationCap, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-           { label: 'CA Prévisionnel', value: globalStats.totalCA.toLocaleString('fr-FR') + ' ' + currency, icon: TrendingUp, color: 'text-violet-600', bg: 'bg-violet-50' },
+           { label: 'Total Dû', value: globalStats.totalDu.toLocaleString('fr-FR') + ' ' + currency, icon: Banknote, color: 'text-violet-600', bg: 'bg-violet-50' },
+           { label: 'Encaissé', value: globalStats.encaisse.toLocaleString('fr-FR') + ' ' + currency, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', sub: globalStats.totalDu > 0 ? `${Math.round(globalStats.encaisse / globalStats.totalDu * 100)}%` : '—' },
+           { label: 'Reste à Recouvrer', value: globalStats.resteARecouvrer.toLocaleString('fr-FR') + ' ' + currency, icon: AlertTriangle, color: globalStats.resteARecouvrer > 0 ? 'text-rose-600' : 'text-emerald-600', bg: globalStats.resteARecouvrer > 0 ? 'bg-rose-50' : 'bg-emerald-50' },
            { label: 'Capacité Totale', value: classes.reduce((s, c) => s + c.capaciteMax, 0), icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
          ].map(k => (
            <div key={k.label} className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
@@ -498,12 +582,32 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
                            </div>
                         </div>
 
-                        {/* Progression bar for level CA vs total ? or capacity */}
-                        <div className="mt-8 pt-6 border-t border-slate-50 flex items-center justify-between">
-                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                             <TrendingUp size={12} className="text-indigo-500" /> Prévisionnel
-                           </span>
-                           <span className="text-sm font-black text-slate-900">{n.ca.toLocaleString('fr-FR')} {currency}</span>
+                        <div className="mt-8 pt-6 border-t border-slate-50 space-y-2">
+                           <div className="flex items-center justify-between">
+                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                               <Banknote size={12} className="text-violet-500" /> Total dû
+                             </span>
+                             <span className="text-sm font-black text-slate-900">{n.totalDu.toLocaleString('fr-FR')} {currency}</span>
+                           </div>
+                           <div className="flex items-center justify-between">
+                             <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1.5">
+                               <CheckCircle2 size={12} /> Encaissé
+                             </span>
+                             <span className="text-sm font-black text-emerald-600">{n.encaisse.toLocaleString('fr-FR')} {currency}</span>
+                           </div>
+                           {n.resteARecouvrer > 0 && (
+                             <div className="flex items-center justify-between">
+                               <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1.5">
+                                 <AlertTriangle size={12} /> Reste
+                               </span>
+                               <span className="text-sm font-black text-rose-600">{n.resteARecouvrer.toLocaleString('fr-FR')} {currency}</span>
+                             </div>
+                           )}
+                           {n.totalDu > 0 && (
+                             <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1">
+                               <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.min(100, Math.round(n.encaisse / n.totalDu * 100))}%` }} />
+                             </div>
+                           )}
                         </div>
                      </button>
                    ))}
@@ -648,6 +752,99 @@ const Classes: React.FC<ClassesProps> = ({ user, currency }) => {
         </div>
       )}
       </div>
+      )}
+
+      {/* ── MODAL AFFECTATION AUTO ── */}
+      {autoAffectData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 pb-0">
+              <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <UserCheck size={28} className="text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase text-center">Affectation automatique</h3>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 text-center">
+                {detailDef?.label} — {ANNEE_COURANTE}
+              </p>
+            </div>
+
+            <div className="p-8 space-y-4">
+              <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Non affectés</span>
+                  <span className="text-lg font-black text-slate-900">{autoAffectData.nonAffectes.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Seront affectés</span>
+                  <span className="text-lg font-black text-emerald-600">{autoAffectData.toAssign.length}</span>
+                </div>
+                {autoAffectData.overflow > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Sans place (capacité pleine)</span>
+                    <span className="text-lg font-black text-amber-500">{autoAffectData.overflow}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Répartition par classe</p>
+                {autoAffectData.spotsParClasse.map(c => (
+                  <div key={c.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">
+                    <span className="text-[11px] font-black text-slate-700">{c.nom}</span>
+                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">
+                      {c.remaining} place{c.remaining > 1 ? 's' : ''} dispo
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {autoAffectData.toAssign.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">
+                    Élèves à affecter ({autoAffectData.toAssign.length})
+                  </p>
+                  <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                    {autoAffectData.toAssign.map(e => (
+                      <div key={e.id} className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl">
+                        <div className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0">
+                          {(e.prenom || '?')[0]}{(e.nom || '?')[0]}
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-700 truncate">{e.nom} {e.prenom}</span>
+                        {e.sexe === 'M' && <span className="ml-auto px-1.5 py-0.5 bg-sky-50 text-sky-600 rounded text-[8px] font-black border border-sky-100 shrink-0">G</span>}
+                        {e.sexe === 'F' && <span className="ml-auto px-1.5 py-0.5 bg-pink-50 text-pink-600 rounded text-[8px] font-black border border-pink-100 shrink-0">F</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {autoAffectData.overflow > 0 && (
+                <div className="flex items-start gap-3 bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                  <Info size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] font-bold text-amber-700">
+                    {autoAffectData.overflow} élève{autoAffectData.overflow > 1 ? 's' : ''} resteront sans classe par manque de places. Créez une nouvelle sous-classe ou augmentez la capacité.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-8 pt-2 flex gap-3">
+              <button
+                onClick={() => setAutoAffectData(null)}
+                className="flex-1 px-6 py-4 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleAutoAffectConfirm}
+                className="flex-1 px-6 py-4 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-xl shadow-emerald-100 transition-all flex items-center justify-center gap-2"
+              >
+                <UserCheck size={14} />
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL CLASSE ── */}

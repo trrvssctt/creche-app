@@ -2,17 +2,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   GraduationCap, Users, Wallet, AlertTriangle,
   CalendarDays, TrendingUp, Baby,
-  BookOpen, Bus, Utensils, UserPlus, Bell,
+  BookOpen, Bus, Utensils, UserPlus,
   ChevronRight, RefreshCw, MessageSquare, FileText,
-  Receipt, Clock, Award, Home,
+  Receipt, Clock, Home,
   Building2, Target, CheckCircle2,
   ArrowRight, Sparkles, Heart, MapPin,
-  Globe, PieChart, BadgeCheck, Percent,
-  TrendingDown, BarChart2, Shield,
+  Globe, Percent,
+  TrendingDown, BarChart2,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, PieChart as RechartsPie, Pie, Legend,
+  ResponsiveContainer, Cell,
 } from 'recharts';
 import { apiClient } from '../services/api';
 import { User } from '../types';
@@ -159,28 +159,26 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
   const fs  = data?.financeStats  || {};
   const ss  = data?.staffStats    || {};
   const ecs = data?.echeancesStats || {};
+  const fv2 = data?.financeV2     || {};
 
   const totalInscrits   = parseInt(es.total_inscrits || 0);
   const enAttente       = parseInt(es.en_attente || 0);
   const totalCapacite   = (data?.classes || []).reduce((s: number, c: any) => s + parseInt(c.capacite_max || 30), 0);
   const tauxRemplissage = pct(totalInscrits, totalCapacite);
 
-  const caMois          = parseFloat(fs.ca_mois || 0);
   const encaisseMois    = parseFloat(fs.encaisse_mois || 0);
-  const nbImpayes       = parseInt(fs.nb_impayes || 0);
-  const montantImpayes  = parseFloat(fs.montant_impayes || 0);
+  const caMois          = parseFloat(fs.ca_mois || 0);
 
   const totalFacture    = parseFloat(ecs.total_facture || 0);
   const totalEncaisse   = parseFloat(ecs.total_encaisse || 0);
-  const tauxRecouvrement = pct(totalEncaisse, totalFacture);
-  const nbEnRetard      = parseInt(ecs.nb_en_retard || 0);
-  const montantEnRetard = parseFloat(ecs.montant_en_retard || 0);
-  const montantRestant  = parseFloat(ecs.montant_restant || 0);
 
-  const cas = data?.caAnnuelStats || {};
-  const caScolarite = parseFloat(cas.ca_scolarite || 0);
-  const caVentes    = parseFloat(cas.ca_ventes || 0);
-  const caAnnuel    = caScolarite + caVentes;
+  // Finance V2
+  const caEngagement    = parseFloat(fv2.caEngagementNet || 0);
+  const totalImpaye     = parseFloat(fv2.totalImpaye || 0);
+  const totalAEchoir    = parseFloat(fv2.totalAEchoir || 0);
+  const balanceAgee: any[] = fv2.balanceAgee || [];
+  const creancesAEchoir: any[] = fv2.creancesAEchoir || [];
+  const tauxRecouvrement = totalFacture > 0 ? pct(totalEncaisse, totalFacture) : 0;
 
   const candidaturesPortail = data?.candidaturesPortail || [];
   const nbCandidatures = candidaturesPortail.length;
@@ -192,12 +190,6 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
     capacite: parseInt(c.capacite_max || 30),
     color: NIVEAU_COLORS[c.niveau] || '#6366f1',
   })), [data]);
-
-  // ── Pie recouvrement ──────────────────────────────────────────────────────
-  const recoveryPie = useMemo(() => [
-    { name: 'Encaissé',   value: totalEncaisse,  fill: '#10b981' },
-    { name: 'Restant',    value: Math.max(0, montantRestant), fill: '#f43f5e' },
-  ], [totalEncaisse, montantRestant]);
 
   // ── Prochaine alerte ──────────────────────────────────────────────────────
   const nextAlert = useMemo(() => {
@@ -228,7 +220,7 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
             </span>
           </h2>
           <p className="text-[11px] font-semibold text-slate-500 mt-1">
-            <span className="text-indigo-600 font-black">Le Toit des Anges</span>
+            <span className="text-indigo-600 font-black">{data?.tenantName || 'Mon établissement'}</span>
             {' · '}Année scolaire <span className="font-black">{annee}</span>
             {' · '}{totalInscrits} élèves inscrits
           </p>
@@ -290,33 +282,32 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           onClick={() => onNavigate?.('eleves')}
         />
         <GradientKpi
-          icon={Wallet}
-          label={`CA — ${now.toLocaleDateString('fr-FR', { month: 'long' })}`}
-          value={`${fmt(encaisseMois)}`}
-          sub={`${fmt(caMois)} FCFA dû · ${pct(encaisseMois, caMois)}% recouvré`}
+          icon={TrendingUp}
+          label={`CA engagement — ${annee}`}
+          value={`${fmt(caEngagement)}`}
+          sub={`Engagements actifs année scolaire`}
           gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
+          onClick={() => onNavigate?.('facturation')}
+          badge={currency}
+        />
+        <GradientKpi
+          icon={Wallet}
+          label={`Encaissements — ${now.toLocaleDateString('fr-FR', { month: 'long' })}`}
+          value={`${fmt(encaisseMois)}`}
+          sub={`${fmt(caMois)} ${currency} dû ce mois`}
+          gradient="bg-gradient-to-br from-cyan-500 to-blue-600"
           onClick={() => onNavigate?.('payments')}
           badge={currency}
         />
         <GradientKpi
-          icon={Percent}
-          label="Taux recouvrement"
-          value={`${tauxRecouvrement}%`}
-          sub={`${fmt(totalEncaisse)} encaissé sur ${fmt(totalFacture)} FCFA`}
-          gradient={tauxRecouvrement >= 80
-            ? 'bg-gradient-to-br from-teal-500 to-cyan-600'
-            : tauxRecouvrement >= 50
-              ? 'bg-gradient-to-br from-amber-500 to-orange-500'
-              : 'bg-gradient-to-br from-rose-500 to-red-600'}
+          icon={AlertTriangle}
+          label="Impayé total"
+          value={`${fmt(totalImpaye)}`}
+          sub={`${balanceAgee.reduce((s: number, r: any) => s + parseInt(r.nb_eleves || 0), 0)} élève(s) concerné(s)`}
+          gradient={totalImpaye > 0
+            ? 'bg-gradient-to-br from-rose-500 to-red-600'
+            : 'bg-gradient-to-br from-emerald-500 to-green-600'}
           onClick={() => onNavigate?.('recovery')}
-        />
-        <GradientKpi
-          icon={TrendingUp}
-          label={`CA annuel — ${data?.annee || ''}`}
-          value={`${fmt(caAnnuel)}`}
-          sub={`Scolarité ${fmt(caScolarite)} · Ventes ${fmt(caVentes)}`}
-          gradient="bg-gradient-to-br from-amber-500 to-orange-600"
-          onClick={() => onNavigate?.('payments')}
           badge={currency}
         />
       </div>
@@ -350,12 +341,12 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           onClick={() => onNavigate?.('admission')}
         />
         <KpiCard
-          icon={AlertTriangle}
-          label="Échéances en retard"
-          value={nbEnRetard > 0 ? nbEnRetard : 'Aucun'}
-          sub={nbEnRetard > 0 ? `${fmt(montantEnRetard)} FCFA en retard` : 'Aucun retard'}
-          color={nbEnRetard > 0 ? 'bg-rose-500' : 'bg-slate-400'}
-          trend={nbEnRetard > 0 ? 'down' : undefined}
+          icon={Percent}
+          label="Taux recouvrement"
+          value={`${tauxRecouvrement}%`}
+          sub={`${fmt(totalEncaisse)} encaissé sur ${fmt(totalFacture)}`}
+          color={tauxRecouvrement >= 80 ? 'bg-emerald-500' : tauxRecouvrement >= 50 ? 'bg-amber-500' : 'bg-rose-500'}
+          trend={tauxRecouvrement >= 80 ? 'up' : 'down'}
           onClick={() => onNavigate?.('recovery')}
         />
       </div>
@@ -554,78 +545,133 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
           </div>
         </div>
 
-        {/* Top débiteurs + pie recouvrement */}
+        {/* Balance âgée */}
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
-            <SectionTitle icon={AlertTriangle} label="Impayés en cours" color="text-rose-600" />
-            <button onClick={() => onNavigate?.('facturation')} className="text-[9px] font-black text-rose-600 flex items-center gap-1 hover:underline">
-              Gérer <ArrowRight size={9} />
+            <SectionTitle icon={BarChart2} label="Balance âgée" color="text-rose-600" />
+            <button onClick={() => onNavigate?.('recovery')} className="text-[9px] font-black text-rose-600 flex items-center gap-1 hover:underline">
+              Recouvrement <ArrowRight size={9} />
             </button>
           </div>
 
-          {(data?.topDebtors || []).length === 0 ? (
+          {balanceAgee.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
               <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
                 <CheckCircle2 size={24} className="text-emerald-400" />
               </div>
               <p className="text-[11px] font-black text-emerald-700">Aucun impayé en cours</p>
-              <p className="text-[9px] text-slate-400 font-semibold">Tous les paiements sont à jour !</p>
+              <p className="text-[9px] text-slate-400 font-semibold">Tous les paiements sont à jour</p>
             </div>
           ) : (
             <>
-              {/* Mini pie recouvrement */}
-              {totalFacture > 0 && (
-                <div className="flex items-center gap-4 mb-4 p-3 bg-slate-50 rounded-2xl">
-                  <div className="w-20 h-20 flex-shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsPie>
-                        <Pie data={recoveryPie} cx="50%" cy="50%" innerRadius={22} outerRadius={35} dataKey="value" paddingAngle={2}>
-                          {recoveryPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                        </Pie>
-                      </RechartsPie>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xl font-black text-slate-900">{tauxRecouvrement}%</p>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Recouvré</p>
-                    <div className="flex gap-3 mt-1.5">
-                      <span className="text-[8px] font-bold text-emerald-600 flex items-center gap-0.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> {fmt(totalEncaisse)}
-                      </span>
-                      <span className="text-[8px] font-bold text-rose-500 flex items-center gap-0.5">
-                        <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> {fmt(montantRestant)}
-                      </span>
-                    </div>
+              <div className="space-y-2.5">
+                {(() => {
+                  const maxImpaye = Math.max(...balanceAgee.map((r: any) => parseFloat(r.total_impaye || 0)));
+                  const TRANCHE_COLORS: Record<string, { bar: string; text: string; bg: string }> = {
+                    '0':     { bar: 'from-sky-300 to-sky-500',       text: 'text-sky-700',    bg: 'bg-sky-50' },
+                    '1-30':  { bar: 'from-amber-300 to-amber-500',  text: 'text-amber-700',  bg: 'bg-amber-50' },
+                    '31-60': { bar: 'from-orange-400 to-orange-600', text: 'text-orange-700', bg: 'bg-orange-50' },
+                    '61-90': { bar: 'from-red-400 to-red-600',       text: 'text-red-700',    bg: 'bg-red-50' },
+                    '91-180': { bar: 'from-rose-500 to-rose-700',    text: 'text-rose-700',   bg: 'bg-rose-50' },
+                    '>180':  { bar: 'from-rose-600 to-rose-900',     text: 'text-rose-900',   bg: 'bg-rose-100' },
+                  };
+                  const TRANCHE_LABELS: Record<string, string> = {
+                    '0': 'Mois en cours', '1-30': '1-30 jours', '31-60': '31-60 jours',
+                    '61-90': '61-90 jours', '91-180': '91-180 jours', '>180': '> 180 jours',
+                  };
+                  return balanceAgee.map((row: any, i: number) => {
+                    const amt = parseFloat(row.total_impaye || 0);
+                    const barW = pct(amt, maxImpaye);
+                    const colors = TRANCHE_COLORS[row.tranche] || TRANCHE_COLORS['1-30'];
+                    return (
+                      <div key={i} className={`p-3 rounded-2xl ${colors.bg}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className={`text-[10px] font-black ${colors.text}`}>{TRANCHE_LABELS[row.tranche] || row.tranche}</span>
+                          <span className="text-[10px] font-black text-slate-800">{fmt(amt)} {currency}</span>
+                        </div>
+                        <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden">
+                          <div className={`h-full bg-gradient-to-r ${colors.bar} rounded-full transition-all`} style={{ width: `${barW}%` }} />
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-[8px] font-semibold text-slate-400">{row.nb_eleves} élève(s)</span>
+                          <span className="text-[8px] font-semibold text-slate-400">{row.nb_echeances} échéance(s)</span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total impayé</span>
+                <span className="text-sm font-black text-rose-600">{fmt(totalImpaye)} {currency}</span>
+              </div>
+
+              {/* Top débiteurs scolaires */}
+              {(data?.topDebtors || []).length > 0 && (
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Principaux débiteurs</p>
+                  <div className="space-y-1.5">
+                    {(data?.topDebtors || []).map((d: any, i: number) => {
+                      const dette = parseFloat(d.dette || 0);
+                      const maxDette = Math.max(...(data?.topDebtors || []).map((x: any) => parseFloat(x.dette || 0)));
+                      const barW = pct(dette, maxDette);
+                      return (
+                        <div key={i} className="p-2 rounded-xl hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[10px] font-black text-slate-800 truncate flex-1 pr-2">{d.nom}</p>
+                            <span className="text-[10px] font-black text-rose-600 flex-shrink-0">{fmt(dette)} {currency}</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-rose-400 to-rose-600 rounded-full" style={{ width: `${barW}%` }} />
+                          </div>
+                          <p className="text-[8px] text-slate-400 font-semibold mt-0.5">{d.nb_echeances} échéance(s) · depuis {formatDate(d.plus_ancienne)}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
-
-              <div className="space-y-2">
-                {(data?.topDebtors || []).map((d: any, i: number) => {
-                  const maxDette = Math.max(...(data?.topDebtors || []).map((x: any) => parseFloat(x.dette || 0)));
-                  const bar = pct(parseFloat(d.dette), maxDette);
-                  return (
-                    <div key={i} className="p-2.5 rounded-2xl hover:bg-slate-50 transition-colors">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-[10px] font-black text-slate-800 truncate flex-1 pr-2">{d.nom}</p>
-                        <span className="text-[10px] font-black text-rose-600 flex-shrink-0">{fmt(parseFloat(d.dette || 0))} {currency}</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-rose-400 to-rose-600 rounded-full" style={{ width: `${bar}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="pt-2 border-t border-slate-50">
-                  <p className="text-[10px] font-black text-rose-600 text-right">
-                    Total : {fmt((data?.topDebtors || []).reduce((s: number, d: any) => s + parseFloat(d.dette || 0), 0))} {currency}
-                  </p>
-                </div>
-              </div>
             </>
           )}
         </div>
       </div>
+
+      {/* ── Créances à échoir ──────────────────────────────────────────────── */}
+      {creancesAEchoir.length > 0 && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <SectionTitle icon={TrendingUp} label="Créances à échoir" color="text-blue-600" />
+            <div className="flex items-center gap-3">
+              <span className="text-[9px] font-black text-slate-400">Total : {fmt(totalAEchoir)} {currency}</span>
+              <button onClick={() => onNavigate?.('facturation')} className="text-[9px] font-black text-blue-600 flex items-center gap-1 hover:underline">
+                Facturation <ArrowRight size={9} />
+              </button>
+            </div>
+          </div>
+          <div className="h-36">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={creancesAEchoir.map((r: any) => ({
+                mois: new Date(r.mois + '-01').toLocaleDateString('fr-FR', { month: 'short' }),
+                total: parseFloat(r.total || 0),
+                nb: parseInt(r.nb_echeances || 0),
+              }))} barSize={24}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="mois" tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmt(v)} />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}
+                  formatter={(v: any) => [`${fmt(v)} ${currency}`, 'À encaisser']}
+                />
+                <Bar dataKey="total" name="À encaisser" fill="#3b82f6" radius={[6, 6, 0, 0]}>
+                  {creancesAEchoir.map((_: any, i: number) => (
+                    <Cell key={i} fill={i === 0 ? '#6366f1' : '#3b82f6'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* ── Mini stats + Actions rapides ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">

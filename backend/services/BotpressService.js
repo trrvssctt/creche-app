@@ -12,25 +12,14 @@ loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env') });
 
 import axios from 'axios';
 import { sequelize } from '../config/database.js';
+import { normaliserNumero, normalizePhone } from '../utils/phone.js';
+
+export { normaliserNumero, normalizePhone };
 
 function getWebhookUrl() {
   return (process.env.N8N_WHATSAPP_WEBHOOK || process.env.BOTPRESS_WEBHOOK_URL || '').trim();
 }
 const N8N_TIMEOUT = parseInt(process.env.N8N_WHATSAPP_TIMEOUT || '30000', 10);
-const DEFAULT_CC = process.env.WHATSAPP_DEFAULT_CC || '221';
-
-// ── Utilitaires ─────────────────────────────────────────────────────────────
-
-export function normalizePhone(raw) {
-  let d = String(raw || '').replace(/[^0-9]/g, '');
-  if (!d) return null;
-  if (d.startsWith('00')) d = d.slice(2);
-  if (d.length === 9 && d.startsWith('7')) d = DEFAULT_CC + d;
-  if (d.startsWith('221221')) d = d.slice(3);
-  if (d.length === 8 && /^[0-9]{8}$/.test(d)) d = DEFAULT_CC + d;
-  if (d.length < 10 || d.length > 15) return null;
-  return '+' + d;
-}
 
 async function isInSession(phoneE164) {
   try {
@@ -62,15 +51,18 @@ async function callN8n(payload) {
 export class BotpressService {
 
   static normalizePhone = normalizePhone;
+  static normaliserNumero = normaliserNumero;
 
   /**
    * Envoie un message texte WhatsApp.
    */
   static async sendWhatsApp(phone, message, opts = {}) {
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      return { success: false, error: `Numéro invalide: ${phone}` };
+    const paysDefaut = opts.indicatifPays || '221';
+    const result = normaliserNumero(String(phone || ''), paysDefaut);
+    if (!result.ok) {
+      return { success: false, error: `Numéro invalide (${phone}): ${result.erreur}` };
     }
+    const normalized = result.e164;
 
     const inSession = await isInSession(normalized);
     const hasTemplate = !!opts.template;
@@ -110,10 +102,12 @@ export class BotpressService {
    * Envoie un document (PDF, image) avec un message accompagnant.
    */
   static async sendDocument(phone, message, document, opts = {}) {
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      return { success: false, error: `Numéro invalide: ${phone}` };
+    const paysDefaut = opts.indicatifPays || '221';
+    const result = normaliserNumero(String(phone || ''), paysDefaut);
+    if (!result.ok) {
+      return { success: false, error: `Numéro invalide (${phone}): ${result.erreur}` };
     }
+    const normalized = result.e164;
 
     const hasTemplate = !!opts.template;
 
@@ -167,6 +161,7 @@ export class BotpressService {
         reference: r.reference || null,
         template: options.template || null,
         variables: r.variables || [],
+        indicatifPays: r.indicatifPays || options.indicatifPays || '221',
       });
 
       if (result.success) {
@@ -188,8 +183,8 @@ export class BotpressService {
   /**
    * Enregistre un message entrant (pour tracker la fenêtre 24h).
    */
-  static async recordInbound(phone) {
-    const normalized = normalizePhone(phone);
+  static async recordInbound(phone, paysParDefaut = '221') {
+    const normalized = normalizePhone(phone, paysParDefaut);
     if (!normalized) return;
     try {
       await sequelize.query(

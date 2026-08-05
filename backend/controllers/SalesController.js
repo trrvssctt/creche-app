@@ -23,7 +23,7 @@ export class SaleController {
       const where = { tenantId: req.user.tenantId };
       if (anneeScolaire && /^\d{4}-\d{4}$/.test(anneeScolaire)) {
         const [sy] = anneeScolaire.split('-');
-        where.saleDate = { [Op.gte]: `${sy}-09-01`, [Op.lt]: `${parseInt(sy) + 1}-09-01` };
+        where.saleDate = { [Op.gte]: `${sy}-08-01`, [Op.lt]: `${parseInt(sy) + 1}-08-01` };
       }
       const sales = await Sale.findAll({
         where,

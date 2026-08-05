@@ -42,6 +42,7 @@ import planningRoutes from './planning.routes.js';
 import parentRoutes from './parent.routes.js';
 import communicationsRoutes from './communications.routes.js';
 import matieresRoutes from './matieres.routes.js';
+import financeV2Routes from './finance-v2.routes.js';
 import { AuthController } from '../controllers/AuthController.js';
 import { SchoolEventController } from '../controllers/SchoolEventController.js';
 
@@ -119,6 +120,7 @@ router.use('/schedule',     tenantIsolation, scheduleRoutes);
 router.use('/planning',    tenantIsolation, planningRoutes);
 router.use('/communications', tenantIsolation, communicationsRoutes);
 router.use('/matieres',       tenantIsolation, matieresRoutes);
+router.use('/finance-v2',     tenantIsolation, financeV2Routes);
 
 // ── Portail Parents / Tuteurs ─────────────────────────────────────────────────
 // Les routes parent gèrent elles-mêmes authenticateJWT + checkPermission + tenantIsolation

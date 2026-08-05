@@ -6,7 +6,7 @@ import { checkPermission } from '../middlewares/rbac.js';
 const router = Router();
 
 // Lecture : Tout le monde y compris les employés
-router.get('/', checkPermission(['ADMIN', 'STOCK_MANAGER', 'SALES', 'ACCOUNTANT', 'EMPLOYEE']), ServiceController.list);
+router.get('/', checkPermission(['ADMIN', 'STOCK_MANAGER', 'SALES', 'ACCOUNTANT', 'EMPLOYEE', 'COMPTABLE', 'MAITRESSE', 'ASSISTANTE', 'DIRECTEUR']), ServiceController.list);
 
 // Écriture : Rôles opérationnels
 router.post('/', checkPermission(['ADMIN', 'STOCK_MANAGER', 'SALES', 'ACCOUNTANT']), ServiceController.create);

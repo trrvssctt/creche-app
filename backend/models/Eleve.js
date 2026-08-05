@@ -27,6 +27,7 @@ Eleve.init({
   contactUrgence: { type: DataTypes.JSONB, field: 'contact_urgence' },
   personneAutorisee: { type: DataTypes.JSONB, field: 'personne_autorisee' },
   whatsappPrincipal: { type: DataTypes.STRING(50), field: 'whatsapp_principal' },
+  indicatifPays:    { type: DataTypes.STRING(4), field: 'indicatif_pays', defaultValue: '221' },
   anneeScolaire:  { type: DataTypes.STRING(10), field: 'annee_scolaire' },
   photoUrl:       { type: DataTypes.TEXT, field: 'photo_url' },
   notes:          { type: DataTypes.TEXT },

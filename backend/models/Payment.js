@@ -21,8 +21,15 @@ Payment.init({
   chequeDate: { type: DataTypes.DATEONLY, field: 'cheque_date' },
   chequeOrder: { type: DataTypes.STRING(150), field: 'cheque_order' }, // ordre du chèque
   status: { type: DataTypes.STRING(20), defaultValue: 'PENDING', field: 'statut' },
-  paymentDate: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'payment_date' }
-}, { 
+  paymentDate: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'payment_date' },
+  receiptNumber:     { type: DataTypes.STRING(30), field: 'receipt_number' },
+  cashSessionId:     { type: DataTypes.UUID, field: 'cash_session_id' },
+  isSchoolFee:       { type: DataTypes.BOOLEAN, defaultValue: false, field: 'is_school_fee' },
+  eleveId:           { type: DataTypes.UUID, field: 'eleve_id' },
+  cancelledAt:       { type: DataTypes.DATE, field: 'cancelled_at' },
+  cancelledBy:       { type: DataTypes.UUID, field: 'cancelled_by' },
+  cancellationReason:{ type: DataTypes.TEXT, field: 'cancellation_reason' },
+}, {
   sequelize, 
   modelName: 'payment',
   tableName: 'payments',

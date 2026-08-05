@@ -255,6 +255,7 @@ async function sendPaymentReceiptWhatsApp({ tenantId, eleve, echeances, methodeP
       reference: `vente:${saleRef}`,
       template: 'recu_paiement',
       variables: [parentName, `${montantFmt} ${currency}`, enfantNom, saleRef || 'N/A'],
+      indicatifPays: eleve.indicatifPays || '221',
     });
 
     if (!result.success) {
@@ -318,30 +319,36 @@ export class AbonnementController {
   static async createBatch(req, res) {
     const t = await sequelize.transaction();
     try {
-      const { eleveId, abonnements } = req.body;
+      const { eleveId, abonnements, mois, annee } = req.body;
       // abonnements: [{ serviceId, jourEcheance?, montant?, periodicite? }]
       if (!eleveId || !Array.isArray(abonnements) || !abonnements.length)
         return res.status(400).json({ error: 'MissingFields', message: 'eleveId et abonnements[] requis.' });
 
       const tenantId = req.user.tenantId;
       const now = new Date();
-      const dateDebut = now.toISOString().split('T')[0];
+      const echMonth = mois ? parseInt(mois) : now.getMonth() + 1;
+      const echYear  = annee ? parseInt(annee) : now.getFullYear();
       const created = [];
 
+      const skipped = [];
       for (const item of abonnements) {
-        if (!item.serviceId) continue;
+        if (!item.serviceId) { skipped.push({ serviceId: item.serviceId, reason: 'no serviceId' }); continue; }
         const service = await Service.findByPk(item.serviceId);
-        if (!service) continue;
+        if (!service) { skipped.push({ serviceId: item.serviceId, reason: 'service not found' }); continue; }
 
-        const periodicite = item.periodicite || 'MENSUEL';
+        const isRecurrent = service.estRecurrent !== false;
+        const periodicite = item.periodicite || (isRecurrent ? 'MENSUEL' : 'PONCTUEL');
         const montant = item.montant != null ? parseFloat(item.montant) : parseFloat(service.price);
-        const jour = item.jourEcheance ? Math.min(Math.max(item.jourEcheance, 1), 28) : null;
+        const jour = isRecurrent && item.jourEcheance ? Math.min(Math.max(item.jourEcheance, 1), 28) : null;
 
-        // Vérifier si un abonnement actif existe déjà pour ce service
         const existing = await AbonnementEleve.findOne({
           where: { tenantId, eleveId, serviceId: item.serviceId, isActive: true },
         });
-        if (existing) continue;
+        if (existing) { skipped.push({ serviceId: item.serviceId, reason: 'already active' }); continue; }
+
+        const maxJour = new Date(echYear, echMonth, 0).getDate();
+        const jourDebut = jour || Math.min(now.getDate(), maxJour);
+        const dateDebut = new Date(echYear, echMonth - 1, Math.min(jourDebut, maxJour)).toISOString().split('T')[0];
 
         const abo = await AbonnementEleve.create({
           tenantId, eleveId, serviceId: item.serviceId,
@@ -349,9 +356,7 @@ export class AbonnementController {
           jourEcheance: jour,
         }, { transaction: t });
 
-        // Créer la première échéance du mois en cours
-        const jourEch = jour || now.getDate();
-        const dateEch = new Date(now.getFullYear(), now.getMonth(), Math.min(jourEch, 28)).toISOString().split('T')[0];
+        const dateEch = dateDebut;
 
         await EcheancePaiement.create({
           tenantId,
@@ -368,7 +373,8 @@ export class AbonnementController {
       }
 
       await t.commit();
-      return res.status(201).json({ success: true, count: created.length, abonnements: created });
+      if (skipped.length) console.log('[AbonnementController.createBatch] skipped:', skipped);
+      return res.status(201).json({ success: true, count: created.length, skipped, abonnements: created });
     } catch (err) {
       await t.rollback();
       console.error('[AbonnementController.createBatch]', err);
@@ -383,13 +389,17 @@ export class AbonnementController {
       const abos = await AbonnementEleve.findAll({
         where: { tenantId: req.user.tenantId, eleveId },
         include: [
-          { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'typeOffre'] },
-          { model: EcheancePaiement, as: 'echeances', where: { statut: { [Op.ne]: 'ANNULE' } }, required: false, order: [['dateEcheance', 'DESC']] },
+          { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'typeOffre', 'estRecurrent'] },
+          { model: EcheancePaiement, as: 'echeances', where: { statut: { [Op.ne]: 'ANNULE' } }, required: false },
         ],
-        order: [['createdAt', 'DESC']],
+        order: [
+          ['createdAt', 'DESC'],
+          [{ model: EcheancePaiement, as: 'echeances' }, 'dateEcheance', 'DESC'],
+        ],
       });
       return res.json(abos);
     } catch (err) {
+      console.error('[AbonnementController.listByEleve]', err);
       return res.status(500).json({ error: 'ListError', message: err.message });
     }
   }
@@ -430,11 +440,11 @@ export class AbonnementController {
 
       if (month && (year || anneeScolaire)) {
         // Déterminer l'année civile à partir du mois + année scolaire
-        // Ex: anneeScolaire "2025-2026", mois Oct-Déc → year=2025, mois Jan-Août → year=2026
+        // Ex: anneeScolaire "2025-2026", mois Sep-Déc → year=2025, mois Jan-Jul → year=2026
         let civYear;
         if (anneeScolaire && /^\d{4}-\d{4}$/.test(anneeScolaire)) {
           const [startYear, endYear] = anneeScolaire.split('-').map(Number);
-          civYear = +month >= 9 ? startYear : endYear;
+          civYear = +month >= 8 ? startYear : endYear;
         } else {
           civYear = +year;
         }
@@ -502,7 +512,7 @@ export class AbonnementController {
         eleve: ech.eleve,
       }, t);
 
-      await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id }, { transaction: t });
+      await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id, amountPaid: parseFloat(ech.montant), amountRemaining: 0 }, { transaction: t });
 
       // Générer la prochaine échéance si l'abonnement est actif
       if (ech.abonnement?.isActive) {
@@ -588,7 +598,7 @@ export class AbonnementController {
       }, t);
 
       for (const ech of echeances) {
-        await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id }, { transaction: t });
+        await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id, amountPaid: parseFloat(ech.montant), amountRemaining: 0 }, { transaction: t });
 
         if (ech.abonnement?.isActive) {
           const nextDate = nextDateEcheance(ech.abonnement.periodicite, ech.dateEcheance);
@@ -674,7 +684,7 @@ export class AbonnementController {
       }, t);
 
       for (const ech of echeances) {
-        await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id }, { transaction: t });
+        await ech.update({ statut: 'PAYE', paidAt: new Date(), saleId: sale.id, amountPaid: parseFloat(ech.montant), amountRemaining: 0 }, { transaction: t });
 
         if (ech.abonnement?.isActive) {
           const nextDate = nextDateEcheance(ech.abonnement.periodicite, ech.dateEcheance);
@@ -755,7 +765,8 @@ export class AbonnementController {
         if (!eleve) continue;
 
         const parentNom = eleve.parent1?.prenom ? `${eleve.parent1.prenom} ${eleve.parent1.nom || ''}`.trim() : 'Parent';
-        const montantFmt = parseFloat(ech.montant).toLocaleString('fr-FR');
+        const montantRestant = parseFloat(ech.amountRemaining ?? ech.montant);
+        const montantFmt = montantRestant.toLocaleString('fr-FR');
         const dateFmt = new Date(ech.dateEcheance).toLocaleDateString('fr-FR');
 
         if (canal === 'EMAIL') {
@@ -799,6 +810,7 @@ export class AbonnementController {
               category: 'relance',
               template: 'relance_paiement',
               variables: [parentNom, `${montantFmt} ${currency}`, `${eleve.prenom} ${eleve.nom}`, ech.periodeLabel || '', dateFmt],
+              indicatifPays: eleve.indicatifPays || '221',
             });
             if (result.success) {
               await ech.update({ reminderSentAt: new Date() });
@@ -816,9 +828,7 @@ export class AbonnementController {
   }
 
   // ── Générer la facture mensuelle d'un élève ──────────────────────────────
-  // Logique : chercher les EcheancePaiement enregistrées pour le mois donné.
-  // Si aucune n'existe encore (mois futur ou cron pas encore passé), calculer
-  // les montants à la volée depuis les AbonnementEleve actifs de l'élève.
+  // Finance V2 : source unique = echeances_paiements pour le mois donné.
   static async factureEleve(req, res) {
     try {
       const { eleveId } = req.params;
@@ -833,96 +843,24 @@ export class AbonnementController {
       if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
 
       // ── 1. Chercher les échéances déjà enregistrées pour ce mois ────────
-      let echeances = await EcheancePaiement.findAll({
+      const echeances = await EcheancePaiement.findAll({
         where: { eleveId, tenantId: req.user.tenantId, dateEcheance: { [Op.between]: [from, to] }, statut: { [Op.ne]: 'ANNULE' } },
         include: [{ model: Service, as: 'service', attributes: ['name', 'typeOffre', 'estRecurrent'] }],
         order: [['dateEcheance', 'ASC']],
       });
 
-      // Exclure les écheances de services non récurrents (données polluées pré-fix)
-      if (echeances.length > 0) {
-        echeances = echeances.filter(e => {
-          const svc = e.service || e.dataValues?.service;
-          if (!svc) return true;
-          return svc.estRecurrent !== false;
-        });
-      }
-
-      // ── 2. Fallback niveau 2 : aucune échéance → calculer depuis abonnements actifs ──
-      if (echeances.length === 0) {
-        const abos = await AbonnementEleve.findAll({
-          where: { tenantId: req.user.tenantId, eleveId, isActive: true },
-          include: [{ model: Service, as: 'service', attributes: ['id', 'name', 'typeOffre', 'estRecurrent'] }],
-        });
-
-        const abosRecurrents = abos.filter(abo => abo.service?.estRecurrent !== false);
-
-        if (abosRecurrents.length > 0) {
-          echeances = abosRecurrents.map(abo => ({
-            id: null,
-            abonnementId: abo.id,
-            eleveId,
-            serviceId: abo.serviceId,
-            service:      abo.service ? abo.service.toJSON() : null,
-            montant:      abo.montant,
-            dateEcheance: from,
-            periodeLabel: periodeLabel(abo.periodicite || 'MENSUEL', from),
-            statut:  'EN_ATTENTE',
-            virtuelle: true,
-          }));
-        } else {
-          // ── 3. Fallback niveau 3 : aucun abonnement → calculer depuis les services applicables ──
-          // Couvre le cas où la synchronisation n'a pas encore été lancée.
-          const RECURRING = ['MENSUALITE', 'BUS', 'CANTINE'];
-          const allSvcs = await Service.findAll({
-            where: {
-              tenantId: req.user.tenantId,
-              status: 'actif',
-              typeOffre: { [Op.in]: RECURRING },
-              estRecurrent: true,
-              [Op.or]: [
-                { anneeScolaire: eleve.anneeScolaire || null },
-                { anneeScolaire: null },
-              ],
-            },
-          });
-
-          const remisePct = parseFloat(eleve.remisePct || 0);
-          const pl = periodeLabel('MENSUEL', from);
-
-          const applicable = allSvcs.filter(svc => {
-            const type    = svc.typeOffre?.toUpperCase();
-            const niveaux = Array.isArray(svc.niveauxCibles) ? svc.niveauxCibles : [];
-            if (type === 'CANTINE' && !eleve.cantine)      return false;
-            if (type === 'BUS'     && !eleve.transportBus)  return false;
-            if (niveaux.length === 0) return false;
-            return niveaux.includes(eleve.niveau);
-          });
-
-          echeances = applicable.map(svc => {
-            const prixBase = parseFloat(svc.price || 0);
-            const montant  = remisePct > 0 ? Math.round(prixBase * (1 - remisePct / 100)) : prixBase;
-            return {
-              id: null,
-              abonnementId: null,
-              eleveId,
-              serviceId:    svc.id,
-              service:      svc.toJSON(),
-              montant,
-              dateEcheance: from,
-              periodeLabel: pl,
-              statut:  'EN_ATTENTE',
-              virtuelle: true,
-            };
-          });
-        }
-      }
-
       const serialize = e => (typeof e.toJSON === 'function' ? e.toJSON() : e);
 
       const totalDu   = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
-      const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant || 0), 0);
-      const solde     = totalDu - totalPaye;
+      const totalPaye = echeances.reduce((s, e) => {
+        const paid = parseFloat(e.amountPaid ?? e.amount_paid ?? 0);
+        if (paid > 0) return s + paid;
+        return s + (e.statut === 'PAYE' || e.statut === 'SOLDEE' ? parseFloat(e.montant || 0) : 0);
+      }, 0);
+      const solde     = echeances.reduce((s, e) => {
+        const rem = parseFloat(e.amountRemaining ?? e.amount_remaining ?? e.montant ?? 0);
+        return s + (['PAYE','SOLDEE','ANNULE','ANNULEE'].includes(e.statut) ? 0 : rem);
+      }, 0);
 
       return res.json({
         eleve: eleve.toJSON(),
@@ -949,7 +887,7 @@ export class AbonnementController {
     let y;
     if (anneeScolaire && /^\d{4}-\d{4}$/.test(anneeScolaire)) {
       const [startYear, endYear] = anneeScolaire.split('-').map(Number);
-      y = m >= 9 ? startYear : endYear;
+      y = m >= 8 ? startYear : endYear;
     } else {
       y = parseInt(req.body.year) || now.getFullYear();
     }
@@ -961,13 +899,13 @@ export class AbonnementController {
     try {
       // Se baser uniquement sur les AbonnementEleve actifs (= offres propres à chaque élève)
       // Filtrer par année scolaire de l'élève si fournie
-      const eleveWhere = {};
+      const eleveWhere = { statut: { [Op.ne]: 'RADIE' } };
       if (anneeScolaire) eleveWhere.anneeScolaire = anneeScolaire;
 
       const abonnements = await AbonnementEleve.findAll({
         where: { tenantId, isActive: true },
         include: [
-          { model: Eleve, as: 'eleve', attributes: ['id', 'regimeFinancier', 'anneeScolaire'], where: eleveWhere },
+          { model: Eleve, as: 'eleve', attributes: ['id', 'regimeFinancier', 'anneeScolaire', 'statut'], where: eleveWhere },
           { model: Service, as: 'service', attributes: ['id', 'name', 'price', 'typeOffre', 'estRecurrent'] },
         ],
       });
@@ -1092,11 +1030,16 @@ export class AbonnementController {
         ],
       });
 
+      const tenant = await Tenant.findByPk(tenantId, { attributes: ['currency', 'name'] });
+      const cronCurrency = tenant?.currency || 'F CFA';
+      const ecoleNom = tenant?.name || 'Le Toit des Anges';
+
       for (const ech of aEnvoyer) {
         const eleve = ech.eleve;
         if (!eleve) continue;
         const parentNom = eleve.parent1?.prenom ? `${eleve.parent1.prenom} ${eleve.parent1.nom || ''}`.trim() : 'Parent';
-        const montantFmt = parseFloat(ech.montant).toLocaleString('fr-FR');
+        const montantRestant = parseFloat(ech.amountRemaining ?? ech.montant);
+        const montantFmt = montantRestant.toLocaleString('fr-FR');
         const dateFmt = new Date(ech.dateEcheance).toLocaleDateString('fr-FR');
         const canal = 'WHATSAPP';
         const recipient = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
@@ -1104,7 +1047,7 @@ export class AbonnementController {
 
         await NotificationService.send(canal, recipient, {
           subject: `Rappel redevance — ${eleve.prenom} ${eleve.nom}`,
-          message: `Bonjour ${parentNom}, votre redevance de *${montantFmt} F CFA* (${ech.service?.name || 'scolarité'} — ${ech.periodeLabel}) est due dans 5 jours, le ${dateFmt}.\n\n_Le Toit des Anges_`,
+          message: `Bonjour ${parentNom}, votre redevance de *${montantFmt} ${cronCurrency}* (${ech.service?.name || 'scolarité'} — ${ech.periodeLabel}) est due dans 5 jours, le ${dateFmt}.\n\n_${ecoleNom}_`,
         });
         await ech.update({ reminderSentAt: new Date() });
       }
@@ -1173,7 +1116,11 @@ export class AbonnementController {
           if (!echeances.length) { results.skippedNoData++; continue; }
 
           const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
-          const totalPaye = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+          const totalPaye = echeances.reduce((s, e) => {
+            const paid = parseFloat(e.amountPaid ?? e.amount_paid ?? 0);
+            if (paid > 0) return s + paid;
+            return s + (e.statut === 'PAYE' || e.statut === 'SOLDEE' ? parseFloat(e.montant || 0) : 0);
+          }, 0);
           const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
           const parentTel = eleve.parent1?.telephone || eleve.parent1?.whatsapp || '';
 
@@ -1186,6 +1133,8 @@ export class AbonnementController {
             periode: periodLabel,
             echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : '',
             montant: parseFloat(e.montant) || 0,
+            amountPaid: parseFloat(e.amountPaid ?? e.amount_paid ?? 0),
+            amountRemaining: parseFloat(e.amountRemaining ?? e.amount_remaining ?? e.montant ?? 0),
             statut: e.statut === 'PAYE' ? 'Payé' : e.statut === 'EN_RETARD' ? 'En retard' : 'En attente',
           }));
 
@@ -1209,8 +1158,11 @@ export class AbonnementController {
             lignes: lignesPdf,
             totalDu,
             totalPaye,
-            soldeRestant: totalDu - totalPaye,
-            isPaid: totalDu <= totalPaye,
+            soldeRestant: echeances.reduce((s, e) => {
+              if (['PAYE','SOLDEE','ANNULE','ANNULEE'].includes(e.statut)) return s;
+              return s + parseFloat(e.amountRemaining ?? e.amount_remaining ?? e.montant ?? 0);
+            }, 0),
+            isPaid: totalPaye >= totalDu,
           });
 
           // Email désactivé pour l'instant
@@ -1231,6 +1183,7 @@ export class AbonnementController {
               reference: `facture:${refFacture}`,
               template: 'facture_mensuelle',
               variables: [parentName, enfantNom, periodLabel, `${montantFmt} ${currency}`],
+              indicatifPays: eleve.indicatifPays || '221',
             });
           }
 

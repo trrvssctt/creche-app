@@ -270,6 +270,7 @@ export class EleveController {
               reference: `validation:${eleve.id}`,
               template: 'candidature_acceptee',
               variables: [parentName, enfantNom, ecoleNom],
+              indicatifPays: eleve.indicatifPays || '221',
             }
           ).catch(err => console.warn('[EleveController] WhatsApp validation parent:', err.message));
         }
@@ -301,6 +302,7 @@ export class EleveController {
               reference: `rejet:${eleve.id}`,
               template: 'candidature_rejetee',
               variables: [parentName, enfantNom, motif],
+              indicatifPays: eleve.indicatifPays || '221',
             }
           ).catch(err => console.warn('[EleveController] WhatsApp rejet parent:', err.message));
         }
@@ -396,11 +398,40 @@ export class EleveController {
         paymentDate: new Date(),
       }, { transaction: t });
 
+      // Finance V2 : créer les EcheancePaiement (statut PAYE) pour que les frais
+      // d'inscription apparaissent dans Dashboard + Trésorerie
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const moisLabel = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+      for (const svc of feeServices) {
+        const prixRemise = applyRemise(svc.price);
+        await EcheancePaiement.create({
+          tenantId: req.user.tenantId,
+          abonnementId: null,
+          eleveId: eleve.id,
+          serviceId: svc.id,
+          montant: prixRemise,
+          dateEcheance: today,
+          periodeLabel: moisLabel,
+          statut: 'PAYE',
+          paidAt: now,
+          saleId: sale.id,
+          amountPaid: prixRemise,
+          amountRemaining: 0,
+          servicePeriodStart: monthStart,
+          servicePeriodEnd: monthEnd,
+        }, { transaction: t });
+      }
+
       await t.commit();
 
-      // Envoyer la facture d'inscription par email au parent avec PDF en pièce jointe
+      // Envoyer la facture d'inscription par email + WhatsApp au parent
       const parentEmail = eleve.parent1?.email;
-      if (parentEmail) {
+      const waPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+      if (parentEmail || waPhone) {
         try {
           const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl', 'address', 'phone', 'email'] });
           const ecoleNom = tenant?.name || "L'école";
@@ -441,71 +472,71 @@ export class EleveController {
             isPaid: true,
           });
 
-          const lignes = feeServices.map(svc => {
-            const prix = applyRemise(svc.price);
-            return `<tr>
-              <td style="padding:8px 12px;border-bottom:1px solid #f0ede8;font-size:13px;color:#475569">${svc.name}${remisePct > 0 ? ` <em>(remise ${remisePct}%)</em>` : ''}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #f0ede8;font-size:14px;font-weight:700;color:#1e293b;text-align:right">${prix.toLocaleString('fr-FR')} FCFA</td>
-            </tr>`;
-          }).join('');
+          if (parentEmail) {
+            const lignes = feeServices.map(svc => {
+              const prix = applyRemise(svc.price);
+              return `<tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0ede8;font-size:13px;color:#475569">${svc.name}${remisePct > 0 ? ` <em>(remise ${remisePct}%)</em>` : ''}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0ede8;font-size:14px;font-weight:700;color:#1e293b;text-align:right">${prix.toLocaleString('fr-FR')} FCFA</td>
+              </tr>`;
+            }).join('');
 
-          await EmailService.sendGenericInfo({
-            to: parentEmail,
-            subject: `Reçu de paiement — Inscription ${enfantNom} — ${ecoleNom}`,
-            ecoleNom,
-            logoUrl: tenant?.logoUrl,
-            role: 'comptabilite',
-            attachments: [{
-              filename: `recu_inscription_${enfantNom.replace(/\s+/g, '_')}.pdf`,
-              content: pdfBuffer,
-              contentType: 'application/pdf',
-            }],
-            body: `
-              <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Reçu de paiement — Frais d'inscription</h2>
-              <p style="color:#475569;font-size:14px;line-height:1.7">
-                Bonjour ${parentName},<br>
-                Nous confirmons la réception du paiement des frais d'inscription pour <strong>${enfantNom}</strong>.
-              </p>
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #f0ede8;border-radius:8px;overflow:hidden">
-                <tr style="background:#faf9f7">
-                  <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Description</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Montant</th>
-                </tr>
-                ${lignes}
-                <tr style="background:#fffbeb">
-                  <td style="padding:12px;font-size:13px;font-weight:800;color:#92400e;text-transform:uppercase">Total payé</td>
-                  <td style="padding:12px;font-size:16px;font-weight:900;color:#d97706;text-align:right">${totalHt.toLocaleString('fr-FR')} FCFA</td>
-                </tr>
-              </table>
-              <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:16px 0;text-align:center">
-                <p style="margin:0;font-size:12px;font-weight:700;color:#065f46">Référence : ${ref}</p>
-                <p style="margin:4px 0 0;font-size:11px;color:#047857">Méthode : ${methodePaiement}</p>
-              </div>
-              <p style="color:#475569;font-size:12px;margin-top:12px">
-                📎 Le reçu de paiement PDF est joint à cet email.
-              </p>
-              <p style="color:#94a3b8;font-size:12px;line-height:1.6">
-                Conservez cet email comme preuve de paiement. Pour toute question, contactez l'administration.
-              </p>`,
-          });
-        } catch (emailErr) {
-          console.warn('[EleveController.factureInscription] Email non envoyé:', emailErr.message);
-        }
+            await EmailService.sendGenericInfo({
+              to: parentEmail,
+              subject: `Reçu de paiement — Inscription ${enfantNom} — ${ecoleNom}`,
+              ecoleNom,
+              logoUrl: tenant?.logoUrl,
+              role: 'comptabilite',
+              attachments: [{
+                filename: `recu_inscription_${enfantNom.replace(/\s+/g, '_')}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+              }],
+              body: `
+                <h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">Reçu de paiement — Frais d'inscription</h2>
+                <p style="color:#475569;font-size:14px;line-height:1.7">
+                  Bonjour ${parentName},<br>
+                  Nous confirmons la réception du paiement des frais d'inscription pour <strong>${enfantNom}</strong>.
+                </p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border:1px solid #f0ede8;border-radius:8px;overflow:hidden">
+                  <tr style="background:#faf9f7">
+                    <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Description</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px">Montant</th>
+                  </tr>
+                  ${lignes}
+                  <tr style="background:#fffbeb">
+                    <td style="padding:12px;font-size:13px;font-weight:800;color:#92400e;text-transform:uppercase">Total payé</td>
+                    <td style="padding:12px;font-size:16px;font-weight:900;color:#d97706;text-align:right">${totalHt.toLocaleString('fr-FR')} FCFA</td>
+                  </tr>
+                </table>
+                <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:16px 0;text-align:center">
+                  <p style="margin:0;font-size:12px;font-weight:700;color:#065f46">Référence : ${ref}</p>
+                  <p style="margin:4px 0 0;font-size:11px;color:#047857">Méthode : ${methodePaiement}</p>
+                </div>
+                <p style="color:#475569;font-size:12px;margin-top:12px">
+                  📎 Le reçu de paiement PDF est joint à cet email.
+                </p>
+                <p style="color:#94a3b8;font-size:12px;line-height:1.6">
+                  Conservez cet email comme preuve de paiement. Pour toute question, contactez l'administration.
+                </p>`,
+            });
+          }
 
-        // WhatsApp reçu inscription au parent
-        const waPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
-        if (waPhone) {
-          const montantFmt = totalHt.toLocaleString('fr-FR');
-          BotpressService.sendDocument(waPhone,
-            `🧾 *Reçu — Frais d'inscription*\n\nBonjour ${parentName},\n\nNous confirmons le paiement des frais d'inscription de *${enfantNom}*.\n\n💰 Montant : *${montantFmt} F CFA*\n💳 Méthode : ${methodePaiement}\n📋 Réf : ${ref}\n\nLe reçu est joint à ce message.\n\n_${ecoleNom}_`,
-            {
-              base64: pdfBuffer.toString('base64'),
-              filename: `recu_inscription_${enfantNom.replace(/\s+/g, '_')}.pdf`,
-              mimeType: 'application/pdf',
-              caption: `Reçu inscription — ${enfantNom}`,
-            },
-            { category: 'inscription', reference: `inscription:${ref}`, template: 'recu_inscription', variables: [parentName, montantFmt + ' F CFA', enfantNom, ref] }
-          ).catch(err => console.warn('[EleveController.factureInscription] WhatsApp reçu:', err.message));
+          if (waPhone) {
+            const montantFmt = totalHt.toLocaleString('fr-FR');
+            BotpressService.sendDocument(waPhone,
+              `🧾 *Reçu — Frais d'inscription*\n\nBonjour ${parentName},\n\nNous confirmons le paiement des frais d'inscription de *${enfantNom}*.\n\n💰 Montant : *${montantFmt} F CFA*\n💳 Méthode : ${methodePaiement}\n📋 Réf : ${ref}\n\nLe reçu est joint à ce message.\n\n_${ecoleNom}_`,
+              {
+                base64: pdfBuffer.toString('base64'),
+                filename: `recu_inscription_${enfantNom.replace(/\s+/g, '_')}.pdf`,
+                mimeType: 'application/pdf',
+                caption: `Reçu inscription — ${enfantNom}`,
+              },
+              { category: 'inscription', reference: `inscription:${ref}`, template: 'recu_inscription', variables: [parentName, montantFmt + ' F CFA', enfantNom, ref], indicatifPays: eleve.indicatifPays || '221' }
+            ).catch(err => console.warn('[EleveController.factureInscription] WhatsApp reçu:', err.message));
+          }
+        } catch (notifErr) {
+          console.warn('[EleveController.factureInscription] Notification non envoyée:', notifErr.message);
         }
       }
 
@@ -516,7 +547,7 @@ export class EleveController {
         recurringServices,
       });
     } catch (err) {
-      await t.rollback();
+      try { await t.rollback(); } catch (_) { /* already committed */ }
       console.error('[EleveController.factureInscription]', err);
       return res.status(500).json({ error: 'FactureError', message: err.message });
     }
@@ -590,14 +621,43 @@ export class EleveController {
   }
 
   static async delete(req, res) {
+    const t = await sequelize.transaction();
     try {
       const eleve = await Eleve.findOne({
         where: { id: req.params.id, tenantId: req.user.tenantId },
+        transaction: t,
       });
-      if (!eleve) return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' });
-      await eleve.destroy();
-      return res.json({ message: 'Élève supprimé.' });
+      if (!eleve) { await t.rollback(); return res.status(404).json({ error: 'NotFound', message: 'Élève introuvable.' }); }
+
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+
+      // 1. Radier l'élève (soft-delete)
+      await eleve.update({ statut: 'RADIE', dateRadiation: today }, { transaction: t });
+
+      // 2. Désactiver tous les abonnements actifs
+      await AbonnementEleve.update(
+        { isActive: false },
+        { where: { eleveId: eleve.id, tenantId: req.user.tenantId, isActive: true }, transaction: t }
+      );
+
+      // 3. Annuler toutes les échéances non payées (garder l'historique des payées)
+      await EcheancePaiement.update(
+        { statut: 'ANNULE' },
+        { where: {
+          eleveId: eleve.id,
+          tenantId: req.user.tenantId,
+          statut: { [Op.notIn]: ['PAYE', 'SOLDEE', 'ANNULE', 'ANNULEE'] },
+        }, transaction: t }
+      );
+
+      await t.commit();
+
+      return res.json({
+        message: `${eleve.prenom} ${eleve.nom} a été radié(e). Abonnements désactivés, échéances impayées annulées, historique conservé.`,
+      });
     } catch (err) {
+      try { await t.rollback(); } catch (_) {}
       return res.status(500).json({ error: 'DeleteError', message: err.message });
     }
   }

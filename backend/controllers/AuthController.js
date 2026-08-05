@@ -1340,6 +1340,7 @@ static async login(req, res) {
             reference: `parent-account:${user.id}`,
             template: 'compte_parent_cree',
             variables: [`${prenom} ${nom}`, email, `${frontendUrl}/parents`],
+            indicatifPays: elevesLinked[0]?.indicatifPays || '221',
           }
         ).catch(err => console.warn('[AUTH] WhatsApp parent account:', err.message));
       }

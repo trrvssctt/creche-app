@@ -94,6 +94,20 @@ export const connectDB = async () => {
       console.warn('⚠️ Note colonne storage_used_bytes:', storageErr.message);
     }
 
+    // Rattrapage Finance V2 : amount_paid/amount_remaining pour échéances déjà payées
+    try {
+      const [, meta] = await sequelize.query(`
+        UPDATE echeances_paiements
+        SET amount_paid = montant, amount_remaining = 0
+        WHERE statut IN ('PAYE', 'SOLDEE')
+          AND (amount_paid IS NULL OR amount_paid = 0)
+      `, { type: QueryTypes.RAW });
+      const count = meta?.rowCount || 0;
+      if (count > 0) console.log(`✅ Rattrapage amount_paid : ${count} échéance(s) corrigée(s)`);
+    } catch (fixErr) {
+      console.warn('⚠️ Note rattrapage amount_paid:', fixErr.message);
+    }
+
     // Colonnes suspension de compte (idempotent)
     try {
       await sequelize.query(`
@@ -467,6 +481,16 @@ export const connectDB = async () => {
       console.warn('⚠️ Note table eleves:', elevesErr.message);
     }
 
+    // Colonne indicatif pays sur eleves (normalisation multi-pays WhatsApp)
+    try {
+      await sequelize.query(`
+        ALTER TABLE eleves ADD COLUMN IF NOT EXISTS indicatif_pays VARCHAR(4) NOT NULL DEFAULT '221';
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Colonne indicatif_pays vérifiée');
+    } catch (indErr) {
+      console.warn('⚠️ Note colonne indicatif_pays:', indErr.message);
+    }
+
     // Table classes (module pédagogique)
     try {
       await sequelize.query(`
@@ -532,6 +556,15 @@ export const connectDB = async () => {
       console.log('✅ Tables abonnements_eleves & echeances_paiements vérifiées');
     } catch (aboErr) {
       console.warn('⚠️ Note tables abonnements/echeances:', aboErr.message);
+    }
+
+    try {
+      await sequelize.query(`
+        ALTER TABLE echeances_paiements ALTER COLUMN abonnement_id DROP NOT NULL;
+      `, { type: QueryTypes.RAW });
+      console.log('✅ echeances_paiements.abonnement_id nullable (frais inscription)');
+    } catch (aboNullErr) {
+      console.warn('⚠️ Note abonnement_id nullable:', aboNullErr.message);
     }
 
     // Table bulletins (module pédagogique)
@@ -636,6 +669,273 @@ export const connectDB = async () => {
       console.log('✅ Table matieres vérifiée');
     } catch (matieresErr) {
       console.warn('⚠️ Note table matieres:', matieresErr.message);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // MODULE FINANCE V2 — Tables fondation + augmentation tables existantes
+    // ══════════════════════════════════════════════════════════════════════════
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS academic_years (
+          id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id    UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          label        VARCHAR(20)  NOT NULL,
+          start_date   DATE         NOT NULL,
+          end_date     DATE         NOT NULL,
+          status       VARCHAR(30)  NOT NULL DEFAULT 'PREPARATION',
+          grace_days   INTEGER      NOT NULL DEFAULT 5,
+          created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          UNIQUE(tenant_id, label)
+        );
+        CREATE INDEX IF NOT EXISTS idx_academic_years_tenant ON academic_years(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_academic_years_status ON academic_years(tenant_id, status);
+
+        CREATE TABLE IF NOT EXISTS civil_periods (
+          id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          academic_year_id UUID         NOT NULL REFERENCES academic_years(id),
+          civil_year       INTEGER      NOT NULL,
+          month            INTEGER      NOT NULL CHECK (month BETWEEN 1 AND 12),
+          label            VARCHAR(30)  NOT NULL,
+          start_date       DATE         NOT NULL,
+          end_date         DATE         NOT NULL,
+          is_active        BOOLEAN      NOT NULL DEFAULT true,
+          created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          UNIQUE(tenant_id, civil_year, month)
+        );
+        CREATE INDEX IF NOT EXISTS idx_civil_periods_tenant ON civil_periods(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_civil_periods_academic ON civil_periods(academic_year_id);
+
+        CREATE TABLE IF NOT EXISTS tariff_plan_snapshots (
+          id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id        UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          service_id       UUID          NOT NULL REFERENCES services(id),
+          academic_year_id UUID          NOT NULL REFERENCES academic_years(id),
+          snapshot_date    DATE          NOT NULL DEFAULT CURRENT_DATE,
+          name             VARCHAR(255)  NOT NULL,
+          type_offre       VARCHAR(20)   NOT NULL,
+          price            NUMERIC(15,2) NOT NULL,
+          niveaux_cibles   JSONB         NOT NULL DEFAULT '[]',
+          duree_mois       INTEGER,
+          est_recurrent    BOOLEAN       NOT NULL DEFAULT true,
+          metadata         JSONB         DEFAULT '{}',
+          created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          UNIQUE(tenant_id, service_id, academic_year_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_tariff_snapshots_tenant ON tariff_plan_snapshots(tenant_id);
+
+        CREATE TABLE IF NOT EXISTS cash_sessions (
+          id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id        UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          opened_by        UUID          NOT NULL REFERENCES users(id),
+          closed_by        UUID          REFERENCES users(id),
+          opened_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          closed_at        TIMESTAMPTZ,
+          opening_balance  NUMERIC(15,2) NOT NULL DEFAULT 0,
+          closing_balance  NUMERIC(15,2),
+          expected_balance NUMERIC(15,2),
+          difference       NUMERIC(15,2),
+          status           VARCHAR(20)   NOT NULL DEFAULT 'OPEN',
+          notes            TEXT,
+          created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          updated_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_cash_sessions_tenant ON cash_sessions(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_cash_sessions_status ON cash_sessions(tenant_id, status);
+
+        CREATE TABLE IF NOT EXISTS payment_allocations (
+          id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id   UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          payment_id  UUID          NOT NULL REFERENCES payments(id),
+          echeance_id UUID          NOT NULL REFERENCES echeances_paiements(id),
+          amount      NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+          created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          UNIQUE(payment_id, echeance_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pay_alloc_payment ON payment_allocations(payment_id);
+        CREATE INDEX IF NOT EXISTS idx_pay_alloc_echeance ON payment_allocations(echeance_id);
+
+        CREATE TABLE IF NOT EXISTS credit_notes (
+          id             UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id      UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          reference      VARCHAR(30)   NOT NULL,
+          eleve_id       UUID          NOT NULL REFERENCES eleves(id),
+          echeance_id    UUID          REFERENCES echeances_paiements(id),
+          abonnement_id  UUID          REFERENCES abonnements_eleves(id),
+          amount         NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+          reason         TEXT          NOT NULL,
+          type           VARCHAR(30)   NOT NULL DEFAULT 'REMISE',
+          issued_by      UUID          NOT NULL REFERENCES users(id),
+          issued_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_credit_notes_tenant ON credit_notes(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_credit_notes_eleve ON credit_notes(eleve_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_notes_ref ON credit_notes(tenant_id, reference);
+
+        CREATE TABLE IF NOT EXISTS refunds (
+          id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id       UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          reference       VARCHAR(30)   NOT NULL,
+          credit_note_id  UUID          REFERENCES credit_notes(id),
+          payment_id      UUID          REFERENCES payments(id),
+          eleve_id        UUID          NOT NULL REFERENCES eleves(id),
+          amount          NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+          method          VARCHAR(20)   NOT NULL,
+          reason          TEXT          NOT NULL,
+          status          VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+          approved_by     UUID          REFERENCES users(id),
+          executed_by     UUID          REFERENCES users(id),
+          executed_at     TIMESTAMPTZ,
+          cash_session_id UUID          REFERENCES cash_sessions(id),
+          created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_refunds_tenant ON refunds(tenant_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_refunds_ref ON refunds(tenant_id, reference);
+
+        CREATE TABLE IF NOT EXISTS other_revenues (
+          id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id       UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          reference       VARCHAR(30)   NOT NULL,
+          eleve_id        UUID          REFERENCES eleves(id),
+          category        VARCHAR(50)   NOT NULL,
+          description     TEXT,
+          amount          NUMERIC(15,2) NOT NULL,
+          payment_id      UUID          REFERENCES payments(id),
+          civil_period_id UUID          REFERENCES civil_periods(id),
+          revenue_date    DATE          NOT NULL DEFAULT CURRENT_DATE,
+          cash_session_id UUID          REFERENCES cash_sessions(id),
+          created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_other_rev_tenant ON other_revenues(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_other_rev_date ON other_revenues(tenant_id, revenue_date);
+
+        CREATE TABLE IF NOT EXISTS collection_cases (
+          id                UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id         UUID          NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          reference         VARCHAR(30)   NOT NULL,
+          eleve_id          UUID          NOT NULL REFERENCES eleves(id),
+          status            VARCHAR(20)   NOT NULL DEFAULT 'OPEN',
+          total_outstanding NUMERIC(15,2) NOT NULL DEFAULT 0,
+          oldest_due_date   DATE,
+          aging_bucket      VARCHAR(20),
+          assigned_to       UUID          REFERENCES users(id),
+          priority          VARCHAR(10)   DEFAULT 'NORMAL',
+          opened_at         TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          closed_at         TIMESTAMPTZ,
+          closure_reason    TEXT,
+          notes             TEXT,
+          created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+          updated_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_coll_cases_tenant ON collection_cases(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_coll_cases_status ON collection_cases(tenant_id, status);
+        CREATE INDEX IF NOT EXISTS idx_coll_cases_eleve ON collection_cases(eleve_id);
+
+        CREATE TABLE IF NOT EXISTS collection_actions (
+          id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          case_id          UUID         NOT NULL REFERENCES collection_cases(id) ON DELETE CASCADE,
+          action_type      VARCHAR(30)  NOT NULL,
+          channel          VARCHAR(20),
+          performed_by     UUID         NOT NULL REFERENCES users(id),
+          performed_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          content          TEXT,
+          result           VARCHAR(30),
+          next_action_date DATE,
+          metadata         JSONB        DEFAULT '{}',
+          created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_coll_actions_case ON collection_actions(case_id);
+
+        CREATE TABLE IF NOT EXISTS finance_audit_events (
+          id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id   UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          user_id     UUID         REFERENCES users(id),
+          user_name   VARCHAR(255),
+          event_type  VARCHAR(50)  NOT NULL,
+          entity_type VARCHAR(50)  NOT NULL,
+          entity_id   UUID         NOT NULL,
+          old_values  JSONB,
+          new_values  JSONB,
+          metadata    JSONB        DEFAULT '{}',
+          ip_address  VARCHAR(45),
+          created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_fin_audit_tenant ON finance_audit_events(tenant_id);
+        CREATE INDEX IF NOT EXISTS idx_fin_audit_entity ON finance_audit_events(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_fin_audit_date ON finance_audit_events(tenant_id, created_at DESC);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Tables Finance V2 (fondation) créées');
+    } catch (finV2Err) {
+      console.warn('⚠️ Note tables Finance V2:', finV2Err.message);
+    }
+
+    // Augmenter les tables existantes (Phase 1)
+    try {
+      await sequelize.query(`
+        -- abonnements_eleves → FinancialCommitment
+        ALTER TABLE abonnements_eleves
+          ADD COLUMN IF NOT EXISTS academic_year_id    UUID REFERENCES academic_years(id),
+          ADD COLUMN IF NOT EXISTS tariff_snapshot_id   UUID REFERENCES tariff_plan_snapshots(id),
+          ADD COLUMN IF NOT EXISTS montant_brut         NUMERIC(15,2),
+          ADD COLUMN IF NOT EXISTS remise_pct           INTEGER DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS montant_bourse       NUMERIC(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS montant_net          NUMERIC(15,2),
+          ADD COLUMN IF NOT EXISTS commitment_status    VARCHAR(20) DEFAULT 'ACTIVE',
+          ADD COLUMN IF NOT EXISTS terminated_at        DATE,
+          ADD COLUMN IF NOT EXISTS termination_reason   TEXT;
+
+        -- echeances_paiements → Installment
+        ALTER TABLE echeances_paiements
+          ADD COLUMN IF NOT EXISTS service_period_start DATE,
+          ADD COLUMN IF NOT EXISTS service_period_end   DATE,
+          ADD COLUMN IF NOT EXISTS civil_period_id      UUID REFERENCES civil_periods(id),
+          ADD COLUMN IF NOT EXISTS grace_days           INTEGER DEFAULT 5,
+          ADD COLUMN IF NOT EXISTS amount_paid          NUMERIC(15,2) DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS amount_remaining     NUMERIC(15,2);
+
+        -- payments → ajouts
+        ALTER TABLE payments
+          ADD COLUMN IF NOT EXISTS receipt_number      VARCHAR(30),
+          ADD COLUMN IF NOT EXISTS cash_session_id     UUID REFERENCES cash_sessions(id),
+          ADD COLUMN IF NOT EXISTS is_school_fee       BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS eleve_id            UUID REFERENCES eleves(id),
+          ADD COLUMN IF NOT EXISTS cancelled_at        TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS cancelled_by        UUID REFERENCES users(id),
+          ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_receipt
+          ON payments(tenant_id, receipt_number) WHERE receipt_number IS NOT NULL;
+      `, { type: QueryTypes.RAW });
+
+      // Backfill engagements : montant_brut = montant, montant_net = montant
+      await sequelize.query(`
+        UPDATE abonnements_eleves
+        SET montant_brut = montant, montant_net = montant
+        WHERE montant_brut IS NULL;
+      `, { type: QueryTypes.RAW });
+
+      // Backfill échéances : service_period, amount_paid, amount_remaining
+      await sequelize.query(`
+        UPDATE echeances_paiements
+        SET service_period_start = date_trunc('month', date_echeance)::DATE,
+            service_period_end   = (date_trunc('month', date_echeance) + INTERVAL '1 month' - INTERVAL '1 day')::DATE
+        WHERE service_period_start IS NULL AND date_echeance IS NOT NULL;
+      `, { type: QueryTypes.RAW });
+
+      await sequelize.query(`
+        UPDATE echeances_paiements
+        SET amount_paid      = CASE WHEN statut = 'PAYE' THEN montant ELSE 0 END,
+            amount_remaining = CASE WHEN statut = 'PAYE' THEN 0 ELSE montant END
+        WHERE amount_remaining IS NULL;
+      `, { type: QueryTypes.RAW });
+
+      console.log('✅ Tables existantes augmentées (Finance V2)');
+    } catch (augmentErr) {
+      console.warn('⚠️ Note augmentation Finance V2:', augmentErr.message);
     }
 
     // Table événements scolaires (agenda admin → portail parent)

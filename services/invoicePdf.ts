@@ -184,7 +184,7 @@ function buildInvoiceHtml(d: StudentInvoiceData): string {
       </div>
       ${!isRecu && d.solde > 0 ? `<div class="info-box">
         <strong>Information de paiement :</strong><br>
-        Le montant de <strong>${d.solde.toLocaleString('fr-FR')} ${d.currency}</strong> est à régler avant la fin du mois.<br>
+        Le montant de <strong>${d.solde.toLocaleString('fr-FR')} ${d.currency}</strong> est à régler avant le 05 du mois suivant.<br>
         Facture payable dès réception.
       </div>` : ''}
     </div>

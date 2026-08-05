@@ -228,7 +228,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'emploidutemps',     label: 'Emploi du Temps',      icon: CalendarDays },
     { id: 'evenements',        label: 'Événements',           icon: Megaphone },
     { id: 'facturation',        label: 'Factures Scolarité',   icon: Receipt },
-    { id: 'sales',             label: 'Facturation',          icon: FileText },
+    // { id: 'sales',             label: 'Facturation',          icon: FileText },
     { id: 'payments',          label: 'Trésorerie',           icon: Wallet },
     { id: 'recovery',          label: 'Recouvrement',         icon: TrendingDown },
     { id: 'rh',                label: 'Ressources Humaines',  icon: UsersIcon },

@@ -458,7 +458,7 @@ const App: React.FC = () => {
       case 'deliveries':         return <Deliveries user={currentUser} currency={appSettings.currency} />;
       case 'sales':              return <Sales currency={appSettings.currency} user={currentUser} tenantSettings={appSettings} />;
       case 'services':           return <Services currency={appSettings.currency} />;
-      case 'recovery':           return <Recovery currency={appSettings.currency} />;
+      case 'recovery':           return <Recovery currency={appSettings.currency} schoolName={appSettings.companyName} />;
       case 'facturation':        return <FacturationMensuelle currency={appSettings.currency} tenantSettings={appSettings} />;
       case 'payments':           return <Payments currency={appSettings.currency} tenantSettings={appSettings} />;
       case 'presences':          return <TeacherPortal user={currentUser} currency={appSettings.currency} onNavigate={handleContextualNavigate} initialSection="presences" />;

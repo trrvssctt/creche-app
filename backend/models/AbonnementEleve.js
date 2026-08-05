@@ -13,7 +13,16 @@ AbonnementEleve.init({
   dateDebut:    { type: DataTypes.DATEONLY, allowNull: false, field: 'date_debut' },
   dateFin:      { type: DataTypes.DATEONLY, field: 'date_fin' },
   isActive:     { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
-  jourEcheance: { type: DataTypes.INTEGER, allowNull: true, field: 'jour_echeance' }, // jour du mois (1-28) pour les récurrents
+  jourEcheance: { type: DataTypes.INTEGER, allowNull: true, field: 'jour_echeance' },
+  academicYearId:    { type: DataTypes.UUID, field: 'academic_year_id' },
+  tariffSnapshotId:  { type: DataTypes.UUID, field: 'tariff_snapshot_id' },
+  montantBrut:       { type: DataTypes.NUMERIC(15, 2), field: 'montant_brut' },
+  remisePct:         { type: DataTypes.INTEGER, defaultValue: 0, field: 'remise_pct' },
+  montantBourse:     { type: DataTypes.NUMERIC(15, 2), defaultValue: 0, field: 'montant_bourse' },
+  montantNet:        { type: DataTypes.NUMERIC(15, 2), field: 'montant_net' },
+  commitmentStatus:  { type: DataTypes.STRING(20), defaultValue: 'ACTIVE', field: 'commitment_status' },
+  terminatedAt:      { type: DataTypes.DATEONLY, field: 'terminated_at' },
+  terminationReason: { type: DataTypes.TEXT, field: 'termination_reason' },
 }, {
   sequelize,
   modelName: 'abonnement_eleve',

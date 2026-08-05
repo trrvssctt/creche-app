@@ -7,7 +7,7 @@ import {
   ArrowRight, ChevronLeft, FileText, FolderOpen,
   ClipboardCheck, UserPlus, ClipboardList, Banknote,
   Repeat, Calendar, AlertTriangle, Lock, Globe, Building2,
-  Loader2, Copy, Camera,
+  Loader2, Copy, Camera, CreditCard, CheckCircle,
 } from 'lucide-react';
 import { compressImageToDataUrl } from '../services/photoUtils';
 import { piecesForNiveau } from '../services/piecesJustificatives';
@@ -98,6 +98,7 @@ const emptyForm = (annee = ''): Partial<Eleve> => ({
   statut: 'INSCRIT',
   dateAdmission: new Date().toISOString().slice(0, 10),
   whatsappPrincipal: '',
+  indicatifPays: '221',
   anneeScolaire: annee,
   parent1: { nom: '', prenom: '', telephone: '', whatsapp: '', email: '', lien: 'MERE' },
   parent2: undefined,
@@ -301,10 +302,13 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const [abonnements, setAbonnements] = useState<any[]>([]);
   const [abonnementsLoading, setAbonnementsLoading] = useState(false);
   const [allServicesRecurrents, setAllServicesRecurrents] = useState<any[]>([]);
+  const [allServicesPonctuels, setAllServicesPonctuels] = useState<any[]>([]);
   const [showAddAbonnement, setShowAddAbonnement] = useState(false);
   const [newAboForm, setNewAboForm] = useState({ serviceId: '', dateDebut: new Date().toISOString().slice(0, 10), jourEcheance: '' });
   // Configuration offres à l'inscription
   const [offresConfig, setOffresConfig] = useState<Record<string, { checked: boolean; jourEcheance: number }>>({});
+  const [echMois, setEchMois] = useState(new Date().getMonth() + 1);
+  const [echAnnee, setEchAnnee] = useState(new Date().getFullYear());
   const [savingOffres, setSavingOffres] = useState(false);
   const [offresSaved, setOffresSaved] = useState(false);
   const [aboActionLoading, setAboActionLoading] = useState(false);
@@ -721,8 +725,10 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     setAbonnementsLoading(true);
     try {
       const data = await apiClient.get(`/abonnements/eleve/${eleveId}`);
+      console.log('[Eleves] fetchAbonnements response:', data);
       setAbonnements(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (err) {
+      console.error('[Eleves] fetchAbonnements error:', err);
       setAbonnements([]);
     } finally {
       setAbonnementsLoading(false);
@@ -733,9 +739,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
     try {
       const data = await apiClient.get('/services');
       const list: any[] = Array.isArray(data) ? data : [];
-      setAllServicesRecurrents(list.filter(s => s.isActive && (s.estRecurrent || s.est_recurrent)));
-    } catch {
+      console.log('[Eleves] loadServices — total:', list.length, list.map(s => ({ id: s.id, name: s.name, estRecurrent: s.estRecurrent, typeOffre: s.typeOffre })));
+      const active = list.filter(s => s.isActive !== false && s.is_active !== false);
+      setAllServicesRecurrents(active.filter(s => s.estRecurrent || s.est_recurrent));
+      setAllServicesPonctuels(active.filter(s => !(s.estRecurrent || s.est_recurrent)));
+    } catch (err) {
+      console.error('[Eleves] loadServices error:', err);
       setAllServicesRecurrents([]);
+      setAllServicesPonctuels([]);
     }
   };
 
@@ -762,16 +773,21 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
 
   const handleSaveOffresInscription = async () => {
     if (!inscritEleve?.id) return;
-    const selected = (Object.entries(offresConfig) as [string, { checked: boolean; jourEcheance: number }][])
+    const selectedRecurrents = (Object.entries(offresConfig) as [string, { checked: boolean; jourEcheance: number }][])
       .filter(([, v]) => v.checked)
       .map(([serviceId, v]) => ({ serviceId, jourEcheance: v.jourEcheance || null }));
-    if (!selected.length) { showToast('Cochez au moins une offre.', 'error'); return; }
+    const selectedPonctuels = Object.entries(fraisSelection)
+      .filter(([, v]) => v)
+      .map(([serviceId]) => ({ serviceId, jourEcheance: null }));
+    const allSelected = [...selectedRecurrents, ...selectedPonctuels];
+    if (!allSelected.length) { showToast('Cochez au moins une offre.', 'error'); return; }
     setSavingOffres(true);
     try {
-      await apiClient.post('/abonnements/batch', { eleveId: inscritEleve.id, abonnements: selected });
+      const result: any = await apiClient.post('/abonnements/batch', { eleveId: inscritEleve.id, abonnements: allSelected, mois: echMois, annee: echAnnee });
       setOffresSaved(true);
-      showToast(`${selected.length} offre(s) configurée(s) pour ${inscritEleve.prenom}.`, 'success');
+      showToast(`${result?.count || allSelected.length} offre(s) configurée(s) pour ${inscritEleve.prenom}.`, 'success');
     } catch (err: any) {
+      console.error('[Eleves] handleSaveOffresInscription error:', err);
       showToast(err?.message || 'Erreur.', 'error');
     } finally { setSavingOffres(false); }
   };
@@ -919,12 +935,12 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   const handleDelete = async (eleve: Eleve) => {
     setActionLoading(true);
     try {
-      await apiClient.delete(`/eleves/${eleve.id}`);
-      showToast('Élève supprimé.', 'success');
+      const res: any = await apiClient.delete(`/eleves/${eleve.id}`);
+      showToast(res?.message || `${eleve.prenom} ${eleve.nom} radié(e).`, 'success');
       setShowDeleteConfirm(null);
       fetchEleves();
     } catch (err: any) {
-      showToast(err?.message || 'Erreur lors de la suppression.', 'error');
+      showToast(err?.message || 'Erreur lors de la radiation.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -1252,12 +1268,14 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map(eleve => {
             const dejaInscrit = matriculesAnneeActive.has(eleve.matricule);
+            const isRadie = eleve.statut === 'RADIE';
             return (
             <div key={eleve.id}
-              onClick={bulkMode && !dejaInscrit ? () => toggleSelect(eleve.id) : undefined}
-              className={`bg-white rounded-[2.5rem] border p-8 shadow-sm transition-all group flex flex-col
-                ${bulkMode && !dejaInscrit ? 'cursor-pointer hover:border-emerald-300' : ''}
-                ${bulkMode && dejaInscrit ? 'opacity-60' : 'hover:shadow-xl'}
+              onClick={bulkMode && !dejaInscrit && !isRadie ? () => toggleSelect(eleve.id) : undefined}
+              className={`rounded-[2.5rem] border p-8 shadow-sm transition-all group flex flex-col
+                ${isRadie ? 'bg-slate-50 opacity-60 pointer-events-none' : 'bg-white'}
+                ${bulkMode && !dejaInscrit && !isRadie ? 'cursor-pointer hover:border-emerald-300' : ''}
+                ${bulkMode && (dejaInscrit || isRadie) ? 'opacity-60' : (!isRadie ? 'hover:shadow-xl' : '')}
                 ${bulkMode && selectedIds.has(eleve.id) ? 'border-emerald-400 ring-2 ring-emerald-300 bg-emerald-50/30' : 'border-slate-100'}`}>
               <div className="flex justify-between items-start mb-4">
                 {bulkMode ? (
@@ -1294,28 +1312,28 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     )}
                     <div className="flex gap-2 flex-wrap justify-end">
                       <button onClick={() => openView(eleve)} title="Voir la fiche"
-                        className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all">
+                        className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all pointer-events-auto">
                         <Eye size={16} />
                       </button>
-                      {canReinscribe && !dejaInscrit && (
+                      {!isRadie && canReinscribe && !dejaInscrit && (
                         <button onClick={() => openReinscModal(eleve)} title={`Réinscrire → ${anneeActiveToday}`}
                           className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all">
                           <Repeat size={15} />
                         </button>
                       )}
-                      {canModify && (
+                      {!isRadie && canModify && (
                         <button onClick={() => openEdit(eleve)} title="Modifier"
                           className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-xl transition-all">
                           <Edit3 size={16} />
                         </button>
                       )}
-                      {canModify && (
+                      {!isRadie && canModify && (
                         <button onClick={() => openDuplicate(eleve)} title="Dupliquer (fratrie)"
                           className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-violet-50 text-slate-400 hover:text-violet-600 rounded-xl transition-all">
                           <Copy size={15} />
                         </button>
                       )}
-                      {canDelete && (
+                      {!isRadie && canDelete && (
                         <button onClick={() => setShowDeleteConfirm(eleve)} title="Supprimer"
                           className="w-9 h-9 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all">
                           <Trash2 size={16} />
@@ -1397,14 +1415,16 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
             <tbody className="divide-y divide-slate-50">
               {filtered.map(eleve => {
                 const dejaInscrit = matriculesAnneeActive.has(eleve.matricule);
+                const isRadie = eleve.statut === 'RADIE';
                 return (
                 <tr
                   key={eleve.id}
-                  onClick={bulkMode && !dejaInscrit ? () => toggleSelect(eleve.id) : undefined}
+                  onClick={bulkMode && !dejaInscrit && !isRadie ? () => toggleSelect(eleve.id) : undefined}
                   className={`transition-all
-                    ${bulkMode && !dejaInscrit ? 'cursor-pointer' : ''}
-                    ${bulkMode && dejaInscrit ? 'opacity-60 bg-slate-50/50' : ''}
-                    ${bulkMode && selectedIds.has(eleve.id) ? 'bg-emerald-50' : (!bulkMode || dejaInscrit ? 'hover:bg-slate-50' : '')}`}
+                    ${isRadie ? 'opacity-50 bg-slate-50/60' : ''}
+                    ${bulkMode && !dejaInscrit && !isRadie ? 'cursor-pointer' : ''}
+                    ${bulkMode && (dejaInscrit || isRadie) ? 'opacity-60 bg-slate-50/50' : ''}
+                    ${bulkMode && selectedIds.has(eleve.id) ? 'bg-emerald-50' : (!bulkMode || dejaInscrit ? (!isRadie ? 'hover:bg-slate-50' : '') : '')}`}
                 >
                   {bulkMode && (
                     <td className="px-4 py-4">
@@ -1455,10 +1475,10 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     {!bulkMode && (
                       <div className="flex gap-2">
                         <button onClick={() => openView(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-lg transition-all"><Eye size={14} /></button>
-                        {canReinscribe && !dejaInscrit && <button onClick={() => openReinscModal(eleve)} title={`Réinscrire → ${anneeActiveToday}`} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all"><Repeat size={13} /></button>}
-                        {canModify && <button onClick={() => openEdit(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-lg transition-all"><Edit3 size={14} /></button>}
-                        {canModify && <button onClick={() => openDuplicate(eleve)} title="Dupliquer (fratrie)" className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-violet-50 text-slate-400 hover:text-violet-600 rounded-lg transition-all"><Copy size={13} /></button>}
-                        {canDelete && <button onClick={() => setShowDeleteConfirm(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"><Trash2 size={14} /></button>}
+                        {!isRadie && canReinscribe && !dejaInscrit && <button onClick={() => openReinscModal(eleve)} title={`Réinscrire → ${anneeActiveToday}`} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all"><Repeat size={13} /></button>}
+                        {!isRadie && canModify && <button onClick={() => openEdit(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-lg transition-all"><Edit3 size={14} /></button>}
+                        {!isRadie && canModify && <button onClick={() => openDuplicate(eleve)} title="Dupliquer (fratrie)" className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-violet-50 text-slate-400 hover:text-violet-600 rounded-lg transition-all"><Copy size={13} /></button>}
+                        {!isRadie && canDelete && <button onClick={() => setShowDeleteConfirm(eleve)} className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all"><Trash2 size={14} /></button>}
                       </div>
                     )}
                   </td>
@@ -1918,7 +1938,6 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                         { label: 'Nom',       key: 'nom' },
                         { label: 'Prénom',    key: 'prenom' },
                         { label: 'Téléphone', key: 'telephone' },
-                        { label: 'WhatsApp',  key: 'whatsapp' },
                         { label: 'Email',     key: 'email' },
                         { label: 'Profession', key: 'profession' },
                         { label: "Nom de l'entreprise", key: 'entreprise' },
@@ -1931,6 +1950,32 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                             className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                         </div>
                       ))}
+                      {/* WhatsApp avec sélecteur indicatif pays */}
+                      <div className="space-y-2 sm:col-span-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">WhatsApp</label>
+                        <div className="flex gap-2">
+                          <select value={formData.indicatifPays || '221'}
+                            onChange={e => setFormData({ ...formData, indicatifPays: e.target.value })}
+                            className="w-28 bg-slate-50 border border-slate-100 rounded-xl px-2 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
+                            <option value="221">🇸🇳 +221</option>
+                            <option value="223">🇲🇱 +223</option>
+                            <option value="224">🇬🇳 +224</option>
+                            <option value="225">🇨🇮 +225</option>
+                            <option value="226">🇧🇫 +226</option>
+                            <option value="227">🇳🇪 +227</option>
+                            <option value="228">🇹🇬 +228</option>
+                            <option value="229">🇧🇯 +229</option>
+                            <option value="230">🇲🇺 +230</option>
+                            <option value="237">🇨🇲 +237</option>
+                            <option value="241">🇬🇦 +241</option>
+                            <option value="33">🇫🇷 +33</option>
+                          </select>
+                          <input type="text" value={(formData.parent1 as any)?.whatsapp || ''}
+                            onChange={e => setFormData({ ...formData, parent1: { ...(formData.parent1 as any), whatsapp: e.target.value } })}
+                            placeholder="Ex: 77 123 45 67"
+                            className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                        </div>
+                      </div>
                       <div className="space-y-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Lien</label>
                         <select value={formData.parent1?.lien || 'MERE'}
@@ -2232,6 +2277,21 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <p className="text-[9px] text-violet-600 font-bold -mt-2">
                       Cochez les offres applicables à {inscritEleve?.prenom} et définissez le jour d'échéance mensuel.
                     </p>
+                    <div className="flex items-center gap-3 bg-white/70 border border-violet-200 rounded-xl p-3">
+                      <span className="text-[8px] font-black text-violet-500 uppercase whitespace-nowrap">1ère échéance :</span>
+                      <select value={echMois} onChange={e => setEchMois(+e.target.value)}
+                        className="bg-white border border-violet-200 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:ring-2 focus:ring-violet-400">
+                        {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => (
+                          <option key={i} value={i + 1}>{m}</option>
+                        ))}
+                      </select>
+                      <select value={echAnnee} onChange={e => setEchAnnee(+e.target.value)}
+                        className="bg-white border border-violet-200 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:ring-2 focus:ring-violet-400">
+                        {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="space-y-2">
                       {servicesApplicables.filter(s => {
                         const type = (s.typeOffre || s.type_offre || '').toUpperCase();
@@ -2402,13 +2462,13 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
             <div className="p-8 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white rounded-t-[3rem] z-10">
               <h3 className="text-lg font-black text-slate-900 uppercase tracking-tighter">Fiche Élève</h3>
               <div className="flex gap-2">
-                {canModify && (
+                {canModify && selectedEleve.statut !== 'RADIE' && (
                   <button onClick={() => { openEdit(selectedEleve); }}
                     className="px-5 py-2 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2">
                     <Edit3 size={14} /> Modifier
                   </button>
                 )}
-                {canModify && (
+                {canModify && selectedEleve.statut !== 'RADIE' && (
                   parentsByEleveId[selectedEleve.id]?.length > 0 ? (
                     <span title={`Portail actif : ${parentsByEleveId[selectedEleve.id].map((p: any) => p.email).join(', ')}`}
                       className="px-5 py-2 bg-violet-100 text-violet-600 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 cursor-default border border-violet-200">
@@ -2437,17 +2497,29 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
               </div>
             </div>
             <div className="p-8 space-y-6">
+              {selectedEleve.statut === 'RADIE' && (
+                <div className="flex items-center gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl">
+                  <Lock size={16} className="text-rose-500 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black text-rose-700 uppercase tracking-widest">Dossier radié — consultation uniquement</p>
+                    <p className="text-[10px] text-rose-500 font-bold mt-0.5">
+                      {selectedEleve.dateRadiation ? `Radié(e) le ${new Date(selectedEleve.dateRadiation).toLocaleDateString('fr-FR')}` : 'Radié(e)'}
+                       — aucune action possible sur ce dossier.
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-6">
                 {selectedEleve.photoUrl ? (
                   <img src={selectedEleve.photoUrl} alt={`${selectedEleve.prenom} ${selectedEleve.nom}`}
-                    className="w-20 h-20 rounded-[1.5rem] object-cover border-2 border-indigo-100 shadow-inner" />
+                    className={`w-20 h-20 rounded-[1.5rem] object-cover border-2 shadow-inner ${selectedEleve.statut === 'RADIE' ? 'border-slate-200 grayscale opacity-60' : 'border-indigo-100'}`} />
                 ) : (
-                  <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-inner">
+                  <div className={`w-20 h-20 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-inner ${selectedEleve.statut === 'RADIE' ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'}`}>
                     {selectedEleve.prenom[0]}{selectedEleve.nom[0]}
                   </div>
                 )}
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tighter">{selectedEleve.prenom} {selectedEleve.nom}</h2>
+                  <h2 className={`text-2xl font-black tracking-tighter ${selectedEleve.statut === 'RADIE' ? 'text-slate-400' : 'text-slate-900'}`}>{selectedEleve.prenom} {selectedEleve.nom}</h2>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">{selectedEleve.matricule}</p>
                   <div className="flex gap-2 mt-2 flex-wrap">
                     <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[9px] font-black uppercase border border-indigo-100">{niveauLabel(selectedEleve.niveau)}</span>
@@ -2491,7 +2563,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Repeat size={12} /> Abonnements & Échéances
                   </p>
-                  {canModify && (
+                  {canModify && selectedEleve.statut !== 'RADIE' && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setShowAddAbonnement(v => !v); }}
@@ -2503,147 +2575,155 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   )}
                 </div>
 
-                {/* Bloc configuration multi-offres (comme à l'inscription) */}
-                {canModify && showAddAbonnement && allServicesRecurrents.length > 0 && (() => {
-                  const existingServiceIds = new Set(abonnements.filter((a: any) => a.isActive).map((a: any) => a.serviceId || a.service?.id));
-                  const available = allServicesRecurrents.filter(s => !existingServiceIds.has(s.id));
-                  if (available.length === 0) return null;
+                {/* Bloc configuration multi-offres — récurrents + ponctuels */}
+                {canModify && showAddAbonnement && (allServicesRecurrents.length > 0 || allServicesPonctuels.length > 0) && (() => {
+                  const existingServiceIds = new Set(abonnements.map((a: any) => a.serviceId || a.service_id || a.service?.id).filter(Boolean));
+                  const availableRecurrents = allServicesRecurrents.filter(s => !existingServiceIds.has(s.id));
+                  const availablePonctuels = allServicesPonctuels.filter(s => !existingServiceIds.has(s.id));
+                  if (availableRecurrents.length === 0 && availablePonctuels.length === 0) return (
+                    <div className="mb-4 p-4 bg-emerald-50 border-2 border-emerald-200 rounded-2xl text-center">
+                      <CheckCircle size={18} className="mx-auto text-emerald-500 mb-2" />
+                      <p className="text-[9px] text-emerald-700 font-bold">Cet élève est déjà abonné à tous les services disponibles.</p>
+                    </div>
+                  );
+                  const anyChecked = (Object.values(offresConfig) as { checked: boolean }[]).some(v => v.checked) || (Object.values(fraisSelection) as boolean[]).some(v => v);
                   return (
-                    <div className="mb-4 p-4 bg-indigo-50 border-2 border-indigo-200 rounded-2xl space-y-3">
-                      <p className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
-                        <Repeat size={11} /> Offres disponibles — cochez et configurez
-                      </p>
-                      <div className="space-y-2">
-                        {available.map(s => {
-                          const cfg = offresConfig[s.id] || { checked: false, jourEcheance: 5 };
-                          return (
-                            <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${cfg.checked ? 'bg-white border-indigo-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-70'}`}>
-                              <input
-                                type="checkbox"
-                                checked={cfg.checked}
-                                onChange={e => setOffresConfig(prev => ({ ...prev, [s.id]: { ...cfg, checked: e.target.checked } }))}
-                                className="w-5 h-5 rounded-lg border-2 border-indigo-300 text-indigo-600 focus:ring-indigo-400 cursor-pointer"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="font-black text-slate-800 text-sm">{s.name}</p>
-                                <p className="text-[9px] text-slate-400 font-bold">{Number(s.price).toLocaleString('fr-FR')} {currency}/mois</p>
-                              </div>
-                              {cfg.checked && (
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className="text-[8px] font-black text-slate-400 uppercase">Le</span>
-                                  <input
-                                    type="number" min="1" max="28"
-                                    value={cfg.jourEcheance}
-                                    onChange={e => setOffresConfig(prev => ({
-                                      ...prev, [s.id]: { ...cfg, jourEcheance: Math.min(28, Math.max(1, parseInt(e.target.value) || 1)) }
-                                    }))}
-                                    className="w-12 bg-white border border-indigo-200 rounded-lg px-2 py-1 text-center text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400"
-                                  />
-                                  <span className="text-[8px] font-black text-slate-400 uppercase">/mois</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                    <div className="mb-4 p-4 bg-indigo-50 border-2 border-indigo-200 rounded-2xl space-y-4">
+                      {/* ── Mois/Année de la 1ère échéance ── */}
+                      <div className="flex items-center gap-3 bg-white/70 border border-indigo-200 rounded-xl p-3">
+                        <span className="text-[8px] font-black text-indigo-500 uppercase whitespace-nowrap">1ère échéance :</span>
+                        <select value={echMois} onChange={e => setEchMois(+e.target.value)}
+                          className="bg-white border border-indigo-200 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:ring-2 focus:ring-indigo-400">
+                          {['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'].map((m, i) => (
+                            <option key={i} value={i + 1}>{m}</option>
+                          ))}
+                        </select>
+                        <select value={echAnnee} onChange={e => setEchAnnee(+e.target.value)}
+                          className="bg-white border border-indigo-200 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:ring-2 focus:ring-indigo-400">
+                          {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
                       </div>
+                      {/* ── Services récurrents ── */}
+                      {availableRecurrents.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest flex items-center gap-2">
+                            <Repeat size={11} /> Services récurrents (mensuels)
+                          </p>
+                          {availableRecurrents.map(s => {
+                            const cfg = offresConfig[s.id] || { checked: false, jourEcheance: 5 };
+                            const perLabel: Record<string, string> = { HEBDOMADAIRE: 'hebdo', MENSUEL: 'mois', TRIMESTRIEL: 'trim.', SEMESTRIEL: 'sem.', ANNUEL: 'an' };
+                            const per = s.periodicite || 'MENSUEL';
+                            return (
+                              <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${cfg.checked ? 'bg-white border-violet-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-70'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={cfg.checked}
+                                  onChange={e => setOffresConfig(prev => ({ ...prev, [s.id]: { ...cfg, checked: e.target.checked } }))}
+                                  className="w-5 h-5 rounded-lg border-2 border-violet-300 text-violet-600 focus:ring-violet-400 cursor-pointer"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-black text-slate-800 text-sm">{s.name}</p>
+                                  <p className="text-[9px] text-slate-400 font-bold">{Number(s.price).toLocaleString('fr-FR')} {currency}/{perLabel[per] ?? per}</p>
+                                </div>
+                                {cfg.checked && (
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-[8px] font-black text-slate-400 uppercase">Le</span>
+                                    <input
+                                      type="number" min="1" max="28"
+                                      value={cfg.jourEcheance}
+                                      onChange={e => setOffresConfig(prev => ({
+                                        ...prev, [s.id]: { ...cfg, jourEcheance: Math.min(28, Math.max(1, parseInt(e.target.value) || 1)) }
+                                      }))}
+                                      className="w-12 bg-white border border-violet-200 rounded-lg px-2 py-1 text-center text-sm font-black outline-none focus:ring-2 focus:ring-violet-400"
+                                    />
+                                    <span className="text-[8px] font-black text-slate-400 uppercase">/mois</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* ── Services ponctuels ── */}
+                      {availablePonctuels.length > 0 && (
+                        <div className="space-y-2">
+                          {availableRecurrents.length > 0 && <div className="border-t border-indigo-200" />}
+                          <p className="text-[10px] font-black text-sky-700 uppercase tracking-widest flex items-center gap-2">
+                            <CreditCard size={11} /> Services ponctuels (paiement unique)
+                          </p>
+                          {availablePonctuels.map(s => {
+                            const checked = fraisSelection[s.id] ?? false;
+                            return (
+                              <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${checked ? 'bg-white border-sky-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-70'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => setFraisSelection(prev => ({ ...prev, [s.id]: e.target.checked }))}
+                                  className="w-5 h-5 rounded-lg border-2 border-sky-300 text-sky-600 focus:ring-sky-400 cursor-pointer"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-black text-slate-800 text-sm">{s.name}</p>
+                                  <p className="text-[9px] text-slate-400 font-bold">{Number(s.price).toLocaleString('fr-FR')} {currency} — paiement unique</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       <button
                         onClick={async () => {
                           if (!selectedEleve?.id) return;
-                          const selected = (Object.entries(offresConfig) as [string, { checked: boolean; jourEcheance: number }][])
+                          const selectedRecurrents = (Object.entries(offresConfig) as [string, { checked: boolean; jourEcheance: number }][])
                             .filter(([, v]) => v.checked)
                             .map(([serviceId, v]) => ({ serviceId, jourEcheance: v.jourEcheance || null }));
-                          if (!selected.length) { showToast('Cochez au moins une offre.', 'error'); return; }
+                          const selectedPonctuels = Object.entries(fraisSelection)
+                            .filter(([, v]) => v)
+                            .map(([serviceId]) => ({ serviceId, jourEcheance: null }));
+                          const allSelected = [...selectedRecurrents, ...selectedPonctuels];
+                          if (!allSelected.length) { showToast('Cochez au moins un service.', 'error'); return; }
                           setAboActionLoading(true);
                           try {
-                            await apiClient.post('/abonnements/batch', { eleveId: selectedEleve.id, abonnements: selected });
+                            console.log('[Eleves] createBatch payload:', { eleveId: selectedEleve.id, abonnements: allSelected, mois: echMois, annee: echAnnee });
+                            const result: any = await apiClient.post('/abonnements/batch', { eleveId: selectedEleve.id, abonnements: allSelected, mois: echMois, annee: echAnnee });
+                            console.log('[Eleves] createBatch result:', result);
                             setShowAddAbonnement(false);
                             setOffresConfig({});
+                            setFraisSelection({});
                             fetchAbonnements(selectedEleve.id);
-                            showToast(`${selected.length} abonnement(s) créé(s).`, 'success');
-                          } catch (err: any) { showToast(err?.message || 'Erreur.', 'error'); }
+                            if (result?.count > 0) {
+                              showToast(`${result.count} abonnement(s) créé(s).`, 'success');
+                            } else if (result?.skipped?.length) {
+                              const reasons = result.skipped.map((s: any) => s.reason === 'already active' ? 'déjà actif' : s.reason).join(', ');
+                              showToast(`Aucun nouvel abonnement — ${reasons}.`, 'warning');
+                            }
+                          } catch (err: any) {
+                            console.error('[Eleves] createBatch error:', err);
+                            showToast(err?.message || 'Erreur lors de la création.', 'error');
+                          }
                           finally { setAboActionLoading(false); }
                         }}
-                        disabled={aboActionLoading || !(Object.values(offresConfig) as { checked: boolean }[]).some(v => v.checked)}
+                        disabled={aboActionLoading || !anyChecked}
                         className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                       >
                         {aboActionLoading ? <RefreshCw className="animate-spin" size={13} /> : <Save size={13} />}
-                        Valider les abonnements sélectionnés
+                        Valider les services sélectionnés
                       </button>
                     </div>
                   );
                 })()}
 
-                {/* Formulaire ajout abonnement */}
-                {showAddAbonnement && (
-                  <div className="mb-4 p-4 bg-violet-50 border-2 border-violet-200 rounded-2xl space-y-3 animate-in slide-in-from-top-3 duration-200">
-                    <p className="text-[10px] font-black text-violet-700 uppercase tracking-widest">Nouvel Abonnement</p>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Service récurrent</label>
-                      <select
-                        value={newAboForm.serviceId}
-                        onChange={e => setNewAboForm(f => ({ ...f, serviceId: e.target.value }))}
-                        className="w-full bg-white border border-violet-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
-                      >
-                        <option value="">— Choisir un service récurrent —</option>
-                        {allServicesRecurrents.map(s => {
-                          const per = s.periodicite || 'MENSUEL';
-                          const perLabel: Record<string, string> = { HEBDOMADAIRE: 'hebdo', MENSUEL: 'mois', TRIMESTRIEL: 'trim.', SEMESTRIEL: 'sem.', ANNUEL: 'an' };
-                          return (
-                            <option key={s.id} value={s.id}>
-                              {s.name} — {Number(s.price).toLocaleString()} {currency}/{perLabel[per] ?? per}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      {allServicesRecurrents.length === 0 && (
-                        <p className="text-[9px] text-violet-500 font-bold">Aucun service récurrent actif. Activez la récurrence dans le module Offres de Scolarité.</p>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Date de début</label>
-                        <div className="relative">
-                          <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="date"
-                            value={newAboForm.dateDebut}
-                            onChange={e => setNewAboForm(f => ({ ...f, dateDebut: e.target.value }))}
-                            className="w-full bg-white border border-violet-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Jour d'échéance (mensuel)</label>
-                        <input
-                          type="number" min="1" max="28" placeholder="Ex: 5"
-                          value={newAboForm.jourEcheance}
-                          onChange={e => setNewAboForm(f => ({ ...f, jourEcheance: e.target.value }))}
-                          className="w-full bg-white border border-violet-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-400 transition-all"
-                        />
-                        <p className="text-[8px] text-slate-400">Le jour du mois pour chaque échéance</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowAddAbonnement(false)}
-                        className="flex-1 py-2.5 border border-slate-200 text-slate-500 rounded-xl font-black text-[9px] uppercase hover:bg-slate-50 transition-all"
-                      >
-                        Annuler
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAddAbonnement}
-                        disabled={!newAboForm.serviceId || aboActionLoading}
-                        className="flex-1 py-2.5 bg-violet-600 text-white rounded-xl font-black text-[9px] uppercase hover:bg-violet-700 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
-                      >
-                        {aboActionLoading ? <RefreshCw className="animate-spin" size={13} /> : <><Save size={13} /> Abonner</>}
-                      </button>
-                    </div>
+                {/* Fallback si aucune offre multi n'est disponible mais le bouton est actif */}
+                {canModify && showAddAbonnement && allServicesRecurrents.length === 0 && allServicesPonctuels.length === 0 && (
+                  <div className="mb-4 p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl text-center">
+                    <p className="text-[9px] text-amber-700 font-bold">Aucun service disponible. Créez des offres de scolarité dans le module dédié.</p>
                   </div>
                 )}
 
-                {/* Liste des abonnements */}
+                {/* Liste des abonnements — séparés récurrents / ponctuels */}
                 {abonnementsLoading ? (
                   <div className="py-6 flex justify-center"><RefreshCw className="animate-spin text-violet-400" size={22} /></div>
                 ) : abonnements.length === 0 ? (
@@ -2651,122 +2731,206 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                     <Repeat size={22} className="mx-auto text-slate-200 mb-2" />
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aucun abonnement actif</p>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {abonnements.map((abo: any) => {
-                      const echeances: any[] = abo.echeances || [];
-                      const enAttente = echeances.filter(e => e.statut === 'EN_ATTENTE').sort(
-                        (a, b) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime()
-                      );
-                      const enRetard = echeances.filter(e => e.statut === 'EN_RETARD');
-                      const payees = echeances.filter(e => e.statut === 'PAYE');
-                      const isExpanded = expandedAbos.has(abo.id);
-                      const perLabel: Record<string, string> = {
-                        HEBDOMADAIRE: 'Hebdomadaire', MENSUEL: 'Mensuel',
-                        TRIMESTRIEL: 'Trimestriel', SEMESTRIEL: 'Semestriel', ANNUEL: 'Annuel'
-                      };
-                      const per = abo.service?.periodicite || abo.periodicite || 'MENSUEL';
-                      return (
-                        <div key={abo.id} className={`rounded-2xl border overflow-hidden transition-all ${abo.isActive ? 'border-violet-200 bg-violet-50' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
-                          {/* En-tête abonnement */}
-                          <div className="flex items-center justify-between p-4">
-                            <div className="flex items-start gap-3">
-                              <div className="w-9 h-9 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-                                <Repeat size={16} />
-                              </div>
-                              <div>
-                                <p className="font-black text-slate-900 text-sm">{abo.service?.name ?? 'Service'}</p>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-100 text-violet-700 border border-violet-200">
+                ) : (() => {
+                  const isRecurring = (abo: any) => {
+                    const type = (abo.service?.typeOffre || '').toUpperCase();
+                    const recurrent = abo.service?.estRecurrent ?? abo.service?.est_recurrent;
+                    return recurrent === true || RECURRING_TYPES.includes(type);
+                  };
+                  const recurringAbos = abonnements.filter(isRecurring);
+                  const oneTimeAbos = abonnements.filter((a: any) => !isRecurring(a));
+                  const perLabel: Record<string, string> = {
+                    HEBDOMADAIRE: 'Hebdomadaire', MENSUEL: 'Mensuel',
+                    TRIMESTRIEL: 'Trimestriel', SEMESTRIEL: 'Semestriel', ANNUEL: 'Annuel',
+                    PONCTUEL: 'Paiement unique'
+                  };
+
+                  const renderAboCard = (abo: any, isPonctuel: boolean) => {
+                    const echeances: any[] = abo.echeances || [];
+                    const enAttente = echeances.filter((e: any) => ['EN_ATTENTE','A_ECHOIR','DUE','EN_GRACE'].includes(e.statut)).sort(
+                      (a: any, b: any) => new Date(a.dateEcheance).getTime() - new Date(b.dateEcheance).getTime()
+                    );
+                    const enRetard = echeances.filter((e: any) => e.statut === 'EN_RETARD');
+                    const payees = echeances.filter((e: any) => ['PAYE','SOLDEE'].includes(e.statut));
+                    const isExpanded = expandedAbos.has(abo.id);
+                    const per = abo.service?.periodicite || abo.periodicite || 'MENSUEL';
+
+                    const totalPaye = echeances.reduce((s: number, e: any) => {
+                      const ap = parseFloat(e.amountPaid ?? e.amount_paid ?? 0);
+                      if (ap > 0) return s + ap;
+                      return s + (['PAYE','SOLDEE'].includes(e.statut) ? parseFloat(e.montant ?? 0) : 0);
+                    }, 0);
+                    const totalRestant = echeances.reduce((s: number, e: any) => {
+                      if (['PAYE','SOLDEE','ANNULE','ANNULEE'].includes(e.statut)) return s;
+                      return s + (parseFloat(e.amountRemaining ?? e.amount_remaining ?? e.montant ?? 0) || 0);
+                    }, 0);
+
+                    const borderColor = isPonctuel
+                      ? (abo.isActive ? 'border-sky-200 bg-sky-50' : 'border-slate-100 bg-slate-50 opacity-60')
+                      : (abo.isActive ? 'border-violet-200 bg-violet-50' : 'border-slate-100 bg-slate-50 opacity-60');
+                    const accentBg = isPonctuel ? 'bg-sky-100 text-sky-600' : 'bg-violet-100 text-violet-600';
+                    const accentBorder = isPonctuel ? 'border-sky-200' : 'border-violet-200';
+                    const accentText = isPonctuel ? 'text-sky-800' : 'text-violet-800';
+                    const accentBtn = isPonctuel ? 'border-sky-200 text-sky-600 hover:bg-sky-100' : 'border-violet-200 text-violet-600 hover:bg-violet-100';
+                    const expandBorderColor = isPonctuel ? 'border-sky-100' : 'border-violet-100';
+
+                    return (
+                      <div key={abo.id} className={`rounded-2xl border overflow-hidden transition-all ${borderColor}`}>
+                        <div className="flex items-center justify-between p-4">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${accentBg}`}>
+                              {isPonctuel ? <CreditCard size={16} /> : <Repeat size={16} />}
+                            </div>
+                            <div>
+                              <p className="font-black text-slate-900 text-sm">{abo.service?.name ?? 'Service'}</p>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {isPonctuel ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-sky-100 text-sky-700 border border-sky-200">
+                                    <CreditCard size={7} /> Paiement unique
+                                  </span>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-100 text-violet-700 border ${accentBorder}`}>
                                     <Repeat size={7} /> {perLabel[per] ?? per}
                                   </span>
-                                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-black ${abo.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                    {abo.isActive ? 'Actif' : 'Inactif'}
+                                )}
+                                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black ${abo.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                  {abo.isActive ? 'Actif' : 'Inactif'}
+                                </span>
+                                {enRetard.length > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-100 text-rose-700">
+                                    <AlertTriangle size={7} /> {enRetard.length} en retard
                                   </span>
-                                  {enRetard.length > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-rose-100 text-rose-700">
-                                      <AlertTriangle size={7} /> {enRetard.length} en retard
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[9px] text-slate-400 font-bold mt-1">
-                                  Début : {new Date(abo.dateDebut).toLocaleDateString('fr-FR')}
-                                  {abo.dateFin && ` · Fin : ${new Date(abo.dateFin).toLocaleDateString('fr-FR')}`}
-                                </p>
+                                )}
+                                {isPonctuel && payees.length === echeances.length && echeances.length > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-700">
+                                    <CheckCircle size={7} /> Soldé
+                                  </span>
+                                )}
                               </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <p className="font-black text-violet-800 text-sm">
-                                {Number(abo.service?.price ?? 0).toLocaleString()} {currency}
+                              <p className="text-[9px] text-slate-400 font-bold mt-1">
+                                {isPonctuel ? (
+                                  <>Créé le {new Date(abo.dateDebut || abo.date_debut).toLocaleDateString('fr-FR')}</>
+                                ) : (
+                                  <>Début : {(() => {
+                                    const d = new Date(abo.dateDebut || abo.date_debut);
+                                    const jour = abo.jourEcheance || abo.jour_echeance;
+                                    if (jour) d.setDate(Math.min(jour, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+                                    return d.toLocaleDateString('fr-FR');
+                                  })()}
+                                  {abo.jourEcheance || abo.jour_echeance ? ` · Échéance le ${abo.jourEcheance || abo.jour_echeance} de chaque mois` : ''}
+                                  {abo.dateFin && ` · Fin : ${new Date(abo.dateFin).toLocaleDateString('fr-FR')}`}</>
+                                )}
                               </p>
-                              <div className="flex gap-1">
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-2">
+                            <p className={`font-black text-sm ${accentText}`}>
+                              {Number(abo.service?.price ?? 0).toLocaleString()} {currency}
+                            </p>
+                            {totalRestant > 0 && (
+                              <p className="text-[9px] font-black text-rose-500">
+                                Restant : {totalRestant.toLocaleString()} {currency}
+                              </p>
+                            )}
+                            {totalPaye > 0 && (
+                              <p className="text-[9px] font-bold text-emerald-600">
+                                Payé : {totalPaye.toLocaleString()} {currency}
+                              </p>
+                            )}
+                            <div className="flex gap-1">
+                              {echeances.length > 0 && (
                                 <button
                                   onClick={() => setExpandedAbos(prev => {
                                     const next = new Set(prev);
                                     next.has(abo.id) ? next.delete(abo.id) : next.add(abo.id);
                                     return next;
                                   })}
-                                  className="px-2.5 py-1.5 bg-white border border-violet-200 text-violet-600 rounded-lg text-[8px] font-black uppercase hover:bg-violet-100 transition-all"
+                                  className={`px-2.5 py-1.5 bg-white border rounded-lg text-[8px] font-black uppercase transition-all ${accentBtn}`}
                                 >
                                   {isExpanded ? 'Masquer' : `${echeances.length} échéance(s)`}
                                 </button>
-                                {abo.isActive && canModify && (
-                                  <button
-                                    onClick={() => handleDesactiverAbonnement(abo.id)}
-                                    disabled={aboActionLoading}
-                                    className="px-2.5 py-1.5 bg-white border border-rose-200 text-rose-500 rounded-lg text-[8px] font-black uppercase hover:bg-rose-50 transition-all disabled:opacity-50"
-                                  >
-                                    Désactiver
-                                  </button>
-                                )}
-                              </div>
+                              )}
+                              {abo.isActive && canModify && selectedEleve.statut !== 'RADIE' && (
+                                <button
+                                  onClick={() => handleDesactiverAbonnement(abo.id)}
+                                  disabled={aboActionLoading}
+                                  className="px-2.5 py-1.5 bg-white border border-rose-200 text-rose-500 rounded-lg text-[8px] font-black uppercase hover:bg-rose-50 transition-all disabled:opacity-50"
+                                >
+                                  Désactiver
+                                </button>
+                              )}
                             </div>
                           </div>
+                        </div>
 
-                          {/* Échéances expandées */}
-                          {isExpanded && echeances.length > 0 && (
-                            <div className="border-t border-violet-100 bg-white px-4 py-3 space-y-1.5">
-                              {[...enRetard, ...enAttente, ...payees].map((ech: any) => (
-                                <div key={ech.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl hover:bg-slate-50 transition-all group">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className={`w-2 h-2 rounded-full shrink-0 ${ech.statut === 'PAYE' ? 'bg-emerald-500' : ech.statut === 'EN_RETARD' ? 'bg-rose-500' : 'bg-amber-400'}`} />
-                                    <div>
-                                      <p className="text-xs font-black text-slate-800">{ech.periodeLabel || new Date(ech.dateEcheance).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</p>
-                                      <p className="text-[8px] text-slate-400 font-bold">Échéance le {new Date(ech.dateEcheance).toLocaleDateString('fr-FR')}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-black ${ech.statut === 'PAYE' ? 'text-emerald-600' : ech.statut === 'EN_RETARD' ? 'text-rose-600' : 'text-amber-600'}`}>
-                                      {Number(ech.montant).toLocaleString()} {currency}
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded-full text-[7px] font-black uppercase ${ech.statut === 'PAYE' ? 'bg-emerald-50 text-emerald-700' : ech.statut === 'EN_RETARD' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
-                                      {ech.statut === 'PAYE' ? 'Payé' : ech.statut === 'EN_RETARD' ? 'En retard' : 'À payer'}
-                                    </span>
-                                    {(ech.statut === 'EN_ATTENTE' || ech.statut === 'EN_RETARD') && canModify && (
-                                      <button
-                                        onClick={() => handlePayEcheance(ech.id)}
-                                        disabled={aboActionLoading}
-                                        className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-emerald-600 text-white rounded-lg text-[7px] font-black uppercase hover:bg-emerald-700 transition-all disabled:opacity-50"
-                                      >
-                                        Marquer payé
-                                      </button>
-                                    )}
+                        {isExpanded && echeances.length > 0 && (
+                          <div className={`border-t ${expandBorderColor} bg-white px-4 py-3 space-y-1.5`}>
+                            {[...enRetard, ...enAttente, ...payees].map((ech: any) => (
+                              <div key={ech.id} className="flex items-center justify-between py-1.5 px-3 rounded-xl hover:bg-slate-50 transition-all group">
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`w-2 h-2 rounded-full shrink-0 ${['PAYE','SOLDEE'].includes(ech.statut) ? 'bg-emerald-500' : ech.statut === 'EN_RETARD' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                                  <div>
+                                    <p className="text-xs font-black text-slate-800">{ech.periodeLabel || new Date(ech.dateEcheance).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</p>
+                                    <p className="text-[8px] text-slate-400 font-bold">Échéance le {new Date(ech.dateEcheance).toLocaleDateString('fr-FR')}</p>
                                   </div>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-black ${['PAYE','SOLDEE'].includes(ech.statut) ? 'text-emerald-600' : ech.statut === 'EN_RETARD' ? 'text-rose-600' : 'text-amber-600'}`}>
+                                    {Number(ech.amountRemaining ?? ech.amount_remaining ?? ech.montant ?? 0).toLocaleString()} {currency}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[7px] font-black uppercase ${['PAYE','SOLDEE'].includes(ech.statut) ? 'bg-emerald-50 text-emerald-700' : ech.statut === 'EN_RETARD' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                                    {['PAYE','SOLDEE'].includes(ech.statut) ? 'Payé' : ech.statut === 'EN_RETARD' ? 'En retard' : 'À payer'}
+                                  </span>
+                                  {!['PAYE','SOLDEE','ANNULE','ANNULEE'].includes(ech.statut) && canModify && selectedEleve.statut !== 'RADIE' && (
+                                    <button
+                                      onClick={() => handlePayEcheance(ech.id)}
+                                      disabled={aboActionLoading}
+                                      className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-emerald-600 text-white rounded-lg text-[7px] font-black uppercase hover:bg-emerald-700 transition-all disabled:opacity-50"
+                                    >
+                                      Marquer payé
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                          {isExpanded && echeances.length === 0 && (
-                            <div className="border-t border-violet-100 bg-white px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase">
-                              Aucune échéance générée pour cet abonnement.
-                            </div>
-                          )}
+                        {isExpanded && echeances.length === 0 && (
+                          <div className={`border-t ${expandBorderColor} bg-white px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase`}>
+                            Aucune échéance générée pour cet abonnement.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <div className="space-y-5">
+                      {/* ── Services récurrents (mensuels) ── */}
+                      {recurringAbos.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Repeat size={11} className="text-violet-500" />
+                            <p className="text-[9px] font-black text-violet-600 uppercase tracking-widest">Services récurrents ({recurringAbos.length})</p>
+                          </div>
+                          {recurringAbos.map((abo: any) => renderAboCard(abo, false))}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+
+                      {/* ── Services ponctuels (paiement unique) ── */}
+                      {oneTimeAbos.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <CreditCard size={11} className="text-sky-500" />
+                            <p className="text-[9px] font-black text-sky-600 uppercase tracking-widest">Services ponctuels — paiement unique ({oneTimeAbos.length})</p>
+                          </div>
+                          {oneTimeAbos.map((abo: any) => renderAboCard(abo, true))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Dossier numérique élève */}
@@ -2981,9 +3145,9 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
               <Trash2 size={28} />
             </div>
             <div>
-              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-2">Supprimer l'élève ?</h3>
+              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-2">Radier l'élève ?</h3>
               <p className="text-slate-500 text-sm font-bold">
-                <span className="text-slate-900">{showDeleteConfirm.prenom} {showDeleteConfirm.nom}</span> sera supprimé définitivement.
+                <span className="text-slate-900">{showDeleteConfirm.prenom} {showDeleteConfirm.nom}</span> sera radié(e). Ses abonnements seront désactivés et ses échéances impayées annulées. L'historique des paiements est conservé.
               </p>
             </div>
             <div className="flex gap-4">
@@ -2993,7 +3157,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
               </button>
               <button onClick={() => handleDelete(showDeleteConfirm)} disabled={actionLoading}
                 className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
-                {actionLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />} Supprimer
+                {actionLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />} Radier
               </button>
             </div>
           </div>

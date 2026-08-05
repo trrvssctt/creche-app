@@ -17,9 +17,11 @@ interface Echeance {
   eleveId: string;
   serviceId: string;
   montant: number;
+  amountPaid?: number;
+  amountRemaining?: number;
   dateEcheance: string;
   periodeLabel: string;
-  statut: 'EN_ATTENTE' | 'PAYE' | 'EN_RETARD' | 'ANNULE';
+  statut: 'EN_ATTENTE' | 'PAYE' | 'EN_RETARD' | 'ANNULE' | 'SOLDEE' | 'EN_GRACE' | 'DUE' | 'A_ECHOIR';
   paidAt?: string;
   saleId?: string;
   reminderSentAt?: string;
@@ -65,12 +67,29 @@ const fmtAmount = (n: number) => Number(n || 0).toLocaleString('fr-FR');
 const fmtDate   = (d: string) => new Date(d).toLocaleDateString('fr-FR');
 const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
+const PAID_STATUSES = ['PAYE', 'SOLDEE'];
+const CANCELLED_STATUSES = ['ANNULE', 'ANNULEE'];
+const remaining = (e: Echeance) => {
+  if (PAID_STATUSES.includes(e.statut) || CANCELLED_STATUSES.includes(e.statut)) return 0;
+  return parseFloat((e.amountRemaining ?? e.montant) as any) || 0;
+};
+const paid = (e: Echeance) => {
+  const ap = parseFloat((e.amountPaid as any) || 0);
+  if (ap > 0) return ap;
+  return PAID_STATUSES.includes(e.statut) ? parseFloat(e.montant as any) || 0 : 0;
+};
+
 function statutBadge(statut: Echeance['statut']) {
-  const map = {
+  const map: Record<string, string> = {
     EN_ATTENTE: 'bg-amber-50 text-amber-700 border-amber-200',
+    A_ECHOIR:   'bg-amber-50 text-amber-700 border-amber-200',
+    DUE:        'bg-orange-50 text-orange-700 border-orange-200',
+    EN_GRACE:   'bg-orange-50 text-orange-700 border-orange-200',
     EN_RETARD:  'bg-rose-50  text-rose-700  border-rose-200',
     PAYE:       'bg-emerald-50 text-emerald-700 border-emerald-200',
+    SOLDEE:     'bg-emerald-50 text-emerald-700 border-emerald-200',
     ANNULE:     'bg-slate-100  text-slate-500  border-slate-200',
+    ANNULEE:    'bg-slate-100  text-slate-500  border-slate-200',
   };
   const lbl = { EN_ATTENTE:'En attente', EN_RETARD:'En retard', PAYE:'Payé', ANNULE:'Annulé' };
   return (
@@ -82,7 +101,7 @@ function statutBadge(statut: Echeance['statut']) {
 
 // ─── Composant principal ──────────────────────────────────────────────────────
 
-const Recovery = ({ currency }: { currency: string }) => {
+const Recovery = ({ currency, schoolName }: { currency: string; schoolName?: string }) => {
   const showToast = useToast();
   const { annee: anneeScolaire, anneesDisponibles } = useAnnee();
 
@@ -153,9 +172,10 @@ const Recovery = ({ currency }: { currency: string }) => {
       }
       const g = map.get(ech.eleveId)!;
       g.echeances.push(ech);
-      if (ech.statut !== 'PAYE' && ech.statut !== 'ANNULE') {
-        g.totalDu += parseFloat(ech.montant as any);
-        if (ech.statut === 'EN_RETARD') g.totalRetard += parseFloat(ech.montant as any);
+      const rem = remaining(ech);
+      if (rem > 0) {
+        g.totalDu += rem;
+        if (ech.statut === 'EN_RETARD') g.totalRetard += rem;
       }
     }
     return Array.from(map.values()).sort((a, b) => b.totalRetard - a.totalRetard || b.totalDu - a.totalDu);
@@ -171,7 +191,7 @@ const Recovery = ({ currency }: { currency: string }) => {
       if (sel.length > 0) {
         map.set(g.eleveId, {
           echeances: sel,
-          total: sel.reduce((s, e) => s + parseFloat(e.montant as any), 0),
+          total: sel.reduce((s, e) => s + remaining(e), 0),
         });
       }
     }
@@ -180,12 +200,12 @@ const Recovery = ({ currency }: { currency: string }) => {
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
-    const total    = echeances.reduce((s, e) => s + (e.statut !== 'ANNULE' ? parseFloat(e.montant as any) : 0), 0);
-    const paye     = echeances.filter(e => e.statut === 'PAYE').reduce((s, e) => s + parseFloat(e.montant as any), 0);
-    const retard   = echeances.filter(e => e.statut === 'EN_RETARD').reduce((s, e) => s + parseFloat(e.montant as any), 0);
-    const attente  = echeances.filter(e => e.statut === 'EN_ATTENTE').reduce((s, e) => s + parseFloat(e.montant as any), 0);
-    const txRecouvrement = total > 0 ? Math.round((paye / total) * 100) : 0;
-    return { total, paye, retard, attente, txRecouvrement, nbEleves: elevesGroupes.length };
+    const total    = echeances.reduce((s, e) => s + (!CANCELLED_STATUSES.includes(e.statut) ? parseFloat(e.montant as any) : 0), 0);
+    const payeTotal = echeances.reduce((s, e) => s + paid(e), 0);
+    const retard   = echeances.filter(e => e.statut === 'EN_RETARD').reduce((s, e) => s + remaining(e), 0);
+    const attente  = echeances.filter(e => ['EN_ATTENTE','A_ECHOIR','DUE','EN_GRACE'].includes(e.statut)).reduce((s, e) => s + remaining(e), 0);
+    const txRecouvrement = total > 0 ? Math.round((payeTotal / total) * 100) : 0;
+    return { total, paye: payeTotal, retard, attente, txRecouvrement, nbEleves: elevesGroupes.length };
   }, [echeances, elevesGroupes]);
 
   // ── Synchronisation : génère les échéances pour tous les élèves du mois ──
@@ -299,7 +319,7 @@ const Recovery = ({ currency }: { currency: string }) => {
     try {
       // Calculer l'année civile à partir du mois + année scolaire
       const [startY, endY] = selectedAnneeScolaire.split('-').map(Number);
-      const civYear = selectedMonth >= 9 ? startY : endY;
+      const civYear = selectedMonth >= 8 ? startY : endY;
       const data = await apiClient.get(`/abonnements/echeances/facture/${eleveId}`, {
         params: { month: selectedMonth, year: civYear },
       });
@@ -558,9 +578,14 @@ const Recovery = ({ currency }: { currency: string }) => {
                               </div>
 
                               {/* Montant */}
-                              <p className={`text-sm font-black w-28 text-right shrink-0 ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
-                                {fmtAmount(parseFloat(ech.montant as any))} {currency}
-                              </p>
+                              <div className="w-28 text-right shrink-0">
+                                <p className={`text-sm font-black ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
+                                  {fmtAmount(remaining(ech))} {currency}
+                                </p>
+                                {(ech.amountPaid ?? 0) > 0 && remaining(ech) > 0 && (
+                                  <p className="text-[8px] text-emerald-500 font-bold">déjà payé : {fmtAmount(paid(ech))}</p>
+                                )}
+                              </div>
 
                               {/* Statut */}
                               {statutBadge(ech.statut)}
@@ -644,7 +669,7 @@ const Recovery = ({ currency }: { currency: string }) => {
 
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 mb-6 flex items-center justify-between">
               <span className="text-[10px] font-black text-indigo-600 uppercase">{showPayModal.periodeLabel}</span>
-              <span className="text-2xl font-black text-indigo-900">{fmtAmount(parseFloat(showPayModal.montant as any))} {currency}</span>
+              <span className="text-2xl font-black text-indigo-900">{fmtAmount(remaining(showPayModal))} {currency}</span>
             </div>
 
             <div className="space-y-3 mb-6">
@@ -726,7 +751,7 @@ const Recovery = ({ currency }: { currency: string }) => {
                       </div>
                       <div className="flex items-center gap-2">
                         {statutBadge(e.statut)}
-                        <p className="text-sm font-black text-slate-900 w-24 text-right">{fmtAmount(parseFloat(e.montant as any))} {currency}</p>
+                        <p className="text-sm font-black text-slate-900 w-24 text-right">{fmtAmount(remaining(e))} {currency}</p>
                       </div>
                     </div>
                   ))}
@@ -740,7 +765,7 @@ const Recovery = ({ currency }: { currency: string }) => {
                   <p className="text-[9px] text-slate-400 font-bold mt-0.5">1 vente · 1 facture · {showPaySelectionModal.echeances.length} ligne{showPaySelectionModal.echeances.length > 1 ? 's' : ''}</p>
                 </div>
                 <p className="text-2xl font-black text-indigo-900">
-                  {fmtAmount(showPaySelectionModal.echeances.reduce((s, e) => s + parseFloat(e.montant as any), 0))} {currency}
+                  {fmtAmount(showPaySelectionModal.echeances.reduce((s, e) => s + remaining(e), 0))} {currency}
                 </p>
               </div>
 
@@ -802,7 +827,7 @@ const Recovery = ({ currency }: { currency: string }) => {
                       <p className="text-[9px] text-slate-400 font-bold">{fmtDate(e.dateEcheance)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-slate-900">{fmtAmount(parseFloat(e.montant as any))} {currency}</span>
+                      <span className="text-sm font-black text-slate-900">{fmtAmount(remaining(e))} {currency}</span>
                       {statutBadge(e.statut)}
                     </div>
                   </div>
@@ -888,7 +913,7 @@ const Recovery = ({ currency }: { currency: string }) => {
                       <p className="text-[9px] text-slate-400 font-bold">{fmtDate(e.dateEcheance)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-slate-900">{fmtAmount(parseFloat(e.montant as any))} {currency}</span>
+                      <span className="text-sm font-black text-slate-900">{fmtAmount(remaining(e))} {currency}</span>
                       {statutBadge(e.statut)}
                     </div>
                   </div>
@@ -920,7 +945,7 @@ const Recovery = ({ currency }: { currency: string }) => {
             {/* En-tête facture */}
             <div className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white p-8 flex justify-between items-start">
               <div>
-                <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-1">Le Toit des Anges — Relevé Mensuel</p>
+                <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest mb-1">{schoolName || 'Mon établissement'} — Relevé Mensuel</p>
                 <h3 className="text-2xl font-black uppercase tracking-tighter">
                   {showFactureModal.eleve.prenom} {showFactureModal.eleve.nom}
                 </h3>
@@ -945,7 +970,7 @@ const Recovery = ({ currency }: { currency: string }) => {
                         <p className="text-[9px] text-slate-400 font-bold">{e.periodeLabel} · échéance {fmtDate(e.dateEcheance)}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-black text-slate-900">{fmtAmount(parseFloat(e.montant as any))} {currency}</span>
+                        <span className="text-sm font-black text-slate-900">{fmtAmount(remaining(e))} {currency}</span>
                         {statutBadge(e.statut)}
                       </div>
                     </div>

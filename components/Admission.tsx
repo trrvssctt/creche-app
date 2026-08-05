@@ -916,7 +916,7 @@ const Admission = ({ currency, user }: { currency: string; user: User }) => {
               const peutEditer = statut !== 'INSCRIT' && statut !== 'ACTIF' && statut !== 'RADIE';
               const fromParent = isFromParent(d);
               return (
-                <tr key={d.id} className={`group hover:bg-slate-50/60 transition-all ${fromParent ? 'border-l-2 border-l-purple-400' : ''}`}>
+                <tr key={d.id} className={`group transition-all ${statut === 'RADIE' ? 'opacity-50 bg-slate-50/60' : 'hover:bg-slate-50/60'} ${fromParent ? 'border-l-2 border-l-purple-400' : ''}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       {d.photoUrl ? (
