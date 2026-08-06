@@ -4,8 +4,8 @@ import { checkPermission } from '../middlewares/rbac.js';
 
 const router = Router();
 
-const read = ['ADMIN', 'DIRECTEUR', 'COMPTABLE', 'ACCOUNTANT'];
-const write = ['ADMIN', 'DIRECTEUR', 'COMPTABLE'];
+const read = ['ADMIN', 'DIRECTEUR', 'COMPTABLE', 'ACCOUNTANT', 'ASSISTANTE'];
+const write = ['ADMIN', 'DIRECTEUR', 'COMPTABLE', 'ASSISTANTE'];
 
 // Années scolaires
 router.get('/academic-years',           checkPermission(read), C.listAcademicYears);

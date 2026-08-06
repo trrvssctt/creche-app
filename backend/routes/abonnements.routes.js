@@ -4,7 +4,7 @@ import { checkPermission } from '../middlewares/rbac.js';
 
 const router = Router();
 const READ  = ['ADMIN', 'DIRECTEUR', 'MAITRESSE', 'COMPTABLE', 'ASSISTANTE', 'ACCOUNTANT'];
-const WRITE = ['ADMIN', 'DIRECTEUR', 'COMPTABLE', 'ACCOUNTANT'];
+const WRITE = ['ADMIN', 'DIRECTEUR', 'COMPTABLE', 'ACCOUNTANT', 'ASSISTANTE'];
 
 // Synchronisation mensuelle (génère abonnements + échéances pour tous les élèves actifs)
 router.post('/sync-mensuel',    checkPermission(WRITE), AbonnementController.syncMensuel);

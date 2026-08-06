@@ -4,10 +4,11 @@ import { checkPermission } from '../middlewares/rbac.js';
 
 const router = Router();
 
-const TEACHER_ROLES = ['ADMIN', 'DIRECTEUR', 'ENSEIGNANT', 'MAITRESSE'];
+const TEACHER_READ  = ['ADMIN', 'DIRECTEUR', 'ENSEIGNANT', 'MAITRESSE', 'ASSISTANTE'];
+const TEACHER_WRITE = ['ADMIN', 'DIRECTEUR', 'ENSEIGNANT', 'ASSISTANTE'];
 
-router.get('/presences',       checkPermission(TEACHER_ROLES), PresenceController.list);
-router.post('/presences',      checkPermission(TEACHER_ROLES), PresenceController.save);
-router.get('/presences/stats', checkPermission(TEACHER_ROLES), PresenceController.stats);
+router.get('/presences',       checkPermission(TEACHER_READ),  PresenceController.list);
+router.post('/presences',      checkPermission(TEACHER_WRITE), PresenceController.save);
+router.get('/presences/stats', checkPermission(TEACHER_READ),  PresenceController.stats);
 
 export default router;

@@ -4,8 +4,8 @@ import { checkPermission } from '../middlewares/rbac.js';
 
 const router = Router();
 
-const READ_ROLES = ['ADMIN', 'DIRECTEUR', 'MAITRESSE', 'COMPTABLE'];
-const WRITE_ROLES = ['ADMIN', 'DIRECTEUR'];
+const READ_ROLES = ['ADMIN', 'DIRECTEUR', 'MAITRESSE', 'COMPTABLE', 'ENSEIGNANT', 'ASSISTANTE'];
+const WRITE_ROLES = ['ADMIN', 'DIRECTEUR', 'ENSEIGNANT', 'ASSISTANTE'];
 
 router.get('/', checkPermission(READ_ROLES), MatiereController.list);
 router.post('/', checkPermission(WRITE_ROLES), MatiereController.create);

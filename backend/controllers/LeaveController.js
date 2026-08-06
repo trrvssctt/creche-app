@@ -57,6 +57,24 @@ const upload = multer({
 });
 
 export class LeaveController {
+  static async myLeaves(req, res) {
+    try {
+      const tenantId = req.user.tenantId;
+      const employeeId = req.user.employeeId;
+      if (!employeeId) return res.json([]);
+      const leaves = await Leave.findAll({
+        where: { tenantId, employeeId },
+        include: [{ model: Employee, as: 'employee', attributes: ['id', 'firstName', 'lastName'] }],
+        order: [['start_date', 'DESC']],
+        limit: 50,
+      });
+      return res.json(leaves);
+    } catch (error) {
+      console.error('[LEAVE MY ERROR]:', error);
+      return res.status(500).json({ error: 'ServerError', message: 'Erreur serveur.' });
+    }
+  }
+
   static async list(req, res) {
     try {
       const tenantId = req.user.tenantId;

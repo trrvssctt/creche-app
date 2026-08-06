@@ -8,7 +8,7 @@ const router = Router();
 const READ_ROLES  = ['ADMIN', 'DIRECTEUR', 'MAITRESSE', 'ENSEIGNANT', 'COMPTABLE', 'ASSISTANTE',
                      'ACCOUNTANT', 'SALES', 'HR_MANAGER', 'EMPLOYEE', 'INFIRMIERE', 'CHAUFFEUR'];
 // Rôles autorisés à créer / modifier
-const WRITE_ROLES = ['ADMIN', 'DIRECTEUR', 'MAITRESSE', 'ENSEIGNANT', 'SALES', 'COMPTABLE', 'ACCOUNTANT'];
+const WRITE_ROLES = ['ADMIN', 'DIRECTEUR', 'MAITRESSE', 'ENSEIGNANT', 'SALES', 'COMPTABLE', 'ACCOUNTANT', 'ASSISTANTE'];
 
 // Routes statiques avant les routes paramétriques (:id)
 router.post('/sync-abonnements',  checkPermission(['ADMIN']), EleveController.syncAbonnements);

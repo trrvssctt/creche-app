@@ -1,5 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import SchoolAdminDashboard from './SchoolAdminDashboard';
+import ComptableDashboard from './ComptableDashboard';
+import AssistanteDashboard from './AssistanteDashboard';
 import {
   TrendingUp, Package, Users, ShieldCheck,
   AlertTriangle, Zap, RefreshCw,
@@ -1848,9 +1850,12 @@ const Dashboard: React.FC<{
         </div>
       );
     }
-    if (userRoles.includes(UserRole.SUPER_ADMIN) || userRoles.includes(UserRole.ADMIN))
+    if (userRoles.includes(UserRole.SUPER_ADMIN) || userRoles.includes(UserRole.ADMIN) || userRoles.includes(UserRole.DIRECTEUR))
       return <SchoolAdminDashboard user={user} currency={currency} onNavigate={onNavigate} />;
-    if (userRoles.includes(UserRole.ACCOUNTANT)) return renderAccountantDashboard();
+    if (userRoles.includes(UserRole.ASSISTANTE))
+      return <AssistanteDashboard user={user} currency={currency} onNavigate={onNavigate} />;
+    if (userRoles.includes(UserRole.COMPTABLE) || userRoles.includes(UserRole.ACCOUNTANT))
+      return <ComptableDashboard user={user} currency={currency} onNavigate={onNavigate} />;
     if (userRoles.includes(UserRole.STOCK_MANAGER)) return renderStockManagerDashboard();
     if (userRoles.includes(UserRole.HR_MANAGER)) return renderHRManagerDashboard();
     if (userRoles.includes(UserRole.EMPLOYEE)) return renderEmployeeDashboard();

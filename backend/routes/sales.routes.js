@@ -5,7 +5,7 @@ import { checkPermission } from '../middlewares/rbac.js';
 
 const router = Router();
 
-router.get('/', checkPermission(['ADMIN', 'SALES', 'ACCOUNTANT', 'STOCK_MANAGER', 'DIRECTEUR', 'COMPTABLE']), SaleController.list);
+router.get('/', checkPermission(['ADMIN', 'SALES', 'ACCOUNTANT', 'STOCK_MANAGER', 'DIRECTEUR', 'COMPTABLE', 'ASSISTANTE']), SaleController.list);
 router.post('/', checkPermission(['ADMIN', 'SALES', 'ACCOUNTANT']), SaleController.create);
 router.put('/:id', checkPermission(['ADMIN', 'SALES', 'ACCOUNTANT']), SaleController.updateSale);
 router.post('/:id/payments', checkPermission(['ADMIN', 'SALES', 'ACCOUNTANT']), SaleController.addPayment);

@@ -5,7 +5,7 @@ import { checkPermission } from '../middlewares/rbac.js';
 const router = Router();
 
 const READ_ROLES  = ['ADMIN', 'MAITRESSE', 'ENSEIGNANT', 'COMPTABLE', 'ASSISTANTE', 'ACCOUNTANT'];
-const WRITE_ROLES = ['ADMIN'];
+const WRITE_ROLES = ['ADMIN', 'ASSISTANTE'];
 
 router.get('/',    checkPermission(READ_ROLES),  ClasseController.list);
 router.get('/:id', checkPermission(READ_ROLES),  ClasseController.getById);

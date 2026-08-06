@@ -12,11 +12,11 @@ export enum UserRole {
   CHAUFFEUR  = 'CHAUFFEUR',   // chauffeur / transport scolaire
   PARENT  = 'PARENT',    // parent ou tuteur légal d'un élève
   TUTEUR  = 'TUTEUR',    // alias de PARENT
-  // Aliases de compatibilité (anciens rôles ERP SaaS)
-  SUPER_ADMIN   = 'ADMIN',
-  ACCOUNTANT    = 'COMPTABLE',
-  STOCK_MANAGER = 'EMPLOYEE',
-  SALES         = 'ASSISTANTE',
+  // Rôles ERP SaaS
+  SUPER_ADMIN   = 'SUPER_ADMIN',
+  ACCOUNTANT    = 'ACCOUNTANT',
+  STOCK_MANAGER = 'STOCK_MANAGER',
+  SALES         = 'SALES',
 }
 
 export type Currency = 'F CFA' | '€' | '$';

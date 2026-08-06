@@ -274,10 +274,16 @@ static async login(req, res) {
         return res.status(403).json({ error: 'AccessBlocked', message: 'Instance désactivée. Contactez le support.' });
       }
 
-      // If payments are not up-to-date, allow ADMIN/SUPER_ADMIN/PARENT to login, block others
+      // If payments are not up-to-date, allow all internal staff + parents to login
+      // Only block truly unknown/generic roles — staff must be able to work regardless
       if (!isUpToDate) {
         const userRolesCheck = Array.isArray(user.roles) ? user.roles : [user.role || 'EMPLOYEE'];
-        const canBypass = userRolesCheck.includes('ADMIN') || userRolesCheck.includes('SUPER_ADMIN') || userRolesCheck.includes('PARENT') || userRolesCheck.includes('TUTEUR');
+        const INTERNAL_ROLES = [
+          'ADMIN','SUPER_ADMIN','PARENT','TUTEUR',
+          'DIRECTEUR','ASSISTANTE','ENSEIGNANT','MAITRESSE','COMPTABLE','INFIRMIERE','CHAUFFEUR',
+          'HR_MANAGER','STOCK_MANAGER','ACCOUNTANT','SALES','EMPLOYEE',
+        ];
+        const canBypass = userRolesCheck.some(r => INTERNAL_ROLES.includes(r));
         if (!canBypass) {
           return res.status(403).json({
             error: 'AccessBlocked',
@@ -934,7 +940,23 @@ static async login(req, res) {
           return res.status(403).json({ error: 'Forbidden', message: 'Impossible de désactiver un administrateur.' });
         }
       }
-      await user.update(req.body);
+
+      const updateData = { ...req.body };
+
+      // Hasher le mot de passe s'il est présent (pas de hook beforeUpdate dans le modèle)
+      if (updateData.password && updateData.password.trim()) {
+        const salt = await bcrypt.genSalt(12);
+        updateData.password = await bcrypt.hash(updateData.password.trim(), salt);
+      } else {
+        delete updateData.password;
+      }
+
+      // Synchroniser le champ role singulier avec roles[]
+      if (Array.isArray(updateData.roles) && updateData.roles.length > 0) {
+        updateData.role = updateData.roles[0];
+      }
+
+      await user.update(updateData);
       return res.status(200).json(user);
     } catch (error) {
       // eslint-disable-next-line no-console

@@ -144,12 +144,13 @@ router.post('/admin/parent-accounts/:id/reset-password',
 router.post('/parent-forgot-password', AuthController.parentForgotPassword);
 router.post('/parent-reset-password',  AuthController.parentResetPassword);
 
-// ── Événements scolaires (agenda admin → visible parents) ─────────────────────
-const SCHOOL_ROLES = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE'];
-router.get('/admin/school-events',        authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.list);
-router.post('/admin/school-events',       authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.upsert);
-router.put('/admin/school-events/:id',    authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.upsert);
-router.delete('/admin/school-events/:id', authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.remove);
+// ── Événements scolaires (agenda → visible à tout le personnel + parents) ────
+const SCHOOL_ROLES = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE', 'ENSEIGNANT', 'MAITRESSE', 'COMPTABLE'];
+const SCHOOL_WRITE = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE'];
+router.get('/school-events',        authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.list);
+router.post('/school-events',       authenticateJWT, checkPermission(SCHOOL_WRITE), tenantIsolation, SchoolEventController.upsert);
+router.put('/school-events/:id',    authenticateJWT, checkPermission(SCHOOL_WRITE), tenantIsolation, SchoolEventController.upsert);
+router.delete('/school-events/:id', authenticateJWT, checkPermission(SCHOOL_WRITE), tenantIsolation, SchoolEventController.remove);
 
 // Subscription upgrade (tenant ADMIN → PENDING, validated by SuperAdmin)
 router.post('/subscription/upgrade', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.upgradePlan);

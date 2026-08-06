@@ -56,6 +56,34 @@ const ROLE_MODULES: Record<string, string[]> = {
     'info', 'support',
   ],
 
+  [UserRole.STOCK_MANAGER]: [
+    'dashboard',
+    'inventory', 'movements', 'inventorycampaigns',
+    'categories', 'subcategories',
+    'suppliers', 'deliveries',
+    'my-leaves', 'employee-pointage',
+    'info', 'support',
+  ],
+
+  [UserRole.ACCOUNTANT]: [
+    'dashboard',
+    'sales', 'recovery', 'payments', 'facturation',
+    'eleves', 'classes', 'customers',
+    'rh',
+    'rh.payroll', 'rh.payroll.settings', 'rh.payroll.generation',
+    'rh.payroll.slips', 'rh.payroll.bonuses', 'rh.payroll.advances', 'rh.payroll.declarations',
+    'my-leaves', 'employee-pointage',
+    'info', 'support',
+  ],
+
+  [UserRole.SALES]: [
+    'dashboard',
+    'sales', 'recovery', 'payments',
+    'customers', 'inventory',
+    'my-leaves', 'employee-pointage',
+    'info', 'support',
+  ],
+
   [UserRole.ENSEIGNANT]: [
     'dashboard',
     'bulletins', 'emploidutemps', 'evenements',
@@ -85,7 +113,17 @@ const ROLE_MODULES: Record<string, string[]> = {
   [UserRole.ASSISTANTE]: [
     'dashboard',
     'eleves', 'classes', 'customers', 'admission',
-    'whatsapp', 'communications', 'certificats', 'emploidutemps', 'evenements',
+    'bulletins', 'emploidutemps', 'evenements',
+    'whatsapp', 'certificats',
+    'sales', 'recovery', 'payments', 'facturation',
+    'services',
+    'rh',
+    'rh.employees', 'rh.departments', 'rh.employee.profile',
+    'rh.contracts', 'rh.org', 'rh.docs', 'rh.leaves',
+    'rh.recruitment', 'rh.training', 'rh.performance',
+    'rh.payroll', 'rh.payroll.settings', 'rh.payroll.generation',
+    'rh.payroll.slips', 'rh.payroll.bonuses', 'rh.payroll.advances', 'rh.payroll.declarations',
+    'rh.attendance', 'rh.overtime', 'rh.time-settings',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
@@ -293,9 +331,6 @@ export const authBridge = {
     // ADMIN / DIRECTEUR : accès total
     if (roles.some(r => r === UserRole.ADMIN || r === UserRole.DIRECTEUR)) return true;
 
-    // Sous-modules RH : si le rôle a accès à 'rh', il a accès aux sous-modules
-    const baseModule = moduleId.startsWith('rh.') ? 'rh' : moduleId;
-
     return roles.some(r => {
       const allowed = ROLE_MODULES[r as string] || [];
       return allowed.includes(moduleId) || (moduleId.startsWith('rh.') && allowed.includes('rh'));
@@ -314,8 +349,12 @@ export const authBridge = {
     // ADMIN / DIRECTEUR : accès total sans restriction
     if (rolesArr.some(r => r === UserRole.ADMIN || r === UserRole.DIRECTEUR)) return true;
 
-    // ASSISTANTE : lecture seule
-    if (rolesArr.includes(UserRole.ASSISTANTE)) return action === 'VIEW';
+    // ASSISTANTE : CRUD sauf élèves/admission (lecture seule)
+    if (rolesArr.includes(UserRole.ASSISTANTE)) {
+      const readOnly = ['eleves', 'admission', 'services'];
+      if (readOnly.includes(resource)) return action === 'VIEW';
+      return true;
+    }
 
     // HR_MANAGER : CRUD sur les ressources RH
     if (rolesArr.includes(UserRole.HR_MANAGER)) {
@@ -331,13 +370,36 @@ export const authBridge = {
       return action === 'VIEW';
     }
 
-    // ENSEIGNANT / MAITRESSE : écriture sur leurs propres ressources pédagogiques
-    // L'emploi du temps est géré exclusivement par le DIRECTEUR — les profs ne peuvent que consulter
-    if (rolesArr.some(r => r === UserRole.ENSEIGNANT || r === UserRole.MAITRESSE)) {
-      const pedagResources = ['bulletins', 'competences', 'cahier-texte'];
+    // STOCK_MANAGER : CRUD stock
+    if (rolesArr.includes(UserRole.STOCK_MANAGER)) {
+      const stockResources = ['inventory', 'categories', 'subcategories', 'suppliers', 'deliveries', 'movements', 'inventorycampaigns'];
+      if (stockResources.includes(resource)) return true;
+      return action === 'VIEW';
+    }
+
+    // ACCOUNTANT : CRUD finances
+    if (rolesArr.includes(UserRole.ACCOUNTANT)) {
+      const finResources = ['payments', 'recovery', 'sales', 'customers', 'payroll', 'payslips', 'advances', 'declarations'];
+      if (finResources.includes(resource)) return true;
+      return action === 'VIEW';
+    }
+
+    // SALES : CRUD ventes
+    if (rolesArr.includes(UserRole.SALES)) {
+      const salesResources = ['sales', 'customers', 'recovery', 'payments'];
+      if (salesResources.includes(resource)) return true;
+      return action === 'VIEW';
+    }
+
+    // ENSEIGNANT : écriture pédagogie
+    if (rolesArr.includes(UserRole.ENSEIGNANT)) {
+      const pedagResources = ['bulletins', 'competences', 'cahier-texte', 'presences'];
       if (pedagResources.includes(resource)) return true;
       return action === 'VIEW';
     }
+
+    // MAITRESSE : lecture seule
+    if (rolesArr.includes(UserRole.MAITRESSE)) return action === 'VIEW';
 
     return action === 'VIEW';
   },

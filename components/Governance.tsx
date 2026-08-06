@@ -5,27 +5,33 @@ import {
   ShieldCheck, UserPlus, Check, ArrowRight,
   RefreshCw, Trash2, Edit3, AlertCircle, Lock,
   Copy, Dices, Eye, EyeOff, GraduationCap, Building2,
-  FileText
+  FileText, Briefcase, BookOpen, Baby, Stethoscope,
+  Bus, Calculator, Package, TrendingUp, Crown
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
 
 const AVAILABLE_ROLES = [
-  // ── Système ──────────────────────────────────────────────────────────
-  { id: 'ADMIN',         label: 'Administrateur',           desc: 'Accès total à l\'instance.',                       groupe: 'Système' },
-  { id: 'ACCOUNTANT',    label: 'Comptable',                desc: 'Gestion financière et facturation.',               groupe: 'Système' },
-  { id: 'STOCK_MANAGER', label: 'Gestionnaire Stock',       desc: 'Contrôle logistique et inventaire.',               groupe: 'Système' },
-  { id: 'SALES',         label: 'Commercial',               desc: 'Gestion des ventes et des clients.',               groupe: 'Système' },
-  // ── Établissement ────────────────────────────────────────────────────
-  { id: 'DIRECTEUR',     label: 'Directeur / Directrice',   desc: 'Direction pédagogique et administrative.',         groupe: 'Établissement' },
-  { id: 'ENSEIGNANT',    label: 'Enseignant(e) / Maîtresse', desc: 'Accès pédagogie — modification et insertion.',    groupe: 'Établissement' },
-  { id: 'ASSISTANTE',    label: 'Assistante',               desc: 'Accès consultation — lecture seule.',              groupe: 'Établissement' },
-  { id: 'INFIRMIERE',    label: 'Infirmière / Santé',        desc: 'Accès dossiers sanitaires des élèves.',           groupe: 'Établissement' },
-  { id: 'CHAUFFEUR',     label: 'Chauffeur',                desc: 'Accès module transport scolaire.',                 groupe: 'Établissement' },
+  { id: 'ADMIN',         label: 'Administrateur',         desc: 'Accès total à l\'instance.',                                                          groupe: 'Système',        access: 'total' as const },
+  { id: 'ACCOUNTANT',    label: 'Comptable',              desc: 'Gestion financière et facturation.',                                                   groupe: 'Système',        access: 'rw' as const },
+  { id: 'STOCK_MANAGER', label: 'Gestionnaire Stock',     desc: 'Contrôle logistique et inventaire.',                                                   groupe: 'Système',        access: 'rw' as const },
+  { id: 'SALES',         label: 'Commercial',             desc: 'Gestion des ventes et des clients.',                                                   groupe: 'Système',        access: 'rw' as const },
+  { id: 'DIRECTEUR',     label: 'Directeur / Directrice', desc: 'Direction pédagogique et administrative — accès complet.',                              groupe: 'Établissement',  access: 'total' as const },
+  { id: 'ASSISTANTE',    label: 'Assistante',             desc: 'Scolarité, facturation, finance, RH, stock, communications, pédagogie.',                groupe: 'Établissement',  access: 'rw' as const },
+  { id: 'ENSEIGNANT',    label: 'Enseignant(e)',           desc: 'Pédagogie — notes, bulletins, présences, matières.',                                   groupe: 'Établissement',  access: 'rw' as const },
+  { id: 'MAITRESSE',     label: 'Maîtresse',              desc: 'Communications et pédagogie — consultation.',                                          groupe: 'Établissement',  access: 'r' as const },
+  { id: 'INFIRMIERE',    label: 'Infirmière / Santé',     desc: 'Dossiers sanitaires des élèves.',                                                      groupe: 'Établissement',  access: 'rw' as const },
+  { id: 'CHAUFFEUR',     label: 'Chauffeur',              desc: 'Module transport scolaire.',                                                            groupe: 'Établissement',  access: 'r' as const },
 ];
 
 const ROLE_GROUPES = ['Système', 'Établissement'];
+
+const ROLE_ICONS: Record<string, React.FC<{ size?: number; className?: string }>> = {
+  ADMIN: ShieldCheck, ACCOUNTANT: Calculator, STOCK_MANAGER: Package, SALES: TrendingUp,
+  DIRECTEUR: Crown, ASSISTANTE: Briefcase, ENSEIGNANT: BookOpen,
+  MAITRESSE: Baby, INFIRMIERE: Stethoscope, CHAUFFEUR: Bus,
+};
 
 const getRoleLabel = (roleId: string) =>
   AVAILABLE_ROLES.find(r => r.id === roleId)?.label ?? roleId;
@@ -412,28 +418,41 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
       </div>
 
       {showUserModal && (
-        <div className="fixed inset-0 z-[700] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-2xl mx-4 md:mx-auto rounded-[2rem] md:rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 max-h-[90dvh] flex flex-col">
-             <div className={`px-4 md:px-10 py-5 md:py-8 text-white flex justify-between items-center ${editingUser ? 'bg-amber-500' : 'bg-slate-900'}`}>
-                <h3 className="text-xl font-black uppercase tracking-tight flex items-center gap-3">
-                  {editingUser ? <Edit3 size={24}/> : <UserPlus size={24}/>}
-                  {editingUser ? 'Révision Opérateur' : 'Provisionnement Multi-Rôles'}
-                </h3>
-                <button onClick={closeModal} className="p-3 hover:bg-white/10 rounded-2xl transition-all"><X size={24}/></button>
+        <div className="fixed inset-0 z-[700] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-4xl mx-4 md:mx-auto rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500 max-h-[92dvh] flex flex-col">
+             <div className={`px-6 md:px-10 py-6 md:py-8 text-white flex justify-between items-center ${editingUser ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 'bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900'}`}>
+                <div>
+                  <h3 className="text-lg md:text-xl font-black uppercase tracking-tight flex items-center gap-3">
+                    {editingUser ? <Edit3 size={22}/> : <UserPlus size={22}/>}
+                    {editingUser ? 'Révision Opérateur' : 'Provisionnement Multi-Rôles'}
+                  </h3>
+                  <p className="text-white/50 text-[9px] font-bold uppercase tracking-widest mt-1">
+                    {editingUser ? 'Modifier les accès et permissions' : 'Créer un opérateur avec ses périmètres d\'accès'}
+                  </p>
+                </div>
+                <button onClick={closeModal} className="p-3 hover:bg-white/10 rounded-2xl transition-all"><X size={22}/></button>
              </div>
-             
-             <form onSubmit={handleSubmit} className="p-4 md:p-10 space-y-6 md:space-y-8 flex-1 overflow-y-auto custom-scrollbar">
+
+             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar">
                 {error && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-[10px] font-black uppercase flex items-center gap-3">
+                  <div className="mx-6 md:mx-10 mt-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-[10px] font-black uppercase flex items-center gap-3">
                     <AlertCircle size={16}/> {error}
                   </div>
                 )}
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                   <div className="space-y-4">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Identité & Sécurité</label>
-                      
-                      {/* Sélecteur d'employé — création uniquement */}
+
+                <div className="grid grid-cols-1 lg:grid-cols-5 min-h-0">
+                   {/* ── Colonne gauche : Identité & Sécurité ── */}
+                   <div className="lg:col-span-2 p-6 md:p-8 space-y-5 border-b lg:border-b-0 lg:border-r border-slate-100">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">
+                          <Key size={15} className="text-slate-500"/>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Identité & Sécurité</p>
+                          <p className="text-[8px] text-slate-400 font-bold">Informations de connexion</p>
+                        </div>
+                      </div>
+
                       {!editingUser && (
                         <div className="space-y-2">
                           <select
@@ -451,9 +470,9 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
                                 setUserData({ ...userData, employeeId: '', name: '', email: '' });
                               }
                             }}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
                           >
-                            <option value="">— Créer un accès sans lien RH —</option>
+                            <option value="">-- Accès sans lien RH --</option>
                             {availableEmployees.length === 0 ? (
                               <option disabled>Aucun employé avec contrat actif</option>
                             ) : (
@@ -472,33 +491,34 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
                           </p>
                         </div>
                       )}
-                      
+
                       <input
                         type="text"
                         required
                         value={userData.name}
                         onChange={e => setUserData({...userData, name: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
                         placeholder="Nom Complet"
                         readOnly={!editingUser && !!userData.employeeId}
                       />
                       <input
                         type="email"
+                        autoComplete="off"
                         required
                         value={userData.email}
                         onChange={e => setUserData({...userData, email: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
                         placeholder="Email Professionnel"
                         readOnly={!editingUser && !!userData.employeeId}
                       />
-                      
-                      {/* Champ mot de passe avec générateur */}
+
                       <div className="space-y-3">
                         <div className="relative">
-                          <input 
-                            type={showPassword ? 'text' : 'password'} 
-                            required={!editingUser} 
-                            value={userData.password} 
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            required={!editingUser}
+                            value={userData.password}
                             onChange={e => {
                               setUserData({...userData, password: e.target.value});
                               if (e.target.value) {
@@ -506,42 +526,27 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
                               } else {
                                 setPasswordStrength({ score: 0, label: '', color: '' });
                               }
-                            }} 
-                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 pr-32 py-4 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all" 
-                            placeholder={editingUser ? "Laisser vide pour inchangé" : "Clé d'Accès Initiale"} 
+                            }}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 pr-28 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                            placeholder={editingUser ? "Laisser vide si inchangé" : "Clé d'Accès Initiale"}
                           />
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                            <button 
-                              type="button" 
-                              onClick={copyPasswordToClipboard} 
-                              className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
-                              title="Copier le mot de passe"
-                            >
-                              <Copy size={16} />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            <button type="button" onClick={copyPasswordToClipboard} className="text-slate-400 hover:text-emerald-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100" title="Copier">
+                              <Copy size={14} />
                             </button>
-                            <button 
-                              type="button" 
-                              onClick={generateStrongPassword}
-                              className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
-                              title="Générer un mot de passe fort"
-                            >
-                              <Dices size={16} />
+                            <button type="button" onClick={generateStrongPassword} className="text-slate-400 hover:text-indigo-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100" title="Générer">
+                              <Dices size={14} />
                             </button>
-                            <button 
-                              type="button" 
-                              onClick={() => setShowPassword(!showPassword)} 
-                              className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
-                            >
-                              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-indigo-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100">
+                              {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                             </button>
                           </div>
                         </div>
-                        
-                        {/* Barre de force du mot de passe */}
+
                         {userData.password && (
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             <div className="flex justify-between items-center">
-                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Force du mot de passe</span>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Force</span>
                               <span className={`text-[8px] font-black uppercase tracking-widest ${
                                 passwordStrength.score >= 6 ? 'text-emerald-600' :
                                 passwordStrength.score >= 5 ? 'text-green-600' :
@@ -551,51 +556,113 @@ const Governance: React.FC<GovernanceProps> = ({ tenantId, plan }) => {
                                 {passwordStrength.label}
                               </span>
                             </div>
-                            <div className="w-full bg-slate-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full transition-all duration-300 ${passwordStrength.color}`}
+                            <div className="w-full bg-slate-200 rounded-full h-1.5">
+                              <div
+                                className={`h-1.5 rounded-full transition-all duration-300 ${passwordStrength.color}`}
                                 style={{ width: `${(passwordStrength.score / 7) * 100}%` }}
-                              ></div>
+                              />
                             </div>
                           </div>
                         )}
                       </div>
                    </div>
 
-                   <div className="space-y-4">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Sélection des Rôles</label>
-                      <div className="space-y-4">
-                        {ROLE_GROUPES.map(groupe => (
-                          <div key={groupe} className="space-y-2">
-                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest px-1 flex items-center gap-1.5">
-                              {groupe === 'Établissement' ? <GraduationCap size={10}/> : <Building2 size={10}/>}
-                              {groupe}
-                            </p>
-                            {AVAILABLE_ROLES.filter(r => r.groupe === groupe).map(role => (
-                              <button
-                                key={role.id}
-                                type="button"
-                                onClick={() => toggleRole(role.id)}
-                                className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between group ${userData.roles.includes(role.id) ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-slate-200'}`}
-                              >
-                                <div>
-                                  <p className={`text-[10px] font-black uppercase ${userData.roles.includes(role.id) ? 'text-indigo-600' : 'text-slate-700'}`}>{role.label}</p>
-                                  <p className="text-[8px] text-slate-400 font-bold leading-tight">{role.desc}</p>
-                                </div>
-                                <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-colors shrink-0 ${userData.roles.includes(role.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200 group-hover:border-slate-300'}`}>
-                                  {userData.roles.includes(role.id) && <Check size={12} className="text-white"/>}
-                                </div>
-                              </button>
-                            ))}
+                   {/* ── Colonne droite : Sélection des Rôles ── */}
+                   <div className="lg:col-span-3 p-6 md:p-8 space-y-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                            <Shield size={15} className="text-indigo-500"/>
                           </div>
-                        ))}
+                          <div>
+                            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Périmètre d'accès</p>
+                            <p className="text-[8px] text-slate-400 font-bold">Sélectionnez un ou plusieurs rôles</p>
+                          </div>
+                        </div>
+                        {userData.roles.length > 0 && (
+                          <span className="px-3 py-1.5 rounded-full bg-indigo-100 text-indigo-700 text-[9px] font-black tabular-nums">
+                            {userData.roles.length} rôle{userData.roles.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-5">
+                        {ROLE_GROUPES.map(groupe => {
+                          const groupRoles = AVAILABLE_ROLES.filter(r => r.groupe === groupe);
+                          const selectedCount = groupRoles.filter(r => userData.roles.includes(r.id)).length;
+                          return (
+                            <div key={groupe}>
+                              <div className="flex items-center justify-between mb-2.5">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                  {groupe === 'Établissement' ? <GraduationCap size={11}/> : <Building2 size={11}/>}
+                                  {groupe}
+                                </p>
+                                {selectedCount > 0 && (
+                                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[8px] font-black flex items-center justify-center">
+                                    {selectedCount}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {groupRoles.map(role => {
+                                  const selected = userData.roles.includes(role.id);
+                                  const RoleIcon = ROLE_ICONS[role.id] || Shield;
+                                  return (
+                                    <button
+                                      key={role.id}
+                                      type="button"
+                                      onClick={() => toggleRole(role.id)}
+                                      className={`relative p-3 rounded-xl border-2 text-left transition-all duration-200 flex items-start gap-3 group ${
+                                        selected
+                                          ? 'border-indigo-400 bg-gradient-to-br from-indigo-50 to-white shadow-sm shadow-indigo-100/50'
+                                          : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50/50 hover:shadow-sm'
+                                      }`}
+                                    >
+                                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200 ${
+                                        selected
+                                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                                          : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
+                                      }`}>
+                                        <RoleIcon size={14}/>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <p className={`text-[10px] font-black uppercase leading-tight ${selected ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                            {role.label}
+                                          </p>
+                                          <span className={`px-1.5 py-0.5 rounded text-[7px] font-black leading-none shrink-0 ${
+                                            role.access === 'total' ? 'bg-indigo-100 text-indigo-600' :
+                                            role.access === 'rw'    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                                                      'bg-amber-50 text-amber-600 border border-amber-100'
+                                          }`}>
+                                            {role.access === 'total' ? 'TOTAL' : role.access === 'rw' ? 'R/W' : 'R'}
+                                          </span>
+                                        </div>
+                                        <p className="text-[8px] text-slate-400 font-medium leading-snug mt-0.5">{role.desc}</p>
+                                      </div>
+                                      <div className={`w-[18px] h-[18px] rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all duration-200 ${
+                                        selected
+                                          ? 'bg-indigo-600 border-indigo-600 scale-110'
+                                          : 'border-slate-200 group-hover:border-slate-300'
+                                      }`}>
+                                        {selected && <Check size={10} className="text-white"/>}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                    </div>
                 </div>
 
-                <button type="submit" disabled={actionLoading} className={`w-full py-5 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 ${editingUser ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-slate-900'}`}>
-                  {actionLoading ? <RefreshCw className="animate-spin" /> : <>{editingUser ? 'METTRE À JOUR' : 'ACTIVER L\'OPÉRATEUR'} <ArrowRight size={18}/></>}
-                </button>
+                <div className="px-6 md:px-10 py-5 border-t border-slate-100 bg-slate-50/30">
+                  <button type="submit" disabled={actionLoading} className={`w-full py-5 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 ${editingUser ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-slate-900'}`}>
+                    {actionLoading ? <RefreshCw className="animate-spin" /> : <>{editingUser ? 'METTRE À JOUR' : 'ACTIVER L\'OPÉRATEUR'} <ArrowRight size={18}/></>}
+                  </button>
+                </div>
              </form>
           </div>
         </div>

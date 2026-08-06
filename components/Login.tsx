@@ -415,27 +415,23 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
           return;
         }
 
-        if (paymentNotUpToDate) {
+        // Paiement non à jour : on laisse passer le personnel interne (l'admin régularise)
+        // Seuls les rôles inconnus sont bloqués
+        if (paymentNotUpToDate || (sub && sub.status && sub.status !== 'ACTIVE' && sub.status !== 'TRIAL')) {
           const roles = Array.isArray(apiUser?.roles) ? apiUser.roles : [apiUser?.role];
-          const isAdmin = roles && (roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN));
-          if (!isAdmin) {
+          const STAFF_ROLES = [
+            UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DIRECTEUR,
+            UserRole.ASSISTANTE, UserRole.ENSEIGNANT, UserRole.MAITRESSE,
+            UserRole.COMPTABLE, UserRole.INFIRMIERE, UserRole.CHAUFFEUR,
+            UserRole.HR_MANAGER, UserRole.STOCK_MANAGER, UserRole.ACCOUNTANT,
+            UserRole.SALES, UserRole.EMPLOYEE,
+          ];
+          const isStaff = roles && roles.some((r: string) => STAFF_ROLES.includes(r as UserRole));
+          if (!isStaff) {
             setApiError({ message: 'Accès suspendu : votre paiement n\'est pas à jour.' } as any);
             setLoading(false);
             return;
           }
-          // allow ADMIN to login for remediation; frontend will restrict modules to dashboard only
-        }
-
-        // fallback: si backend fournit subscription et elle est non-active
-        if (sub && sub.status && sub.status !== 'ACTIVE' && sub.status !== 'TRIAL') {
-          const roles = Array.isArray(apiUser?.roles) ? apiUser.roles : [apiUser?.role];
-          const isAdmin = roles && (roles.includes(UserRole.ADMIN) || roles.includes(UserRole.SUPER_ADMIN));
-          if (!isAdmin) {
-            setApiError({ message: 'Votre abonnement est en attente de validation. Connexion refusée.' } as any);
-            setLoading(false);
-            return;
-          }
-          // L'admin peut se connecter pour régulariser
         }
       }
 

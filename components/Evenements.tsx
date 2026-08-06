@@ -399,7 +399,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
     (async () => {
       setLoading(true);
       try {
-        const raw: any[] = await apiClient.get('/admin/school-events') || [];
+        const raw: any[] = await apiClient.get('/school-events') || [];
         setEvents(raw.map(rawToEvenement));
       } catch {
         showToast('Impossible de charger les événements.', 'error');
@@ -476,11 +476,11 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
     if (!form.titre || !form.dateDebut) { showToast('Titre et date de début sont obligatoires.', 'error'); return; }
     try {
       if (modalMode === 'CREATE') {
-        const raw = await apiClient.post('/admin/school-events', toPayload(form));
+        const raw = await apiClient.post('/school-events', toPayload(form));
         setEvents(prev => [rawToEvenement(raw), ...prev]);
         showToast('Événement créé.', 'success');
       } else {
-        const raw = await apiClient.put(`/admin/school-events/${selected!.id}`, toPayload({ ...selected!, ...form }));
+        const raw = await apiClient.put(`/school-events/${selected!.id}`, toPayload({ ...selected!, ...form }));
         setEvents(prev => prev.map(e => e.id === selected!.id ? rawToEvenement(raw) : e));
         showToast('Événement mis à jour.', 'success');
       }
@@ -492,7 +492,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
 
   const handleDelete = async (id: string) => {
     try {
-      await apiClient.delete(`/admin/school-events/${id}`);
+      await apiClient.delete(`/school-events/${id}`);
       setEvents(prev => prev.filter(e => e.id !== id));
       setModalMode(null);
       showToast('Événement supprimé.', 'info');
@@ -503,7 +503,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
 
   const handlePublish = async (ev: Evenement) => {
     try {
-      const raw = await apiClient.put(`/admin/school-events/${ev.id}`, toPayload({ ...ev, statut: 'PUBLIE' }));
+      const raw = await apiClient.put(`/school-events/${ev.id}`, toPayload({ ...ev, statut: 'PUBLIE' }));
       setEvents(prev => prev.map(e => e.id === ev.id ? rawToEvenement(raw) : e));
       showToast(`"${ev.titre}" publié — visible par les parents.`, 'success');
     } catch {
@@ -513,7 +513,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
 
   const handleCancel = async (ev: Evenement) => {
     try {
-      const raw = await apiClient.put(`/admin/school-events/${ev.id}`, toPayload({ ...ev, statut: 'ANNULE' }));
+      const raw = await apiClient.put(`/school-events/${ev.id}`, toPayload({ ...ev, statut: 'ANNULE' }));
       setEvents(prev => prev.map(e => e.id === ev.id ? rawToEvenement(raw) : e));
       showToast(`"${ev.titre}" annulé.`, 'info');
     } catch {
@@ -544,7 +544,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const handleConfirmDiffusion = async () => {
     if (!diffusionEvent) return;
     try {
-      const raw = await apiClient.put(`/admin/school-events/${diffusionEvent.id}`, toPayload({ ...diffusionEvent, diffuse: true }));
+      const raw = await apiClient.put(`/school-events/${diffusionEvent.id}`, toPayload({ ...diffusionEvent, diffuse: true }));
       setEvents(prev => prev.map(e => e.id === diffusionEvent.id ? rawToEvenement(raw) : e));
     } catch { /* non-bloquant */ }
     setDiffusionEvent(null);
