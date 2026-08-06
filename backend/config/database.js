@@ -969,6 +969,7 @@ export const connectDB = async () => {
           created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
           updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE school_events ADD COLUMN IF NOT EXISTS creneaux JSONB DEFAULT '[]';
         CREATE INDEX IF NOT EXISTS idx_school_events_tenant ON school_events (tenant_id);
         CREATE INDEX IF NOT EXISTS idx_school_events_statut ON school_events (statut);
       `, { type: QueryTypes.RAW });

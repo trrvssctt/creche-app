@@ -3,10 +3,15 @@ import { Bell, Pin, Info, AlertTriangle, Zap, Tag, GraduationCap,
   MapPin, Users, PartyPopper, BookOpen, Home, Megaphone, Calendar,
   ChevronLeft, ChevronRight, X, List, Clock } from 'lucide-react';
 
+interface Creneau {
+  eleveId: string; eleveNom: string; heureDebut: string; heureFin: string;
+}
+
 interface Annonce {
   id: string; title: string; body: string;
   type?: string; isPinned?: boolean; createdAt: string;
   dateDebut?: string; dateFin?: string;
+  creneaux?: Creneau[];
 }
 
 interface Props { annonces: Annonce[]; }
@@ -175,7 +180,35 @@ const AnnonceCard: React.FC<{ a: Annonce }> = ({ a }) => {
             <span>{fmtLong(a.dateDebut)}{a.dateFin && a.dateFin !== a.dateDebut ? ` → ${fmtLong(a.dateFin)}` : ''}</span>
           </div>
         )}
-        {a.body && <p className="text-gray-600 text-base leading-relaxed whitespace-pre-line">{a.body}</p>}
+        {a.body && (
+          <p className="text-gray-600 text-base leading-relaxed whitespace-pre-line">
+            {a.body.split('\n').filter(l => !l.startsWith('📋') && !l.match(/^\s+•\s/)).join('\n').trim()}
+          </p>
+        )}
+        {a.creneaux && a.creneaux.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
+            <div className="px-4 py-2.5 bg-blue-100/60 border-b border-blue-100 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-600" />
+              <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Vos créneaux de passage</span>
+            </div>
+            <div className="p-3 space-y-2">
+              {a.creneaux.map((cr, i) => (
+                <div key={i} className="flex items-center gap-3 bg-white rounded-xl px-4 py-3 shadow-sm border border-blue-50">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                    <Users className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-800">{cr.eleveNom}</p>
+                    <p className="text-xs text-gray-500">Rendez-vous individuel</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-base font-black text-blue-700">{cr.heureDebut} – {cr.heureFin}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -312,7 +345,7 @@ const ParentActualites: React.FC<Props> = ({ annonces }) => {
                 const lines     = a.body ? a.body.split('\n').filter(Boolean) : [];
                 const timeLine  = lines.find(l => l.startsWith('⏰'));
                 const locLine   = lines.find(l => l.startsWith('📍'));
-                const descLines = lines.filter(l => !l.startsWith('⏰') && !l.startsWith('📍'));
+                const descLines = lines.filter(l => !l.startsWith('⏰') && !l.startsWith('📍') && !l.startsWith('📋') && !l.match(/^\s+•\s/));
                 const timeText  = timeLine?.replace(/^⏰\s*/, '');
                 const locText   = locLine?.replace(/^📍\s*/, '');
 
@@ -379,6 +412,29 @@ const ParentActualites: React.FC<Props> = ({ annonces }) => {
                           {descLines.map((line, i) => (
                             <p key={i} className="text-sm text-gray-600 leading-relaxed">{line}</p>
                           ))}
+                        </div>
+                      )}
+
+                      {/* Créneaux de rendez-vous */}
+                      {a.creneaux && a.creneaux.length > 0 && (
+                        <div className="mt-3 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 overflow-hidden">
+                          <div className="px-4 py-2.5 bg-blue-100/60 border-b border-blue-100 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-blue-600" />
+                            <span className="text-[10px] font-black text-blue-700 uppercase tracking-wider">Vos créneaux de passage</span>
+                          </div>
+                          <div className="p-2.5 space-y-1.5">
+                            {a.creneaux.map((cr, ci) => (
+                              <div key={ci} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 shadow-sm border border-blue-50">
+                                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                                  <Users className="w-4 h-4 text-blue-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-gray-800">{cr.eleveNom}</p>
+                                </div>
+                                <p className="text-sm font-black text-blue-700 shrink-0">{cr.heureDebut} – {cr.heureFin}</p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

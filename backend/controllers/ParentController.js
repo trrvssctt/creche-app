@@ -245,8 +245,10 @@ export class ParentController {
   // GET /api/parent/actualites
   static async getActualites(req, res) {
     try {
-      const { id, tenantId } = req.user;
+      const { id, tenantId, eleveIds: jwtEleveIds = [] } = req.user;
       const now = new Date();
+
+      const allEleveIds = await resolveAllEleveIds(id, tenantId, jwtEleveIds);
 
       const [annonces, elevesInscrits] = await Promise.all([
         Announcement.findAll({
@@ -257,14 +259,12 @@ export class ParentController {
           order: [['is_pinned', 'DESC'], ['created_at', 'DESC']],
           limit: 50,
         }),
-        Eleve.findAll({
-          where: {
-            tenantId,
-            notes:  { [Op.like]: `%[parent_user:${id}]%` },
-            statut: { [Op.in]: ['INSCRIT', 'ACTIF'] },
-          },
-          attributes: ['id', 'nom', 'prenom', 'niveau', 'anneeScolaire', 'dateAdmission', 'updatedAt', 'createdAt'],
-        }),
+        allEleveIds.length > 0
+          ? Eleve.findAll({
+              where: { id: { [Op.in]: allEleveIds }, tenantId },
+              attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'anneeScolaire', 'dateAdmission', 'updatedAt', 'createdAt'],
+            })
+          : Promise.resolve([]),
       ]);
 
       let schoolEvents = [];
@@ -272,7 +272,7 @@ export class ParentController {
         schoolEvents = await sequelize.query(
           `SELECT id, titre, description, type_evenement, statut,
                   date_debut, date_fin, heure_debut, heure_fin, lieu,
-                  niveaux_cibles, diffuse, created_at
+                  niveaux_cibles, diffuse, creneaux, created_at
            FROM school_events
            WHERE tenant_id = :tenantId AND statut = 'PUBLIE'
            ORDER BY date_debut ASC`,
@@ -280,13 +280,15 @@ export class ParentController {
         );
       } catch (_) { /* table may not exist yet */ }
 
+      const eleveIds = elevesInscrits.map(e => e.id);
+
       const NIVEAUX_LABELS = {
         CRECHE: 'Crèche', PS: 'Petite Section', MS: 'Moyenne Section',
         GS: 'Grande Section', CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
       };
 
       // Événements synthétiques : une carte par enfant inscrit via le portail
-      const inscriptionEvents = elevesInscrits.map(e => ({
+      const inscriptionEvents = elevesInscrits.filter(e => ['INSCRIT', 'ACTIF'].includes(e.statut)).map(e => ({
         id: `inscription-${e.id}`,
         title: `Inscription confirmée — ${e.prenom} ${e.nom}`,
         body: `La candidature de ${e.prenom} ${e.nom} a été acceptée.\n${e.prenom} est inscrit(e) en ${NIVEAUX_LABELS[e.niveau] || e.niveau}${e.anneeScolaire ? ` pour l'année scolaire ${e.anneeScolaire}` : ''}.\n\nBienvenue à l'école !`,
@@ -297,22 +299,36 @@ export class ParentController {
         expiresAt: null,
       }));
 
-      const eventCards = schoolEvents.map(ev => ({
-        id: `event-${ev.id}`,
-        title: ev.titre,
-        body: [
-          ev.description || '',
-          ev.heure_debut ? `⏰ ${ev.heure_debut}${ev.heure_fin ? ` – ${ev.heure_fin}` : ''}` : '',
-          ev.lieu ? `📍 ${ev.lieu}` : '',
-        ].filter(Boolean).join('\n'),
-        type: ev.type_evenement,
-        isPinned: false,
-        isActive: true,
-        dateDebut: ev.date_debut,
-        dateFin: ev.date_fin,
-        createdAt: ev.created_at,
-        expiresAt: ev.date_fin ? new Date(ev.date_fin + 'T23:59:59') : null,
-      }));
+      const eventCards = schoolEvents.map(ev => {
+        const allCreneaux = Array.isArray(ev.creneaux) ? ev.creneaux
+          : (typeof ev.creneaux === 'string' ? JSON.parse(ev.creneaux || '[]') : []);
+        const mesCreneaux = allCreneaux.filter(cr => eleveIds.includes(cr.eleveId));
+
+        const bodyParts = [ev.description || ''];
+        if (ev.heure_debut) bodyParts.push(`⏰ ${ev.heure_debut}${ev.heure_fin ? ` – ${ev.heure_fin}` : ''}`);
+        if (ev.lieu) bodyParts.push(`📍 ${ev.lieu}`);
+        if (mesCreneaux.length > 0) {
+          bodyParts.push('');
+          bodyParts.push('📋 Vos créneaux :');
+          mesCreneaux.forEach(cr => {
+            bodyParts.push(`  • ${cr.eleveNom} : ${cr.heureDebut} – ${cr.heureFin}`);
+          });
+        }
+
+        return {
+          id: `event-${ev.id}`,
+          title: ev.titre,
+          body: bodyParts.filter(p => p !== undefined).join('\n'),
+          type: ev.type_evenement,
+          isPinned: ev.type_evenement === 'REUNION' && mesCreneaux.length > 0,
+          isActive: true,
+          dateDebut: ev.date_debut,
+          dateFin: ev.date_fin,
+          creneaux: mesCreneaux,
+          createdAt: ev.created_at,
+          expiresAt: ev.date_fin ? new Date(ev.date_fin + 'T23:59:59') : null,
+        };
+      });
 
       res.json([...inscriptionEvents, ...eventCards, ...annonces]);
     } catch (err) {

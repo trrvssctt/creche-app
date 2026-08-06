@@ -61,12 +61,13 @@ const TYPES_EVENEMENT: {
   id: TypeEvenement; label: string; icon: any; color: string; emoji: string;
 }[] = [
   { id: 'SORTIE',     label: 'Sortie scolaire',         icon: MapPin,       color: 'teal',   emoji: '🚌' },
-  { id: 'REUNION',    label: 'Réunion parents-profs',   icon: Users,        color: 'blue',   emoji: '👥' },
   { id: 'FETE',       label: 'Fête / Spectacle',        icon: PartyPopper,  color: 'violet', emoji: '🎉' },
   { id: 'EXAMEN',     label: 'Évaluation / Composition',icon: BookOpen,     color: 'amber',  emoji: '📝' },
   { id: 'FERMETURE',  label: 'Fermeture exceptionnelle',icon: Home,         color: 'rose',   emoji: '🔒' },
   { id: 'INFO',       label: 'Information générale',    icon: Megaphone,    color: 'slate',  emoji: '📢' },
 ];
+
+const REUNION_TYPE_INFO = { id: 'REUNION' as TypeEvenement, label: 'Réunion parents-profs', icon: Users, color: 'blue', emoji: '👥' };
 
 const STATUTS: { id: StatutEvenement; label: string; color: string }[] = [
   { id: 'BROUILLON', label: 'Brouillon', color: 'bg-slate-100 text-slate-600' },
@@ -98,8 +99,8 @@ function rawToEvenement(raw: any): Evenement {
     typeEvenement: (raw.typeEvenement || 'INFO') as TypeEvenement,
     statut:        (raw.statut || 'BROUILLON') as StatutEvenement,
     description:   raw.description || '',
-    dateDebut:     raw.dateDebut || raw.date_debut || '',
-    dateFin:       raw.dateFin   || raw.date_fin,
+    dateDebut:     (raw.dateDebut || raw.date_debut || '').toString().slice(0, 10),
+    dateFin:       (raw.dateFin || raw.date_fin || '').toString().slice(0, 10) || undefined,
     heureDebut:    raw.heureDebut || raw.heure_debut,
     heureFin:      raw.heureFin  || raw.heure_fin,
     lieu:          raw.lieu,
@@ -121,7 +122,8 @@ function toPayload(ev: Omit<Evenement, 'id' | 'dateCreation'>) {
 }
 
 function getTypeInfo(id: TypeEvenement) {
-  return TYPES_EVENEMENT.find(t => t.id === id) ?? TYPES_EVENEMENT[5];
+  if (id === 'REUNION') return REUNION_TYPE_INFO;
+  return TYPES_EVENEMENT.find(t => t.id === id) ?? TYPES_EVENEMENT[4];
 }
 
 function formatDateFr(iso: string): string {
@@ -261,91 +263,174 @@ function CalendrierMensuel({
 
 // ─── Sous-composant ajout créneau ────────────────────────────────────────────
 
+const STATUTS_ELEVE_ACTIFS = ['ADMIS', 'INSCRIT', 'ACTIF'];
+
+function getEleveNom(el: any): string {
+  const nom = el.nom || el.lastName || '';
+  const prenom = el.prenom || el.firstName || '';
+  return (nom || prenom) ? `${nom} ${prenom}`.trim() : 'Élève';
+}
+
 function CreneauAddRow({
   eleves,
   niveauxCibles,
   existingIds,
   lastHeureFin,
+  plageDebut,
+  plageFin,
   onAdd,
 }: {
   eleves: any[];
   niveauxCibles: ('TOUS' | NiveauScolaire)[];
   existingIds: string[];
   lastHeureFin: string;
+  plageDebut: string;
+  plageFin: string;
   onAdd: (cr: CreneauRdv) => void;
 }) {
   const [eleveId, setEleveId] = useState('');
-  const [hDebut, setHDebut] = useState(lastHeureFin);
+  const [eleveSearch, setEleveSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [hDebut, setHDebut] = useState(lastHeureFin || plageDebut);
   const [hFin, setHFin] = useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => { setHDebut(lastHeureFin); }, [lastHeureFin]);
+  React.useEffect(() => { setHDebut(lastHeureFin || plageDebut); }, [lastHeureFin, plageDebut]);
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const elevesFiltres = useMemo(() => {
     return eleves
       .filter(e => {
-        const statut = e.statut || e.status || 'ACTIF';
-        if (!(statut === 'ACTIF' || e.isActive || e.is_active)) return false;
+        const statut = (e.statut || e.status || '').toUpperCase();
+        if (!STATUTS_ELEVE_ACTIFS.includes(statut)) return false;
         if (existingIds.includes(e.id)) return false;
         if (niveauxCibles.includes('TOUS')) return true;
         const niveau = e.niveau || e.niveauScolaire || '';
         return niveauxCibles.includes(niveau as NiveauScolaire);
       })
       .sort((a: any, b: any) => {
-        const na = (a.lastName || a.nom || '').toLowerCase();
-        const nb = (b.lastName || b.nom || '').toLowerCase();
+        const na = (a.nom || '').toLowerCase();
+        const nb = (b.nom || '').toLowerCase();
         return na.localeCompare(nb);
       });
   }, [eleves, niveauxCibles, existingIds]);
 
+  const elevesVisible = useMemo(() => {
+    if (!eleveSearch.trim()) return elevesFiltres;
+    const q = eleveSearch.toLowerCase();
+    return elevesFiltres.filter(el => {
+      const nom = getEleveNom(el).toLowerCase();
+      const niveau = (el.niveau || '').toLowerCase();
+      return nom.includes(q) || niveau.includes(q);
+    });
+  }, [elevesFiltres, eleveSearch]);
+
+  const isHorValid = hDebut && hFin && hFin > hDebut
+    && (!plageDebut || hDebut >= plageDebut)
+    && (!plageFin || hFin <= plageFin);
+
+  const selectEleve = (el: any) => {
+    setEleveId(el.id);
+    const niveau = el.niveau || '';
+    const niveauLabel = NIVEAUX_LABELS[niveau] || niveau;
+    setEleveSearch(`${getEleveNom(el)}${niveauLabel ? ` (${niveauLabel})` : ''}`);
+    setShowDropdown(false);
+  };
+
   const handleAdd = () => {
-    if (!eleveId || !hDebut || !hFin) return;
+    if (!eleveId || !isHorValid) return;
     const el = eleves.find(e => e.id === eleveId);
     if (!el) return;
-    const nom = el.lastName || el.nom
-      ? `${el.lastName || el.nom || ''} ${el.firstName || el.prenom || ''}`.trim()
-      : el.companyName || el.name || 'Élève';
-    onAdd({ eleveId, eleveNom: nom, heureDebut: hDebut, heureFin: hFin });
+    onAdd({ eleveId, eleveNom: getEleveNom(el), heureDebut: hDebut, heureFin: hFin });
     setEleveId('');
+    setEleveSearch('');
     setHDebut(hFin);
     setHFin('');
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
-      <div className="flex-1 min-w-[140px]">
-        <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Élève</label>
-        <select
-          value={eleveId}
-          onChange={e => setEleveId(e.target.value)}
-          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+        <div className="flex-1 min-w-[220px] relative" ref={dropdownRef}>
+          <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Élève</label>
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={eleveSearch}
+              onChange={e => { setEleveSearch(e.target.value); setEleveId(''); setShowDropdown(true); }}
+              onFocus={() => setShowDropdown(true)}
+              placeholder="Rechercher un élève..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {showDropdown && (
+            <div className="absolute z-30 left-0 right-0 bottom-full mb-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+              {elevesVisible.length === 0 ? (
+                <p className="text-xs text-slate-400 px-3 py-2">Aucun élève trouvé</p>
+              ) : (
+                elevesVisible.map((el: any) => {
+                  const niveau = el.niveau || '';
+                  const niveauLabel = NIVEAUX_LABELS[niveau] || niveau;
+                  return (
+                    <button
+                      key={el.id}
+                      type="button"
+                      onClick={() => selectEleve(el)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between gap-2 border-b border-slate-50 last:border-0"
+                    >
+                      <span className="font-medium text-slate-800 truncate">{getEleveNom(el)}</span>
+                      {niveauLabel && <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded shrink-0">{niveauLabel}</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+          {elevesFiltres.length === 0 && (
+            <p className="text-[10px] text-amber-600 mt-1">Aucun élève disponible pour ce(s) niveau(x)</p>
+          )}
+          {elevesFiltres.length > 0 && !showDropdown && !eleveId && (
+            <p className="text-[10px] text-slate-400 mt-0.5">{elevesFiltres.length} élève(s) disponible(s)</p>
+          )}
+        </div>
+        <div className="w-[110px]">
+          <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Début</label>
+          <input type="time" value={hDebut} onChange={e => setHDebut(e.target.value)}
+            min={plageDebut || undefined} max={plageFin || undefined}
+            className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div className="w-[110px]">
+          <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Fin</label>
+          <input type="time" value={hFin} onChange={e => setHFin(e.target.value)}
+            min={hDebut || plageDebut || undefined} max={plageFin || undefined}
+            className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!eleveId || !isHorValid}
+          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <option value="">— Choisir —</option>
-          {elevesFiltres.map((el: any) => {
-            const nom = el.lastName || el.nom
-              ? `${el.lastName || el.nom || ''} ${el.firstName || el.prenom || ''}`.trim()
-              : el.companyName || el.name || 'Élève';
-            return <option key={el.id} value={el.id}>{nom}</option>;
-          })}
-        </select>
+          <Plus size={13} className="inline -mt-0.5" /> Ajouter
+        </button>
       </div>
-      <div className="w-[100px]">
-        <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Début</label>
-        <input type="time" value={hDebut} onChange={e => setHDebut(e.target.value)}
-          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-      </div>
-      <div className="w-[100px]">
-        <label className="text-[10px] font-semibold text-slate-400 block mb-0.5">Fin</label>
-        <input type="time" value={hFin} onChange={e => setHFin(e.target.value)}
-          className="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-      </div>
-      <button
-        type="button"
-        onClick={handleAdd}
-        disabled={!eleveId || !hDebut || !hFin}
-        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <Plus size={13} className="inline -mt-0.5" /> Ajouter
-      </button>
+      {hDebut && hFin && hFin <= hDebut && (
+        <p className="text-[10px] text-rose-500 px-1">L'heure de fin doit être après l'heure de début</p>
+      )}
+      {plageDebut && hDebut && hDebut < plageDebut && (
+        <p className="text-[10px] text-rose-500 px-1">L'heure de début ne peut pas être avant {plageDebut}</p>
+      )}
+      {plageFin && hFin && hFin > plageFin && (
+        <p className="text-[10px] text-rose-500 px-1">L'heure de fin ne peut pas dépasser {plageFin}</p>
+      )}
     </div>
   );
 }
@@ -358,11 +443,20 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const canModify = authBridge.canPerform(user, 'EDIT', 'evenements') && !isReadOnly;
 
   // --- état général
-  const [activeTab, setActiveTab] = useState<'liste' | 'calendrier'>('liste');
+  const [activeTab, setActiveTab] = useState<'liste' | 'calendrier' | 'rdv'>('liste');
   const [events, setEvents] = useState<Evenement[]>([]);
   const [loading, setLoading] = useState(true);
   const [eleves, setEleves] = useState<any[]>([]);
   const [loadingEleves, setLoadingEleves] = useState(false);
+
+  // --- formulaire RDV dédié
+  const [rdvForm, setRdvForm] = useState<Omit<Evenement, 'id' | 'dateCreation'>>({
+    ...emptyForm(),
+    typeEvenement: 'REUNION',
+    titre: 'Réunion parents-professeurs',
+  });
+  const [rdvEditing, setRdvEditing] = useState<string | null>(null);
+  const [rdvSaving, setRdvSaving] = useState(false);
 
   // --- filtres liste
   const [search, setSearch] = useState('');
@@ -409,29 +503,32 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
     })();
   }, []);
 
-  // ── Charger élèves ─────────────────────────────────────────────────────────
+  // ── Charger élèves de l'année scolaire courante ─────────────────────────────
 
   useEffect(() => {
     (async () => {
       setLoadingEleves(true);
-      try { setEleves(await apiClient.get('/customers') || []); }
-      catch { /* silencieux */ }
+      try {
+        const data = await apiClient.get('/eleves', { params: { anneeScolaire: anneeScolaire } });
+        const list = Array.isArray(data) ? data : (data?.rows ?? data?.eleves ?? []);
+        setEleves(list);
+      } catch { /* silencieux */ }
       finally { setLoadingEleves(false); }
     })();
-  }, []);
+  }, [anneeScolaire]);
 
   // ── Filtres ────────────────────────────────────────────────────────────────
 
-  // Bornes de l'année scolaire sélectionnée (ex: "2025-2026" → sept 2025 – août 2026)
   const anneeRange = useMemo(() => {
     const [sy, ey] = anneeScolaire.split('-');
-    return { debut: `${sy}-09-01`, fin: `${ey}-08-31` };
+    return { debut: `${sy}-08-01`, fin: `${ey}-08-31` };
   }, [anneeScolaire]);
 
   const filtered = useMemo(() => {
     return events
       .filter(ev => {
-        const matchAnnee = ev.dateDebut >= anneeRange.debut && ev.dateDebut <= anneeRange.fin;
+        const d = typeof ev.dateDebut === 'string' ? ev.dateDebut.slice(0, 10) : '';
+        const matchAnnee = d >= anneeRange.debut && d <= anneeRange.fin;
         const matchSearch = ev.titre.toLowerCase().includes(search.toLowerCase()) ||
           ev.description.toLowerCase().includes(search.toLowerCase());
         const matchType   = filterType   === 'ALL' || ev.typeEvenement === filterType;
@@ -449,12 +546,12 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const kpis = useMemo(() => {
     const now = isoToday();
     return {
-      total: events.length,
-      avenir: events.filter(e => e.dateDebut >= now && e.statut !== 'ANNULE').length,
-      publie: events.filter(e => e.statut === 'PUBLIE').length,
-      diffuse: events.filter(e => e.diffuse).length,
+      total: filtered.length,
+      avenir: filtered.filter(e => e.dateDebut >= now && e.statut !== 'ANNULE').length,
+      publie: filtered.filter(e => e.statut === 'PUBLIE').length,
+      diffuse: filtered.filter(e => e.diffuse).length,
     };
-  }, [events]);
+  }, [filtered]);
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
@@ -526,15 +623,15 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
   const handleOpenDiffusion = (ev: Evenement) => {
     const message = buildWaMessage(ev);
     const cibles = eleves.filter(e => {
-      const statut = e.statut || e.status || 'ACTIF';
-      if (!(statut === 'ACTIF' || e.isActive || e.is_active)) return false;
+      const statut = (e.statut || '').toUpperCase();
+      if (!STATUTS_ELEVE_ACTIFS.includes(statut)) return false;
       if (ev.niveauxCibles.includes('TOUS')) return true;
-      const niveau = e.niveau || e.niveauScolaire || '';
-      return ev.niveauxCibles.includes(niveau);
+      return ev.niveauxCibles.includes(e.niveau || '');
     });
     const links = cibles.map(e => {
-      const nom = e.companyName || e.name || '';
-      const phone = e.parent1Whatsapp || e.parent1Tel || e.phone || e.contact || '';
+      const nom = getEleveNom(e);
+      const parent1 = e.parent1 || {};
+      const phone = e.whatsapp_principal || e.whatsappPrincipal || parent1.telephone || parent1.whatsapp || '';
       return { nom, phone, link: phone ? buildWaLink(phone, message) : '' };
     });
     setDiffusionLinks(links);
@@ -637,8 +734,9 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
         {([
-          ['liste',      'Liste',      Bell],
-          ['calendrier', 'Calendrier', CalendarDays],
+          ['liste',      'Liste',                Bell],
+          ['calendrier', 'Calendrier',            CalendarDays],
+          ['rdv',        'Créneaux de rendez-vous', Users],
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
@@ -672,6 +770,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
             >
               <option value="ALL">Tous les types</option>
               {TYPES_EVENEMENT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              <option value="REUNION">{REUNION_TYPE_INFO.label}</option>
             </select>
             <select
               value={filterStatut}
@@ -758,13 +857,13 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                         {ev.typeEvenement === 'REUNION' && ev.creneaux.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <span className="text-[10px] font-semibold text-blue-600">{ev.creneaux.length} créneau(x) :</span>
-                            {ev.creneaux.slice(0, 4).map((cr, i) => (
+                            {ev.creneaux.slice(0, 5).map((cr, i) => (
                               <span key={i} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
                                 {cr.eleveNom} ({cr.heureDebut}–{cr.heureFin})
                               </span>
                             ))}
-                            {ev.creneaux.length > 4 && (
-                              <span className="text-[10px] text-slate-400">+{ev.creneaux.length - 4} autres</span>
+                            {ev.creneaux.length > 5 && (
+                              <span className="text-[10px] text-slate-400">+{ev.creneaux.length - 5} autres</span>
                             )}
                           </div>
                         )}
@@ -779,14 +878,7 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                             <CheckCircle2 size={12} /> Publier
                           </button>
                         )}
-                        {ev.statut === 'PUBLIE' && !ev.diffuse && canModify && (
-                          <button
-                            onClick={() => handleOpenDiffusion(ev)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700"
-                          >
-                            <MessageSquare size={12} /> Diffuser WhatsApp
-                          </button>
-                        )}
+                        {/* Diffusion WhatsApp masquée */}
                         {canModify && (
                           <button
                             onClick={() => handleOpenEdit(ev)}
@@ -872,6 +964,363 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                   );
                 })}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ONGLET CRÉNEAUX DE RENDEZ-VOUS ─────────────────────────────────── */}
+      {activeTab === 'rdv' && (
+        <div className="space-y-6">
+          {/* Liste des RDV existants */}
+          {(() => {
+            const rdvEvents = events.filter(ev => ev.typeEvenement === 'REUNION' && ev.creneaux.length > 0);
+            return rdvEvents.length > 0 ? (
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                  <CalendarDays size={15} className="text-blue-500" /> Rendez-vous planifiés
+                </h3>
+                {rdvEvents.map(ev => {
+                  const statut = STATUTS.find(s => s.id === ev.statut)!;
+                  return (
+                    <div key={ev.id} className="bg-white rounded-2xl border border-blue-200 overflow-hidden">
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <span className="text-lg">👥</span>
+                              <h4 className="font-bold text-slate-800 text-sm">{ev.titre}</h4>
+                              <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${statut.color}`}>
+                                {statut.label}
+                              </span>
+                              {ev.diffuse && (
+                                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                  📤 Diffusé
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
+                              <span className="flex items-center gap-1"><CalendarDays size={11} />{formatDateShort(ev.dateDebut)}</span>
+                              {ev.heureDebut && <span className="flex items-center gap-1"><Clock size={11} />{ev.heureDebut}{ev.heureFin ? ` – ${ev.heureFin}` : ''}</span>}
+                              {ev.lieu && <span className="flex items-center gap-1"><MapPin size={11} />{ev.lieu}</span>}
+                              <span className="flex items-center gap-1">
+                                <Users size={11} />
+                                {ev.niveauxCibles.includes('TOUS') ? 'Tous' : ev.niveauxCibles.map(n => NIVEAUX_LABELS[n] ?? n).join(', ')}
+                              </span>
+                            </div>
+                          </div>
+                          {canModify && (
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={() => {
+                                  setRdvEditing(ev.id);
+                                  setRdvForm({
+                                    titre: ev.titre, typeEvenement: 'REUNION', statut: ev.statut,
+                                    description: ev.description, dateDebut: ev.dateDebut, dateFin: ev.dateFin,
+                                    heureDebut: ev.heureDebut, heureFin: ev.heureFin, lieu: ev.lieu,
+                                    niveauxCibles: ev.niveauxCibles, diffuse: ev.diffuse, creneaux: ev.creneaux || [],
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50" title="Modifier"
+                              >
+                                <Edit3 size={14} className="text-slate-500" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(ev.id)}
+                                className="p-1.5 rounded-lg border border-rose-100 hover:bg-rose-50" title="Supprimer"
+                              >
+                                <Trash2 size={14} className="text-rose-400" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {/* Tableau des créneaux */}
+                        <div className="mt-3 border border-blue-100 rounded-xl overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-blue-50 text-blue-700">
+                                <th className="px-3 py-2 text-left font-semibold">Élève</th>
+                                <th className="px-3 py-2 text-left font-semibold w-24">Début</th>
+                                <th className="px-3 py-2 text-left font-semibold w-24">Fin</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-blue-50">
+                              {ev.creneaux.map((cr, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  <td className="px-3 py-2 font-medium text-slate-800">{cr.eleveNom}</td>
+                                  <td className="px-3 py-2 text-slate-600">{cr.heureDebut}</td>
+                                  <td className="px-3 py-2 text-slate-600">{cr.heureFin}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null;
+          })()}
+
+          {/* Formulaire de création/édition RDV */}
+          {canModify && (
+            <div className="space-y-4">
+              {/* ── Card 1 : Informations du rendez-vous ── */}
+              <div className="bg-white rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
+                <div className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
+                      <Users size={18} className="text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-sm">
+                        {rdvEditing ? 'Modifier le rendez-vous' : 'Nouveau rendez-vous parents-professeurs'}
+                      </h3>
+                      <p className="text-blue-100 text-[11px]">Planifiez un horaire de passage pour chaque élève</p>
+                    </div>
+                  </div>
+                  {rdvEditing && (
+                    <button
+                      onClick={() => {
+                        setRdvEditing(null);
+                        setRdvForm({ ...emptyForm(), typeEvenement: 'REUNION', titre: 'Réunion parents-professeurs' });
+                      }}
+                      className="text-white/80 hover:text-white text-xs flex items-center gap-1"
+                    >
+                      <X size={14} /> Annuler
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-5 space-y-4">
+                  {/* Titre + Date + Plage sur 2 lignes compactes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">Titre du rendez-vous</label>
+                      <input
+                        value={rdvForm.titre}
+                        onChange={e => setRdvForm(f => ({ ...f, titre: e.target.value }))}
+                        placeholder="Ex : Réunion parents-professeurs T1..."
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">Date *</label>
+                      <input type="date" value={rdvForm.dateDebut}
+                        onChange={e => setRdvForm(f => ({ ...f, dateDebut: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">Plage début *</label>
+                      <input type="time" value={rdvForm.heureDebut ?? ''}
+                        onChange={e => setRdvForm(f => ({ ...f, heureDebut: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">Plage fin *</label>
+                      <input type="time" value={rdvForm.heureFin ?? ''}
+                        onChange={e => setRdvForm(f => ({ ...f, heureFin: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">Lieu</label>
+                      <input
+                        value={rdvForm.lieu ?? ''}
+                        onChange={e => setRdvForm(f => ({ ...f, lieu: e.target.value }))}
+                        placeholder="Ex : Salle de classe, Bureau directrice..."
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 block mb-1">Consignes / Message aux parents</label>
+                    <textarea
+                      rows={2}
+                      value={rdvForm.description}
+                      onChange={e => setRdvForm(f => ({ ...f, description: e.target.value }))}
+                      placeholder="Ex : Veuillez vous présenter 5 minutes avant votre créneau..."
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Niveaux + Statut côte à côte */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">Niveaux concernés</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          onClick={() => setRdvForm(f => ({ ...f, niveauxCibles: ['TOUS'] }))}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all
+                            ${rdvForm.niveauxCibles.includes('TOUS') ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'}`}
+                        >
+                          Tous
+                        </button>
+                        {NIVEAUX_SCOLAIRES.map(n => (
+                          <button
+                            key={n}
+                            onClick={() => {
+                              setRdvForm(f => {
+                                if (n === 'TOUS') return { ...f, niveauxCibles: ['TOUS'] };
+                                const without = f.niveauxCibles.filter(x => x !== 'TOUS' && x !== n);
+                                const withN = f.niveauxCibles.includes(n) ? without : [...without, n];
+                                return { ...f, niveauxCibles: withN.length === 0 ? ['TOUS'] : withN };
+                              });
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all
+                              ${rdvForm.niveauxCibles.includes(n) && !rdvForm.niveauxCibles.includes('TOUS')
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'}`}
+                          >
+                            {NIVEAUX_LABELS[n]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">Statut</label>
+                      <div className="flex gap-2">
+                        {STATUTS.map(s => (
+                          <button
+                            key={s.id}
+                            onClick={() => setRdvForm(f => ({ ...f, statut: s.id }))}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all
+                              ${rdvForm.statut === s.id ? s.color + ' border-current' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Card 2 : Créneaux par élève ── */}
+              <div className="bg-white rounded-2xl border border-blue-200 shadow-sm">
+                <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 rounded-t-2xl flex items-center justify-between">
+                  <label className="text-xs font-bold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <Clock size={13} /> Créneaux par élève
+                    {rdvForm.creneaux.length > 0 && (
+                      <span className="ml-1 bg-blue-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{rdvForm.creneaux.length}</span>
+                    )}
+                  </label>
+                  {rdvForm.heureDebut && rdvForm.heureFin && (
+                    <span className="text-[10px] font-semibold text-blue-600 bg-white px-2.5 py-1 rounded-lg border border-blue-200">
+                      Plage : {rdvForm.heureDebut} → {rdvForm.heureFin}
+                    </span>
+                  )}
+                </div>
+
+                <div className="p-5">
+                  {!rdvForm.heureDebut || !rdvForm.heureFin ? (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-center gap-1.5">
+                      <AlertTriangle size={12} /> Définissez la plage horaire (début et fin) ci-dessus avant d'ajouter des créneaux.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {rdvForm.creneaux.length > 0 && (
+                        <div className="border border-blue-100 rounded-xl overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-blue-50 text-blue-700">
+                                <th className="px-3 py-2 text-left font-semibold">Élève</th>
+                                <th className="px-3 py-2 text-left font-semibold w-24">Début</th>
+                                <th className="px-3 py-2 text-left font-semibold w-24">Fin</th>
+                                <th className="px-3 py-2 w-10"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-blue-50">
+                              {rdvForm.creneaux.map((cr, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50">
+                                  <td className="px-3 py-2 font-medium text-slate-800">{cr.eleveNom}</td>
+                                  <td className="px-3 py-2 text-slate-600">{cr.heureDebut}</td>
+                                  <td className="px-3 py-2 text-slate-600">{cr.heureFin}</td>
+                                  <td className="px-3 py-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setRdvForm(f => ({ ...f, creneaux: f.creneaux.filter((_, i) => i !== idx) }))}
+                                      className="p-1 rounded hover:bg-rose-50"
+                                    >
+                                      <X size={13} className="text-rose-400" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <CreneauAddRow
+                        eleves={eleves}
+                        niveauxCibles={rdvForm.niveauxCibles}
+                        existingIds={rdvForm.creneaux.map(c => c.eleveId)}
+                        lastHeureFin={rdvForm.creneaux.length > 0 ? rdvForm.creneaux[rdvForm.creneaux.length - 1].heureFin : (rdvForm.heureDebut || '08:00')}
+                        plageDebut={rdvForm.heureDebut || ''}
+                        plageFin={rdvForm.heureFin || ''}
+                        onAdd={(cr) => setRdvForm(f => ({ ...f, creneaux: [...f.creneaux, cr] }))}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Bouton de soumission ── */}
+              <div className="flex items-center justify-end gap-3 pb-4">
+                {rdvEditing && (
+                  <button
+                    onClick={() => {
+                      setRdvEditing(null);
+                      setRdvForm({ ...emptyForm(), typeEvenement: 'REUNION', titre: 'Réunion parents-professeurs' });
+                    }}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm hover:bg-slate-50"
+                  >
+                    Annuler
+                  </button>
+                )}
+                <button
+                  disabled={rdvSaving || !rdvForm.titre || !rdvForm.dateDebut || rdvForm.creneaux.length === 0}
+                  onClick={async () => {
+                    if (!rdvForm.titre || !rdvForm.dateDebut) { showToast('Titre et date obligatoires.', 'error'); return; }
+                    if (rdvForm.creneaux.length === 0) { showToast('Ajoutez au moins un créneau élève.', 'error'); return; }
+                    setRdvSaving(true);
+                    try {
+                      if (rdvEditing) {
+                        const raw = await apiClient.put(`/school-events/${rdvEditing}`, toPayload(rdvForm));
+                        setEvents(prev => prev.map(e => e.id === rdvEditing ? rawToEvenement(raw) : e));
+                        showToast('Rendez-vous mis à jour.', 'success');
+                      } else {
+                        const raw = await apiClient.post('/school-events', toPayload(rdvForm));
+                        setEvents(prev => [rawToEvenement(raw), ...prev]);
+                        showToast('Rendez-vous créé.', 'success');
+                      }
+                      setRdvEditing(null);
+                      setRdvForm({ ...emptyForm(), typeEvenement: 'REUNION', titre: 'Réunion parents-professeurs' });
+                    } catch {
+                      showToast('Erreur lors de la sauvegarde.', 'error');
+                    } finally {
+                      setRdvSaving(false);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-blue-600/25"
+                >
+                  {rdvSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  {rdvEditing ? 'Enregistrer' : 'Créer le rendez-vous'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Message si pas le droit de modifier */}
+          {!canModify && events.filter(ev => ev.typeEvenement === 'REUNION' && ev.creneaux.length > 0).length === 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center">
+              <Users size={40} className="mx-auto text-slate-300 mb-4" />
+              <p className="text-slate-500 font-medium">Aucun rendez-vous planifié</p>
             </div>
           )}
         </div>
@@ -999,45 +1448,6 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                   ))}
                 </div>
               </div>
-
-              {/* Créneaux RDV — uniquement pour REUNION */}
-              {form.typeEvenement === 'REUNION' && (
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">
-                    Créneaux de rendez-vous
-                  </label>
-                  <p className="text-xs text-slate-400 mb-3">Planifiez un horaire de passage pour chaque élève.</p>
-
-                  {/* Liste des créneaux existants */}
-                  {form.creneaux.length > 0 && (
-                    <div className="space-y-2 mb-3">
-                      {form.creneaux.map((cr, idx) => (
-                        <div key={idx} className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
-                          <Users size={13} className="text-blue-500 shrink-0" />
-                          <span className="text-sm font-medium text-slate-800 flex-1 truncate">{cr.eleveNom}</span>
-                          <span className="text-xs text-slate-500">{cr.heureDebut} – {cr.heureFin}</span>
-                          <button
-                            type="button"
-                            onClick={() => setForm(f => ({ ...f, creneaux: f.creneaux.filter((_, i) => i !== idx) }))}
-                            className="p-1 rounded hover:bg-blue-100"
-                          >
-                            <X size={13} className="text-slate-400" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Formulaire ajout créneau */}
-                  <CreneauAddRow
-                    eleves={eleves}
-                    niveauxCibles={form.niveauxCibles}
-                    existingIds={form.creneaux.map(c => c.eleveId)}
-                    lastHeureFin={form.creneaux.length > 0 ? form.creneaux[form.creneaux.length - 1].heureFin : (form.heureDebut || '08:00')}
-                    onAdd={(cr) => setForm(f => ({ ...f, creneaux: [...f.creneaux, cr] }))}
-                  />
-                </div>
-              )}
 
               {/* Statut */}
               <div>
