@@ -89,7 +89,7 @@ const Payments = ({ currency, tenantSettings }: { currency: string; tenantSettin
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const dash = await apiClient.get('/admin/school-dashboard');
+      const dash = await apiClient.get('/school-dashboard');
       setDashData(dash);
     } catch {
       toast('Erreur chargement tableau de bord', 'error');

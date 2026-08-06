@@ -45,6 +45,7 @@ import matieresRoutes from './matieres.routes.js';
 import financeV2Routes from './finance-v2.routes.js';
 import { AuthController } from '../controllers/AuthController.js';
 import { SchoolEventController } from '../controllers/SchoolEventController.js';
+import { AdminController } from '../controllers/AdminController.js';
 
 const router = Router();
 
@@ -145,12 +146,15 @@ router.post('/parent-forgot-password', AuthController.parentForgotPassword);
 router.post('/parent-reset-password',  AuthController.parentResetPassword);
 
 // ── Événements scolaires (agenda → visible à tout le personnel + parents) ────
-const SCHOOL_ROLES = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE', 'ENSEIGNANT', 'MAITRESSE', 'COMPTABLE'];
+const SCHOOL_ROLES = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE', 'ENSEIGNANT', 'MAITRESSE', 'COMPTABLE', 'ACCOUNTANT'];
 const SCHOOL_WRITE = ['ADMIN', 'DIRECTEUR', 'ASSISTANTE'];
 router.get('/school-events',        authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, SchoolEventController.list);
 router.post('/school-events',       authenticateJWT, checkPermission(SCHOOL_WRITE), tenantIsolation, SchoolEventController.upsert);
 router.put('/school-events/:id',    authenticateJWT, checkPermission(SCHOOL_WRITE), tenantIsolation, SchoolEventController.upsert);
 router.delete('/school-events/:id', authenticateJWT, checkPermission(SCHOOL_WRITE), tenantIsolation, SchoolEventController.remove);
+
+// ── Dashboard école (accessible au personnel, pas seulement admin) ───────────
+router.get('/school-dashboard', authenticateJWT, checkPermission(SCHOOL_ROLES), tenantIsolation, AdminController.getSchoolDashboard);
 
 // Subscription upgrade (tenant ADMIN → PENDING, validated by SuperAdmin)
 router.post('/subscription/upgrade', tenantIsolation, checkPermission(['ADMIN']), SubscriptionController.upgradePlan);
