@@ -11,6 +11,7 @@ import { generateRecu } from '../../services/pdfGenerator';
 import type { Ecole, EcheanceForPdf } from '../../services/pdfGenerator';
 import { piecesForNiveau } from '../../services/piecesJustificatives';
 import { apiClient, BASE_URL } from '../../services/api';
+import { authBridge } from '../../services/authBridge';
 
 interface EleveDoc { id: string; eleveId: string; typeDoc: string; nom: string; fileUrl: string; mimeType?: string; fileSize?: number; createdAt: string; }
 interface Enfant   { id: string; nom: string; prenom: string; niveau: string; anneeScolaire?: string; classe?: { nom: string; niveau: string }; [key: string]: any; }
@@ -162,11 +163,14 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
       form.append('eleveId', uploadEleveId);
       form.append('typeDoc', uploadingCode);
       form.append('nom', file.name);
-      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
-      const sess  = localStorage.getItem('sessionToken') || sessionStorage.getItem('sessionToken') || '';
+      const session = authBridge.getSession();
+      const sessionToken = authBridge.getSessionToken();
       await fetch(`${BASE_URL}/api/parent/dossiers/upload`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'x-session-token': sess },
+        headers: {
+          ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+          ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
+        },
         body: form,
       });
       onRefresh?.();
