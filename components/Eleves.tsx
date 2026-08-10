@@ -1949,6 +1949,13 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                             className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                         </div>
                       ))}
+                      <div className="space-y-2 sm:col-span-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Adresse</label>
+                        <input type="text" value={(formData.parent1 as any)?.adresse || ''}
+                          onChange={e => setFormData({ ...formData, parent1: { ...(formData.parent1 as any), adresse: e.target.value } })}
+                          placeholder="Quartier, rue, ville…"
+                          className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                      </div>
                       {/* WhatsApp avec sélecteur indicatif pays */}
                       <div className="space-y-2 sm:col-span-2">
                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">WhatsApp</label>
