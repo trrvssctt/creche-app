@@ -10,7 +10,7 @@ import {
 import { generateRecu } from '../../services/pdfGenerator';
 import type { Ecole, EcheanceForPdf } from '../../services/pdfGenerator';
 import { piecesForNiveau } from '../../services/piecesJustificatives';
-import { apiClient } from '../../services/api';
+import { apiClient, BASE_URL } from '../../services/api';
 
 interface EleveDoc { id: string; eleveId: string; typeDoc: string; nom: string; fileUrl: string; mimeType?: string; fileSize?: number; createdAt: string; }
 interface Enfant   { id: string; nom: string; prenom: string; niveau: string; anneeScolaire?: string; classe?: { nom: string; niveau: string }; [key: string]: any; }
@@ -164,8 +164,7 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
       form.append('nom', file.name);
       const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
       const sess  = localStorage.getItem('sessionToken') || sessionStorage.getItem('sessionToken') || '';
-      const base  = (window as any).__API_BASE__ || '/api';
-      await fetch(`${base}/parent/dossiers/upload`, {
+      await fetch(`${BASE_URL}/api/parent/dossiers/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'x-session-token': sess },
         body: form,
