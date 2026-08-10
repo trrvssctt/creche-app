@@ -56,11 +56,14 @@ export function validatePiecesJointes(pieces) {
 // Pièces obligatoires (mêmes codes que services/piecesJustificatives.ts côté front).
 // Le certificat médical est requis pour tous les cycles.
 const REQUIRED_PIECES = {
-  EXTRAIT_NAISSANCE:  'Extrait de naissance',
-  CARNET_VACCINATION: 'Carnet de vaccination',
-  PHOTOS_IDENTITE:    'Photos d\'identité',
-  CNI_PARENT:         'Pièce d\'identité du parent',
-  CERTIFICAT_MEDICAL: 'Certificat médical',
+  EXTRAIT_NAISSANCE:    'Extrait de naissance',
+  CARNET_VACCINATION:   'Carnet de vaccination',
+  PHOTOS_IDENTITE:      'Photos d\'identité',
+  CNI_PARENT:           'Pièce d\'identité du parent',
+  CERTIFICAT_MEDICAL:   'Certificat médical',
+  LIVRET_SCOLAIRE:      'Livret scolaire',
+  CERTIFICAT_RADIATION: 'Certificat de radiation',
+  CERTIFICAT_SCOLARITE: 'Certificat de scolarité',
 };
 
 // Libellés des pièces obligatoires absentes de la liste fournie

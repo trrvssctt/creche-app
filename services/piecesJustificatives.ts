@@ -25,8 +25,10 @@ export function piecesForNiveau(niveau: string | undefined): PieceJustificative[
   // Maternelle & élémentaire
   return [
     ...COMMUNES,
-    { code: 'CERTIFICAT_MEDICAL', label: 'Certificat médical', obligatoire: true },
-    { code: 'LIVRET_SCOLAIRE',    label: "Livret scolaire ou certificat de radiation de l'ancienne école (en cas de transfert)", obligatoire: false },
+    { code: 'CERTIFICAT_MEDICAL',  label: 'Certificat médical', obligatoire: true },
+    { code: 'LIVRET_SCOLAIRE',     label: 'Livret scolaire', obligatoire: true },
+    { code: 'CERTIFICAT_RADIATION', label: "Certificat de radiation de l'ancienne école", obligatoire: true },
+    { code: 'CERTIFICAT_SCOLARITE', label: 'Certificat de scolarité', obligatoire: true },
   ];
 }
 
