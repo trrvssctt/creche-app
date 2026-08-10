@@ -27,6 +27,7 @@ router.get('/planning',              ParentController.getMonPlanning);
 router.get('/actualites',            ParentController.getActualites);
 router.get('/dossiers',              ParentController.getMesDossiers);
 router.post('/dossiers/upload',      upload.single('file'), ParentController.uploadDocument);
+router.delete('/dossiers/:docId',   ParentController.deleteDocument);
 router.post('/paiement/demander',    ParentController.demanderPaiement);
 router.get('/echeances/:id/recu-pdf',  ParentController.downloadRecuPdf);
 router.post('/factures/envoyer-email', ParentController.sendInvoiceEmail);

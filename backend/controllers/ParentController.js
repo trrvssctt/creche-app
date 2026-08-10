@@ -400,6 +400,23 @@ export class ParentController {
     }
   }
 
+  // DELETE /api/parent/dossiers/:docId
+  static async deleteDocument(req, res) {
+    try {
+      const { tenantId } = req.user;
+      const doc = await EleveDocument.findOne({ where: { id: req.params.docId, tenantId } });
+      if (!doc) return res.status(404).json({ error: 'Document introuvable.' });
+      if (!(await assertOwnsEleve(doc.eleveId, req))) {
+        return res.status(403).json({ error: 'Accès refusé à cet élève.' });
+      }
+      await doc.destroy();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[ParentController] deleteDocument:', err.message);
+      res.status(500).json({ error: 'Erreur serveur', message: err.message });
+    }
+  }
+
   // POST /api/parent/paiement/demander
   static async demanderPaiement(req, res) {
     try {

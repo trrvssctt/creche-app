@@ -2,15 +2,17 @@ import React, { useRef, useState } from 'react';
 import {
   FileText, Upload, Download, Loader2, CheckCircle2, File, FilePlus,
   GraduationCap, ClipboardList, Receipt, FolderOpen, ShieldCheck, Archive,
+  Trash2, AlertCircle, X,
 } from 'lucide-react';
 import {
   downloadAdminDocAsPdf, downloadAdminDocsZip, type DocAdminType,
 } from '../../services/adminDocsPdf';
 import { generateRecu } from '../../services/pdfGenerator';
 import type { Ecole, EcheanceForPdf } from '../../services/pdfGenerator';
+import { piecesForNiveau } from '../../services/piecesJustificatives';
 import { apiClient } from '../../services/api';
 
-interface EleveDoc { id: string; eleveId: string; typeDoc: string; nom: string; fileUrl: string; createdAt: string; }
+interface EleveDoc { id: string; eleveId: string; typeDoc: string; nom: string; fileUrl: string; mimeType?: string; fileSize?: number; createdAt: string; }
 interface Enfant   { id: string; nom: string; prenom: string; niveau: string; anneeScolaire?: string; classe?: { nom: string; niveau: string }; [key: string]: any; }
 interface Echeance { id: string; mois?: string; montant: number | string; statut: string; dateEcheance?: string; datePaiement?: string; eleve?: { nom: string; prenom: string }; service?: { name: string }; periodeLabel?: string; }
 
@@ -29,14 +31,15 @@ const TYPE_LABELS: Record<string, string> = {
   VACCIN:         'Carnet de vaccination',
   JUGEMENT:       'Jugement',
   AUTRE:          'Autre document',
-  // Pièces jointes lors des demandes d'admission
-  EXTRAIT_NAISSANCE:  'Extrait de naissance',
-  CARNET_VACCINATION: 'Carnet de vaccination',
-  PHOTOS_IDENTITE:    "Photos d'identité",
-  CNI_PARENT:         'Pièce d\'identité parent',
-  CERTIFICAT_MEDICAL: 'Certificat médical',
-  ORDONNANCE:         'Ordonnance',
-  LIVRET_SCOLAIRE:    'Livret scolaire',
+  EXTRAIT_NAISSANCE:    'Extrait de naissance',
+  CARNET_VACCINATION:   'Carnet de vaccination',
+  PHOTOS_IDENTITE:      "Photos d'identité",
+  CNI_PARENT:           'Pièce d\'identité parent',
+  CERTIFICAT_MEDICAL:   'Certificat médical',
+  ORDONNANCE:           'Ordonnance',
+  LIVRET_SCOLAIRE:      'Livret scolaire',
+  CERTIFICAT_RADIATION: 'Certificat de radiation',
+  CERTIFICAT_SCOLARITE: 'Certificat de scolarité',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -46,16 +49,17 @@ const TYPE_COLORS: Record<string, string> = {
   VACCIN:         'bg-emerald-50 text-emerald-700 border-emerald-200',
   JUGEMENT:       'bg-amber-50 text-amber-700 border-amber-200',
   AUTRE:          'bg-gray-50 text-gray-700 border-gray-200',
-  EXTRAIT_NAISSANCE:  'bg-blue-50 text-blue-700 border-blue-200',
-  CARNET_VACCINATION: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  PHOTOS_IDENTITE:    'bg-purple-50 text-purple-700 border-purple-200',
-  CNI_PARENT:         'bg-indigo-50 text-indigo-700 border-indigo-200',
-  CERTIFICAT_MEDICAL: 'bg-rose-50 text-rose-700 border-rose-200',
-  ORDONNANCE:         'bg-rose-50 text-rose-700 border-rose-200',
-  LIVRET_SCOLAIRE:    'bg-amber-50 text-amber-700 border-amber-200',
+  EXTRAIT_NAISSANCE:    'bg-blue-50 text-blue-700 border-blue-200',
+  CARNET_VACCINATION:   'bg-emerald-50 text-emerald-700 border-emerald-200',
+  PHOTOS_IDENTITE:      'bg-purple-50 text-purple-700 border-purple-200',
+  CNI_PARENT:           'bg-indigo-50 text-indigo-700 border-indigo-200',
+  CERTIFICAT_MEDICAL:   'bg-rose-50 text-rose-700 border-rose-200',
+  ORDONNANCE:           'bg-rose-50 text-rose-700 border-rose-200',
+  LIVRET_SCOLAIRE:      'bg-amber-50 text-amber-700 border-amber-200',
+  CERTIFICAT_RADIATION: 'bg-orange-50 text-orange-700 border-orange-200',
+  CERTIFICAT_SCOLARITE: 'bg-teal-50 text-teal-700 border-teal-200',
 };
 
-// Documents générés lors de l'inscription — mêmes gabarits que la direction
 const DOCS_INSCRIPTION: { type: DocAdminType; label: string; icon: React.FC<any>; color: string; desc: string }[] = [
   {
     type: 'fiche_inscription',
@@ -91,16 +95,15 @@ const DOCS_INSCRIPTION: { type: DocAdminType; label: string; icon: React.FC<any>
 
 const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole, onRefresh }) => {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [eleveId, setEleveId]       = useState(enfants[0]?.id || '');
-  const [typeDoc, setTypeDoc]       = useState('AUTRE');
-  const [uploading, setUploading]   = useState(false);
-  const [uploaded, setUploaded]     = useState(false);
+  const [uploadingCode, setUploadingCode] = useState<string | null>(null);
+  const [uploadEleveId, setUploadEleveId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<EleveDoc | null>(null);
   const [pdfLoading, setPdfLoading] = useState<Record<string, boolean>>({});
 
   const setPdf = (key: string, v: boolean) =>
     setPdfLoading(prev => ({ ...prev, [key]: v }));
 
-  // Récupère le dossier complet de l'enfant (champs santé, parents, etc.)
   const withFullEleve = async (enfant: Enfant): Promise<any> => {
     try {
       const full = await apiClient.get(`/parent/enfants/${enfant.id}`);
@@ -110,7 +113,6 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
     }
   };
 
-  // Ouvre le document dans un nouvel onglet + invite à imprimer / enregistrer en PDF
   const handleDoc = async (enfant: Enfant, type: DocAdminType) => {
     const key = `${enfant.id}-${type}`;
     setPdf(key, true);
@@ -128,7 +130,6 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
     } finally { setPdf(key, false); }
   };
 
-  // Télécharge tous les documents du dossier en un seul fichier ZIP
   const handleZip = async (enfant: Enfant) => {
     const key = `${enfant.id}-zip`;
     setPdf(key, true);
@@ -154,13 +155,12 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !eleveId) return;
-    setUploading(true); setUploaded(false);
+    if (!file || !uploadingCode || !uploadEleveId) return;
     try {
       const form = new FormData();
       form.append('file', file);
-      form.append('eleveId', eleveId);
-      form.append('typeDoc', typeDoc);
+      form.append('eleveId', uploadEleveId);
+      form.append('typeDoc', uploadingCode);
       form.append('nom', file.name);
       const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || '';
       const sess  = localStorage.getItem('sessionToken') || sessionStorage.getItem('sessionToken') || '';
@@ -170,9 +170,28 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
         headers: { Authorization: `Bearer ${token}`, 'x-session-token': sess },
         body: form,
       });
-      setUploaded(true); onRefresh?.();
+      onRefresh?.();
     } catch { alert("Erreur lors de l'upload."); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+    finally {
+      setUploadingCode(null);
+      setUploadEleveId(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleDelete = async (doc: EleveDoc) => {
+    setDeleting(doc.id);
+    try {
+      await apiClient.delete(`/parent/dossiers/${doc.id}`);
+      onRefresh?.();
+    } catch { alert('Erreur lors de la suppression.'); }
+    finally { setDeleting(null); setConfirmDelete(null); }
+  };
+
+  const triggerUpload = (eleveId: string, code: string) => {
+    setUploadEleveId(eleveId);
+    setUploadingCode(code);
+    setTimeout(() => fileRef.current?.click(), 50);
   };
 
   const payees = echeances.filter(e => e.statut === 'PAYE');
@@ -219,8 +238,6 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
           <div className="divide-y divide-gray-50">
             {enfants.map((enfant) => (
               <div key={enfant.id} className="p-5">
-
-                {/* Ligne enfant + bouton ZIP */}
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-11 h-11 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl flex items-center justify-center font-black text-indigo-700 text-base flex-shrink-0">
                     {(enfant.prenom?.[0] || '').toUpperCase()}{(enfant.nom?.[0] || '').toUpperCase()}
@@ -243,7 +260,6 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
                   </button>
                 </div>
 
-                {/* Grille des 4 documents */}
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {DOCS_INSCRIPTION.map(({ type, label, icon: Icon, color, desc }) => {
                     const loading = !!pdfLoading[`${enfant.id}-${type}`];
@@ -334,103 +350,233 @@ const ParentDocuments: React.FC<Props> = ({ documents, enfants, echeances, ecole
         )}
       </div>
 
-      {/* ══ Section 3 : Ajouter un document ══════════════════════════════════════ */}
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-dashed border-blue-200 rounded-3xl p-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
-            <FilePlus className="w-5 h-5 text-blue-500" />
-          </div>
-          <div>
-            <p className="font-black text-gray-800 text-sm">Ajouter un document</p>
-            <p className="text-gray-500 text-xs">PDF, JPG, PNG ou DOC — 10 Mo max</p>
-          </div>
-        </div>
+      {/* ══ Section 3 : Dossier justificatif par enfant ══════════════════════════ */}
+      {enfants.map(enfant => {
+        const required = piecesForNiveau(enfant.niveau);
+        const eleveDocuments = documents.filter(d => d.eleveId === enfant.id);
+        const docsByCode: Record<string, EleveDoc[]> = {};
+        eleveDocuments.forEach(d => {
+          const code = d.typeDoc || 'AUTRE';
+          if (!docsByCode[code]) docsByCode[code] = [];
+          docsByCode[code].push(d);
+        });
+        const totalRequired = required.filter(p => p.obligatoire).length;
+        const totalProvided = required.filter(p => p.obligatoire && docsByCode[p.code]?.length).length;
+        const isComplete = totalProvided >= totalRequired;
+        const knownCodes = new Set(required.map(p => p.code));
+        const extras = eleveDocuments.filter(d => !knownCodes.has(d.typeDoc || ''));
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-          {enfants.length > 1 && (
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">Enfant</label>
-              <select value={eleveId} onChange={e => setEleveId(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-blue-200 bg-white text-sm outline-none focus:border-blue-400">
-                {enfants.map(en => <option key={en.id} value={en.id}>{en.prenom} {en.nom}</option>)}
-              </select>
+        return (
+          <div key={enfant.id} className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm">
+
+            {/* Header enfant */}
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-50 bg-gray-50/50">
+              <div className="w-11 h-11 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center font-black text-blue-700 text-base flex-shrink-0">
+                {(enfant.prenom?.[0] || '').toUpperCase()}{(enfant.nom?.[0] || '').toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-gray-800 text-sm">Dossier justificatif — {enfant.prenom} {enfant.nom}</p>
+                <p className="text-gray-400 text-xs mt-0.5">{enfant.classe?.nom || enfant.niveau}{enfant.anneeScolaire ? ` · ${enfant.anneeScolaire}` : ''}</p>
+              </div>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                {isComplete ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                {totalProvided}/{totalRequired}
+              </div>
             </div>
-          )}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1.5">Type de document</label>
-            <select value={typeDoc} onChange={e => setTypeDoc(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-blue-200 bg-white text-sm outline-none focus:border-blue-400">
-              {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-3 mt-5">
-          <input ref={fileRef} type="file" onChange={handleUpload} className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
-          <button onClick={() => fileRef.current?.click()} disabled={uploading || !eleveId}
-            className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold px-6 py-3 rounded-xl text-sm transition shadow-sm hover:shadow-md disabled:opacity-60">
-            {uploading
-              ? <><Loader2 className="w-4 h-4 animate-spin" />Upload en cours…</>
-              : <><Upload className="w-4 h-4" />Choisir un fichier</>}
-          </button>
-          {uploaded && (
-            <span className="text-sm text-emerald-600 flex items-center gap-1.5 font-bold">
-              <CheckCircle2 className="w-4 h-4" /> Document envoyé !
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* ══ Section 4 : Documents enregistrés ════════════════════════════════════ */}
-      <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm">
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-50">
-          <div className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center">
-            <FolderOpen className="w-5 h-5 text-gray-500" />
-          </div>
-          <div>
-            <p className="font-black text-gray-800 text-sm">Documents du dossier</p>
-            <p className="text-gray-400 text-xs">
-              {documents.length} document{documents.length !== 1 ? 's' : ''} enregistré{documents.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-        </div>
-
-        {documents.length === 0 ? (
-          <div className="p-10 text-center">
-            <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium text-sm">Aucun document dans le dossier.</p>
-            <p className="text-gray-400 text-xs mt-1">Utilisez la zone ci-dessus pour en ajouter.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {documents.map(d => {
-              const colorCls = TYPE_COLORS[d.typeDoc] || TYPE_COLORS.AUTRE;
-              return (
-                <div key={d.id} className="px-5 py-4 flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 ${colorCls}`}>
-                    <File className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 text-sm truncate">{d.nom}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {TYPE_LABELS[d.typeDoc] || d.typeDoc}
-                      {' · '}
-                      {new Date(d.createdAt).toLocaleDateString('fr-FR', {
-                        day: 'numeric', month: 'long', year: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  <a href={d.fileUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 px-3.5 py-2 rounded-xl transition flex-shrink-0">
-                    <Download className="w-3.5 h-3.5" /> Ouvrir
-                  </a>
+            {/* Barre de progression */}
+            <div className="px-6 pt-4 pb-2">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${isComplete ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                    style={{ width: `${totalRequired > 0 ? (totalProvided / totalRequired) * 100 : 0}%` }} />
                 </div>
-              );
-            })}
+                <span className={`text-[10px] font-black ${isComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {isComplete ? 'Dossier complet' : `${totalRequired - totalProvided} manquant(s)`}
+                </span>
+              </div>
+            </div>
+
+            {/* Liste des pièces requises */}
+            <div className="px-5 py-3 space-y-2">
+              {required.map(p => {
+                const docs = docsByCode[p.code] || [];
+                const hasDoc = docs.length > 0;
+                const colorCls = TYPE_COLORS[p.code] || TYPE_COLORS.AUTRE;
+                return (
+                  <div key={p.code} className={`rounded-2xl border overflow-hidden transition ${
+                    hasDoc ? 'bg-emerald-50/50 border-emerald-200' : p.obligatoire ? 'bg-rose-50/30 border-rose-200' : 'bg-white border-gray-200'
+                  }`}>
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {hasDoc
+                        ? <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                        : p.obligatoire
+                          ? <AlertCircle size={18} className="text-rose-400 shrink-0" />
+                          : <File size={18} className="text-gray-300 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-700 leading-tight">
+                          {p.label}
+                          {p.obligatoire
+                            ? <span className="text-rose-500 ml-1">*</span>
+                            : <span className="text-gray-400 text-xs font-medium ml-1">(optionnel)</span>}
+                        </p>
+                        {hasDoc && (
+                          <p className="text-[10px] text-emerald-600 font-bold mt-0.5">
+                            {docs.length} fichier{docs.length > 1 ? 's' : ''} fourni{docs.length > 1 ? 's' : ''}
+                          </p>
+                        )}
+                        {!hasDoc && p.obligatoire && (
+                          <p className="text-[10px] text-rose-500 font-bold mt-0.5">Manquant — veuillez le soumettre</p>
+                        )}
+                      </div>
+
+                      {/* Upload button */}
+                      <button
+                        onClick={() => triggerUpload(enfant.id, p.code)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+                          hasDoc
+                            ? 'text-gray-500 bg-gray-100 hover:bg-gray-200 border border-gray-200'
+                            : 'text-white bg-blue-500 hover:bg-blue-600 shadow-sm'
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {hasDoc ? 'Ajouter' : 'Soumettre'}
+                      </button>
+                    </div>
+
+                    {/* Documents fournis pour cette pièce */}
+                    {hasDoc && (
+                      <div className="border-t border-emerald-100 bg-white/60 px-4 py-2 space-y-1.5">
+                        {docs.map(doc => (
+                          <div key={doc.id} className="flex items-center gap-3 py-1.5">
+                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${colorCls}`}>
+                              <File className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-gray-700 truncate">{doc.nom}</p>
+                              <p className="text-[9px] text-gray-400">
+                                {new Date(doc.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                {doc.fileSize ? ` · ${(Number(doc.fileSize) / 1024).toFixed(0)} Ko` : ''}
+                              </p>
+                            </div>
+                            <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg transition shrink-0">
+                              <Download className="w-3 h-3" /> Ouvrir
+                            </a>
+                            <button
+                              onClick={() => setConfirmDelete(doc)}
+                              disabled={deleting === doc.id}
+                              className="flex items-center gap-1 text-[10px] font-bold text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-lg transition shrink-0 disabled:opacity-50"
+                            >
+                              {deleting === doc.id
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <Trash2 className="w-3 h-3" />}
+                              Supprimer
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Documents supplémentaires hors liste requise */}
+              {extras.length > 0 && (
+                <>
+                  <div className="border-t border-gray-200 pt-3 mt-3">
+                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Documents supplémentaires</p>
+                  </div>
+                  {extras.map(doc => {
+                    const colorCls = TYPE_COLORS[doc.typeDoc] || TYPE_COLORS.AUTRE;
+                    return (
+                      <div key={doc.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl border border-gray-200 bg-white">
+                        <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${colorCls}`}>
+                          <File className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-700 truncate">{doc.nom}</p>
+                          <p className="text-[9px] text-gray-400">
+                            {TYPE_LABELS[doc.typeDoc] || doc.typeDoc}
+                            {' · '}
+                            {new Date(doc.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </p>
+                        </div>
+                        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg transition shrink-0">
+                          <Download className="w-3 h-3" /> Ouvrir
+                        </a>
+                        <button
+                          onClick={() => setConfirmDelete(doc)}
+                          disabled={deleting === doc.id}
+                          className="flex items-center gap-1 text-[10px] font-bold text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-lg transition shrink-0 disabled:opacity-50"
+                        >
+                          {deleting === doc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                          Supprimer
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Upload pour document supplémentaire (type libre) */}
+              <div className="pt-2">
+                <button
+                  onClick={() => triggerUpload(enfant.id, 'AUTRE')}
+                  className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 border border-dashed border-gray-300 hover:border-blue-300 px-4 py-2.5 rounded-xl transition w-full justify-center"
+                >
+                  <FilePlus className="w-4 h-4" /> Ajouter un autre document
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })}
+
+      {/* Input fichier caché (partagé) */}
+      <input ref={fileRef} type="file" onChange={handleUpload} className="hidden"
+        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+
+      {/* Modal confirmation suppression */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setConfirmDelete(null)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500">
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-rose-500" />
+              </div>
+              <div>
+                <p className="font-black text-gray-900">Supprimer ce document ?</p>
+                <p className="text-xs text-gray-500 mt-0.5">Cette action est irréversible.</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 mb-5">
+              <p className="text-sm font-bold text-gray-700 truncate">{confirmDelete.nom}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{TYPE_LABELS[confirmDelete.typeDoc] || confirmDelete.typeDoc}</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition">
+                Annuler
+              </button>
+              <button onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting === confirmDelete.id}
+                className="flex-1 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2">
+                {deleting === confirmDelete.id
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Trash2 className="w-4 h-4" />}
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
