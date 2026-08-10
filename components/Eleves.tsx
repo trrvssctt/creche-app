@@ -2553,6 +2553,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <InfoRow label="Téléphone" value={selectedEleve.parent1.telephone} />
                   <InfoRow label="WhatsApp" value={selectedEleve.parent1.whatsapp} />
                   {selectedEleve.parent1.email && <InfoRow label="Email" value={selectedEleve.parent1.email} />}
+                  {selectedEleve.parent1.adresse && <InfoRow label="Adresse" value={selectedEleve.parent1.adresse} />}
                 </div>
               </div>
 
