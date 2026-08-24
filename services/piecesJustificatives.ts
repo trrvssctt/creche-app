@@ -18,17 +18,17 @@ export function piecesForNiveau(niveau: string | undefined): PieceJustificative[
   if (niveau === 'CRECHE') {
     return [
       ...COMMUNES,
-      { code: 'CERTIFICAT_MEDICAL', label: "Certificat médical d'aptitude à la vie en collectivité", obligatoire: true },
+      { code: 'CERTIFICAT_MEDICAL', label: "Certificat médical d'aptitude à la vie en collectivité (obligatoire pour la crèche)", obligatoire: true },
       { code: 'ORDONNANCE',         label: 'Ordonnance en cas de traitement médical', obligatoire: false },
     ];
   }
   // Maternelle & élémentaire
   return [
     ...COMMUNES,
-    { code: 'CERTIFICAT_MEDICAL',  label: 'Certificat médical', obligatoire: true },
-    { code: 'LIVRET_SCOLAIRE',     label: 'Livret scolaire', obligatoire: true },
-    { code: 'CERTIFICAT_RADIATION', label: "Certificat de radiation de l'ancienne école", obligatoire: true },
-    { code: 'CERTIFICAT_SCOLARITE', label: 'Certificat de scolarité', obligatoire: true },
+    { code: 'CERTIFICAT_MEDICAL',   label: 'Certificat médical', obligatoire: true },
+    { code: 'LIVRET_SCOLAIRE',      label: 'Livret scolaire / Bulletin (nouvel élève)', obligatoire: false },
+    { code: 'CERTIFICAT_RADIATION', label: "Certificat de radiation de l'ancienne école (nouvel élève)", obligatoire: false },
+    { code: 'CERTIFICAT_SCOLARITE', label: 'Certificat de scolarité (nouvel élève)', obligatoire: false },
   ];
 }
 

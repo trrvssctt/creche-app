@@ -61,9 +61,6 @@ const REQUIRED_PIECES = {
   PHOTOS_IDENTITE:      'Photos d\'identité',
   CNI_PARENT:           'Pièce d\'identité du parent',
   CERTIFICAT_MEDICAL:   'Certificat médical',
-  LIVRET_SCOLAIRE:      'Livret scolaire',
-  CERTIFICAT_RADIATION: 'Certificat de radiation',
-  CERTIFICAT_SCOLARITE: 'Certificat de scolarité',
 };
 
 // Libellés des pièces obligatoires absentes de la liste fournie
