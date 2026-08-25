@@ -26,7 +26,8 @@ export function piecesForNiveau(niveau: string | undefined): PieceJustificative[
   return [
     ...COMMUNES,
     { code: 'CERTIFICAT_MEDICAL',   label: 'Certificat médical', obligatoire: true },
-    { code: 'LIVRET_SCOLAIRE',      label: 'Livret scolaire / Bulletin (nouvel élève)', obligatoire: false },
+    { code: 'LIVRET_SCOLAIRE',      label: 'Livret scolaire (nouvel élève)', obligatoire: false },
+    { code: 'BULLETIN_NOTES',       label: 'Bulletin de notes (nouvel élève)', obligatoire: false },
     { code: 'CERTIFICAT_RADIATION', label: "Certificat de radiation de l'ancienne école (nouvel élève)", obligatoire: false },
     { code: 'CERTIFICAT_SCOLARITE', label: 'Certificat de scolarité (nouvel élève)', obligatoire: false },
   ];
