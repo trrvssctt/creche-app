@@ -23,15 +23,17 @@ import { EleveDossier } from './EleveDossier';
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const NIVEAUX: { value: NiveauScolaire; label: string; cycle: string }[] = [
-  { value: 'CRECHE', label: 'Crèche (3–12 mois)', cycle: 'Crèche' },
-  { value: 'PS',     label: 'Petite Section',      cycle: 'Maternelle' },
-  { value: 'MS',     label: 'Moyenne Section',     cycle: 'Maternelle' },
-  { value: 'GS',     label: 'Grande Section',      cycle: 'Maternelle' },
-  { value: 'CP',     label: 'CP',                  cycle: 'Élémentaire' },
-  { value: 'CE1',    label: 'CE1',                 cycle: 'Élémentaire' },
-  { value: 'CE2',    label: 'CE2',                 cycle: 'Élémentaire' },
-  { value: 'CM1',    label: 'CM1',                 cycle: 'Élémentaire' },
-  { value: 'CM2',    label: 'CM2',                 cycle: 'Élémentaire' },
+  { value: 'CRECHE1', label: 'Crèche (3–12 mois)',    cycle: 'Crèche' },
+  { value: 'CRECHE2', label: 'Crèche (12–18 mois)',   cycle: 'Crèche' },
+  { value: 'TPS',     label: 'Toute Petite Section',  cycle: 'Pré-maternelle' },
+  { value: 'PS',      label: 'Petite Section',        cycle: 'Maternelle' },
+  { value: 'MS',      label: 'Moyenne Section',       cycle: 'Maternelle' },
+  { value: 'GS',      label: 'Grande Section',        cycle: 'Maternelle' },
+  { value: 'CP',      label: 'CP',                    cycle: 'Élémentaire' },
+  { value: 'CE1',     label: 'CE1',                   cycle: 'Élémentaire' },
+  { value: 'CE2',     label: 'CE2',                   cycle: 'Élémentaire' },
+  { value: 'CM1',     label: 'CM1',                   cycle: 'Élémentaire' },
+  { value: 'CM2',     label: 'CM2',                   cycle: 'Élémentaire' },
 ];
 
 const REGIMES: { value: RegimeFinancier; label: string; color: string }[] = [
@@ -54,7 +56,7 @@ const STATUTS: { value: StatutAdmission; label: string; color: string }[] = [
 
 function genMatricule(niveau: NiveauScolaire, annee: string = new Date().getFullYear().toString()): string {
   const prefix: Record<NiveauScolaire, string> = {
-    CRECHE: 'CR', PS: 'PS', MS: 'MS', GS: 'GS',
+    CRECHE1: 'C1', CRECHE2: 'C2', TPS: 'TP', PS: 'PS', MS: 'MS', GS: 'GS',
     CP: 'CP', CE1: 'C1', CE2: 'C2', CM1: 'M1', CM2: 'M2',
   };
   return `${prefix[niveau]}-${annee.slice(0, 4)}-${String(Date.now()).slice(-4)}`;
@@ -109,7 +111,7 @@ const emptyForm = (annee = ''): Partial<Eleve> => ({
 });
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
-const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
+const NIVEAUX_MATERNELLE = ['CRECHE1', 'CRECHE2', 'TPS', 'PS', 'MS', 'GS'];
 
 // Dossier soumis via le portail parent (tag [parent_user:] dans notes)
 const isFromParent = (d: any) => typeof d.notes === 'string' && d.notes.includes('[parent_user:');
@@ -126,7 +128,7 @@ interface ElevesProps {
 
 // ─── Bouton facture d'inscription ─────────────────────────────────────────
 const NIVEAUX_LABELS_MAP: Record<string, string> = {
-  CRECHE: 'Crèche', PS: 'Petite Section', MS: 'Moyenne Section', GS: 'Grande Section',
+  CRECHE1: 'Crèche (3–12 mois)', CRECHE2: 'Crèche (12–18 mois)', TPS: 'Toute Petite Section', PS: 'Petite Section', MS: 'Moyenne Section', GS: 'Grande Section',
   CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
 };
 
@@ -389,7 +391,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
   // ── Réinscription ──────────────────────────────────────────────────────────
 
   const NIVEAU_PROGRESSION: Record<NiveauScolaire, NiveauScolaire> = {
-    CRECHE: 'PS', PS: 'MS', MS: 'GS', GS: 'CP',
+    CRECHE1: 'CRECHE2', CRECHE2: 'TPS', TPS: 'PS', PS: 'MS', MS: 'GS', GS: 'CP',
     CP: 'CE1', CE1: 'CE2', CE2: 'CM1', CM1: 'CM2', CM2: 'CM2',
   };
 
@@ -2373,7 +2375,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Documents adaptés au cycle : crèche = fiche identité + règlement intérieur ;
                         maternelle/élémentaire = fiche identité + convention de scolarisation */}
-                    {(inscritEleve?.niveau === 'CRECHE' ? [
+                    {(['CRECHE1', 'CRECHE2', 'TPS'].includes(inscritEleve?.niveau || '') ? [
                       { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité",         desc: "Identité de l'enfant et coordonnées des parents" },
                       { key: 'reglement_interieur',      type: 'reglement_interieur'      as const, label: 'Règlement intérieur',       desc: 'Règlement de la crèche + accusé de réception à signer' },
                       { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire',           desc: 'Informations médicales et contacts urgence' },
@@ -2971,7 +2973,7 @@ const Eleves: React.FC<ElevesProps> = ({ user, currency, refreshKey }) => {
                       ? <><RefreshCw size={11} className="animate-spin" /> Génération…</>
                       : <><FolderOpen size={11} /> Dossier complet .zip</>}
                   </button>
-                  {(selectedEleve?.niveau === 'CRECHE' ? [
+                  {(['CRECHE1', 'CRECHE2', 'TPS'].includes(selectedEleve?.niveau || '') ? [
                     { key: 'fiche_inscription',        type: 'fiche_inscription'        as const, label: "Fiche d'identité" },
                     { key: 'reglement_interieur',      type: 'reglement_interieur'      as const, label: 'Règlement intérieur' },
                     { key: 'fiche_sanitaire',          type: 'fiche_sanitaire'          as const, label: 'Fiche sanitaire' },

@@ -682,7 +682,7 @@ const SchoolAdminDashboard: React.FC<Props> = ({ user, currency, onNavigate }) =
             { icon: Bus,      label: 'Transport bus',  value: parseInt(es.avec_bus || 0),     color: 'text-sky-600',    bg: 'bg-sky-50',    border: 'border-sky-100' },
             { icon: Utensils, label: 'Cantine',         value: parseInt(es.avec_cantine || 0), color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' },
             { icon: Heart,    label: 'Cas sociaux',     value: parseInt(es.cas_sociaux || 0),  color: 'text-pink-600',   bg: 'bg-pink-50',   border: 'border-pink-100' },
-            { icon: Baby,     label: 'Crèche',          value: (data?.classes || []).find((c: any) => c.niveau === 'CRECHE')?.nb_inscrits || 0,
+            { icon: Baby,     label: 'Crèche',          value: (data?.classes || []).filter((c: any) => ['CRECHE1', 'CRECHE2', 'TPS'].includes(c.niveau)).reduce((s: number, c: any) => s + (parseInt(c.nb_inscrits) || 0), 0),
               color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-100' },
           ].map(({ icon: Icon, label, value, color, bg, border }) => (
             <div key={label} className={`${bg} rounded-2xl p-4 flex items-center gap-3 border ${border}`}>

@@ -30,6 +30,7 @@ import Services from './components/Services';
 import SecurityPanel from './components/SecurityPanel';
 import AuditLogs from './components/AuditLogs';
 import Settings from './components/Settings';
+import MonProfil from './components/MonProfil';
 import ChatInterface from './components/ChatInterface';
 import Governance from './components/Governance';
 import Subscription from './components/Subscription';
@@ -466,6 +467,7 @@ const App: React.FC = () => {
       case 'employee-pointage':  return <EmployeePointage onNavigate={handleContextualNavigate} />;
       case 'governance':         return <Governance tenantId={currentUser.tenantId} />;
       case 'subscription':       return <Subscription user={currentUser} currency={appSettings.currency} onLogout={handleLogout} />;
+      case 'mon-profil':         return <MonProfil user={currentUser} />;
       case 'info':               return <Info user={currentUser} />;
       case 'support':            return <Support user={currentUser} />;
       case 'security':           return <SecurityPanel />;

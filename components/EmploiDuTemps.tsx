@@ -242,8 +242,8 @@ function getMatiereColor(m: string) {
 
 const GROUPE_NIVEAUX = [
   {
-    label: 'Crèche',
-    niveaux: ['CRECHE'],
+    label: 'Crèche & Pré-maternelle',
+    niveaux: ['CRECHE1', 'CRECHE2', 'TPS'],
     pill: 'bg-rose-100 text-rose-700 border-rose-200',
     active: 'bg-rose-500 text-white border-rose-500 shadow-rose-100',
     dot: 'bg-rose-400',

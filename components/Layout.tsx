@@ -8,7 +8,7 @@ import {
   Layers, GitMerge, Wallet, History, TrendingDown, Sparkles,
   AlertTriangle, Clock, Calendar, Menu, LifeBuoy, Bell, ClipboardList,
   BookOpen, GraduationCap, MessageSquare, Send, Stamp, CalendarDays, Megaphone, School, Receipt,
-  ChevronDown, Lock, Eye, RefreshCw, Archive
+  ChevronDown, Lock, Eye, RefreshCw, Archive, UserCircle
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { authBridge } from '../services/authBridge';
@@ -248,6 +248,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'security',          label: 'Sécurité',             icon: ShieldAlert },
     { id: 'audit',             label: "Journal d'Audit",      icon: Activity },
     { id: 'settings',          label: 'Paramètres',           icon: SettingsIcon },
+    { id: 'mon-profil',        label: 'Mon Profil',           icon: UserCircle },
   ];
 
   const rhSubItems = [

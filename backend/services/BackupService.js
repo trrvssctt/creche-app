@@ -90,7 +90,7 @@ export class BackupService {
     const payload = {
       version:   '1.0',
       timestamp: new Date().toISOString(),
-      database:  process.env.DB_NAME || 'gestionapp_creche_app',
+      database:  process.env.DB_NAME || 'gestionapp_creche_app_local',
       tables:    {}
     };
 

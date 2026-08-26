@@ -15,7 +15,7 @@ const COMMUNES: PieceJustificative[] = [
 ];
 
 export function piecesForNiveau(niveau: string | undefined): PieceJustificative[] {
-  if (niveau === 'CRECHE') {
+  if (['CRECHE1', 'CRECHE2', 'TPS'].includes(niveau || '')) {
     return [
       ...COMMUNES,
       { code: 'CERTIFICAT_MEDICAL', label: "Certificat médical d'aptitude à la vie en collectivité (obligatoire pour la crèche)", obligatoire: true },

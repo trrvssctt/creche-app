@@ -140,15 +140,15 @@ export class CommunicationController {
         status: 'SENDING',
       });
 
-      // ── Envoi via Botpress (avec template pour atteindre les contacts hors session)
+      // ── Envoi via Botpress — uniquement templates APPROVED par Meta
       const TEMPLATE_MAP = {
-        BULLETIN: 'notification_bulletin',
-        ANNONCE: 'annonce_generale',
-        EVENEMENT: 'annonce_generale',
+        BULLETIN: 'notification_ecole',
+        ANNONCE: 'notification_ecole',
+        EVENEMENT: 'notification_ecole',
       };
       const result = await BotpressService.sendBulk(recipients, {
         delayMs: 1000,
-        template: TEMPLATE_MAP[type] || 'annonce_generale',
+        template: TEMPLATE_MAP[type] || 'notification_ecole',
       });
 
       // Mise à jour du log avec les résultats

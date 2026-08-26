@@ -44,6 +44,7 @@ interface EleveGroupe {
   email: string;
   echeances: Echeance[];
   totalDu: number;
+  totalPaye: number;
   totalRetard: number;
 }
 
@@ -167,12 +168,13 @@ const Recovery = ({ currency, schoolName }: { currency: string; schoolName?: str
           whatsapp: e.whatsappPrincipal || e.parent1?.whatsapp || e.parent1?.telephone || '',
           email: e.parent1?.email || '',
           echeances: [],
-          totalDu: 0, totalRetard: 0,
+          totalDu: 0, totalPaye: 0, totalRetard: 0,
         });
       }
       const g = map.get(ech.eleveId)!;
       g.echeances.push(ech);
       const rem = remaining(ech);
+      g.totalPaye += paid(ech);
       if (rem > 0) {
         g.totalDu += rem;
         if (ech.statut === 'EN_RETARD') g.totalRetard += rem;
@@ -579,11 +581,19 @@ const Recovery = ({ currency, schoolName }: { currency: string; schoolName?: str
 
                               {/* Montant */}
                               <div className="w-28 text-right shrink-0">
-                                <p className={`text-sm font-black ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
-                                  {fmtAmount(remaining(ech))} {currency}
-                                </p>
-                                {(ech.amountPaid ?? 0) > 0 && remaining(ech) > 0 && (
-                                  <p className="text-[8px] text-emerald-500 font-bold">déjà payé : {fmtAmount(paid(ech))}</p>
+                                {PAID_STATUSES.includes(ech.statut) ? (
+                                  <p className="text-sm font-black text-emerald-600">
+                                    {fmtAmount(paid(ech))} {currency}
+                                  </p>
+                                ) : (
+                                  <>
+                                    <p className={`text-sm font-black ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
+                                      {fmtAmount(remaining(ech))} {currency}
+                                    </p>
+                                    {(ech.amountPaid ?? 0) > 0 && remaining(ech) > 0 && (
+                                      <p className="text-[8px] text-emerald-500 font-bold">déjà payé : {fmtAmount(paid(ech))}</p>
+                                    )}
+                                  </>
                                 )}
                               </div>
 

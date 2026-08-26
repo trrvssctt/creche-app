@@ -808,8 +808,8 @@ export class AbonnementController {
           if (recipient) {
             const result = await BotpressService.sendWhatsApp(recipient, message, {
               category: 'relance',
-              template: 'relance_paiement',
-              variables: [parentNom, `${montantFmt} ${currency}`, `${eleve.prenom} ${eleve.nom}`, ech.periodeLabel || '', dateFmt],
+              template: 'relance_redevance',
+              variables: [parentNom, `${montantFmt} ${currency}`, `${eleve.prenom} ${eleve.nom}`, `${ech.periodeLabel || ''} — échéance ${dateFmt}`],
               indicatifPays: eleve.indicatifPays || '221',
             });
             if (result.success) {

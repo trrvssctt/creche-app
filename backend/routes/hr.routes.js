@@ -42,6 +42,8 @@ const router = Router();
 // ========== EMPLOYEES ==========
 router.get('/employees/orgchart', checkPermission(['ADMIN','ACCOUNTANT','STOCK_MANAGER','HR_MANAGER','ASSISTANTE']), EmployeeController.getOrgChart);
 router.get('/employees/hr-stats', checkPermission(['ADMIN','ACCOUNTANT','STOCK_MANAGER','HR_MANAGER','ASSISTANTE']), EmployeeController.getHRStats);
+router.get('/employees/me', EmployeeController.getMe);
+router.get('/employees/me/contracts', EmployeeController.getMyContracts);
 router.get('/employees', checkPermission(['ADMIN','ACCOUNTANT','STOCK_MANAGER','HR_MANAGER','ASSISTANTE','ENSEIGNANT','MAITRESSE','COMPTABLE']), EmployeeController.list);
 router.post('/employees', checkPermission(['ADMIN','HR_MANAGER','ASSISTANTE']), EmployeeController.create);
 router.get('/employees/:id/current-month-salary', checkPermission(['ADMIN','ACCOUNTANT','HR_MANAGER','ASSISTANTE']), EmployeeController.getCurrentMonthSalary);

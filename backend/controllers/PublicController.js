@@ -7,7 +7,7 @@ import {
 import { EmailService } from '../services/EmailService.js';
 import { BotpressService } from '../services/BotpressService.js';
 
-const ADMIN_PHONE = '+221781311371';
+const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -186,24 +186,29 @@ export class PublicController {
         }
       }
 
-      // WhatsApp au parent (via template Meta pour les nouveaux contacts)
+      // WhatsApp au parent (template APPROVED notification_ecole : 3 vars)
       const parentPhone = parent1?.whatsapp || parent1?.telephone;
       if (parentPhone) {
         BotpressService.sendWhatsApp(parentPhone,
-          `✅ *Candidature déposée*\n\nBonjour ${parentName},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement de votre dossier.\n\n_${ecoleNom}_`,
+          `Bonjour ${parentName}, candidature de ${prenom} ${nom} bien reçue par ${ecoleNom}. Référence : ${ref}. Suivi : ${suiviUrl}`,
           {
             category: 'inscription',
             reference: `admission:${ref}`,
-            template: 'candidature_recue',
-            variables: [parentName, `${prenom} ${nom}`, ref, suiviUrl],
+            template: 'notification_ecole',
+            variables: [parentName, `${prenom} ${nom}`, `Votre dossier d'inscription a été reçu. Référence : ${ref}. Suivez l'avancement sur ${suiviUrl}`],
           }
         ).catch(err => console.warn('[PublicController] WhatsApp parent:', err.message));
       }
 
-      // WhatsApp à l'administration
+      // WhatsApp à l'administration (template APPROVED notification_ecole)
       BotpressService.sendWhatsApp(ADMIN_PHONE,
-        `📥 *Nouvelle candidature*\n\nEnfant : *${prenom} ${nom}*\nNiveau : ${niveau || 'PS'}\nParent : ${parentName}\nTél : ${parentPhone || 'non renseigné'}\nRéf : *${ref}*\n\nConnectez-vous pour traiter ce dossier.`,
-        { category: 'inscription', reference: `admission:${ref}` }
+        `Nouvelle candidature : ${prenom} ${nom} (${niveau || 'PS'}) — Parent : ${parentName} — Réf : ${ref}`,
+        {
+          category: 'inscription',
+          reference: `admission:${ref}`,
+          template: 'notification_ecole',
+          variables: ['Administration', `${prenom} ${nom}`, `Nouvelle candidature (${niveau || 'PS'}). Parent : ${parentName}, Tél : ${parentPhone || 'non renseigné'}. Réf : ${ref}`],
+        }
       ).catch(err => console.warn('[PublicController] WhatsApp admin:', err.message));
 
       return res.status(201).json({
@@ -374,10 +379,15 @@ export class PublicController {
       const enfantNom = `${eleve.prenom} ${eleve.nom}`;
       const ecoleNom = tenant.name || "L'école";
 
-      // WhatsApp notification admin
+      // WhatsApp notification admin (template APPROVED notification_ecole)
       BotpressService.sendWhatsApp(ADMIN_PHONE,
-        `📥 *Dossier resoumis*\n\nEnfant : *${enfantNom}*\nNiveau : ${eleve.niveau}\nParent : ${parentName}\nRéf : *${raw}*\n\nLe parent a corrigé et resoumis le dossier après rejet.`,
-        { category: 'inscription', reference: `resoumission:${raw}` }
+        `Dossier resoumis : ${enfantNom} — Réf : ${raw}`,
+        {
+          category: 'inscription',
+          reference: `resoumission:${raw}`,
+          template: 'notification_ecole',
+          variables: ['Administration', enfantNom, `Dossier resoumis après rejet (${eleve.niveau}). Parent : ${parentName}. Réf : ${raw}`],
+        }
       ).catch(err => console.warn('[PublicController] WhatsApp admin resoumission:', err.message));
 
       return res.json({

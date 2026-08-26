@@ -9,7 +9,9 @@
     "postbuild": "node scripts/postbuild-copy.js",
     "preview": "vite preview",
     "wa:templates": "node scripts/whatsapp/create-templates.mjs",
-    "wa:templates:status": "node scripts/whatsapp/create-templates.mjs --status"
+    "wa:templates:status": "node scripts/whatsapp/create-templates.mjs --status",
+    "wa:templates:audit": "node scripts/whatsapp/templates.mjs --audit",
+    "wa:templates:sync": "node scripts/whatsapp/templates.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",

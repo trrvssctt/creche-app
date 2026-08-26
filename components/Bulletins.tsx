@@ -73,15 +73,17 @@ const TRIMESTRES: { value: Trimestre; label: string; mois: string }[] = [
 ];
 
 const NIVEAUX: { value: NiveauScolaire; label: string; cycle: CycleType }[] = [
-  { value: 'CRECHE', label: 'Crèche',         cycle: 'CRECHE' },
-  { value: 'PS',     label: 'Petite Section',  cycle: 'MATERNELLE' },
-  { value: 'MS',     label: 'Moyenne Section', cycle: 'MATERNELLE' },
-  { value: 'GS',     label: 'Grande Section',  cycle: 'MATERNELLE' },
-  { value: 'CP',     label: 'CP',              cycle: 'ELEMENTAIRE' },
-  { value: 'CE1',    label: 'CE1',             cycle: 'ELEMENTAIRE' },
-  { value: 'CE2',    label: 'CE2',             cycle: 'ELEMENTAIRE' },
-  { value: 'CM1',    label: 'CM1',             cycle: 'ELEMENTAIRE' },
-  { value: 'CM2',    label: 'CM2',             cycle: 'ELEMENTAIRE' },
+  { value: 'CRECHE1', label: 'Crèche (3–12 mois)',    cycle: 'CRECHE' },
+  { value: 'CRECHE2', label: 'Crèche (12–18 mois)',   cycle: 'CRECHE' },
+  { value: 'TPS',     label: 'Toute Petite Section',  cycle: 'CRECHE' },
+  { value: 'PS',      label: 'Petite Section',        cycle: 'MATERNELLE' },
+  { value: 'MS',      label: 'Moyenne Section',       cycle: 'MATERNELLE' },
+  { value: 'GS',      label: 'Grande Section',        cycle: 'MATERNELLE' },
+  { value: 'CP',      label: 'CP',                    cycle: 'ELEMENTAIRE' },
+  { value: 'CE1',     label: 'CE1',                   cycle: 'ELEMENTAIRE' },
+  { value: 'CE2',     label: 'CE2',                   cycle: 'ELEMENTAIRE' },
+  { value: 'CM1',     label: 'CM1',                   cycle: 'ELEMENTAIRE' },
+  { value: 'CM2',     label: 'CM2',                   cycle: 'ELEMENTAIRE' },
 ];
 
 const CYCLE_CONFIG: Record<CycleType, { label: string; color: string; bg: string; border: string; dot: string }> = {
@@ -129,7 +131,7 @@ function getDomainesParNiveau(niveau: NiveauScolaire): DomaineForm[] {
       ...(d.section ? { section: d.section } : {}),
       competences: d.competences.map(c => ({ libelle: c.libelle, niveau: '' as NiveauCompetence | '' })),
     }));
-  if (niveau === 'CRECHE') return deep(DOMAINES_CRECHE);
+  if (['CRECHE1', 'CRECHE2', 'TPS'].includes(niveau)) return deep(DOMAINES_CRECHE);
   const officiel = maternelleDomaines(niveau);
   return officiel ? (officiel as DomaineForm[]) : deep(DOMAINES_CRECHE);
 }
@@ -296,13 +298,12 @@ export default function Bulletins({ user }: Props) {
     return NIVEAUX.map(n => {
       const elevesNiveau = eleves.filter(e => e.niveau === n.value);
       const total = elevesNiveau.length;
-      if (total === 0) return null;
       const publies    = elevesNiveau.filter(e =>  getBulletin(e.id)?.publie).length;
       const brouillons = elevesNiveau.filter(e => { const b = getBulletin(e.id); return b && !b.publie; }).length;
       const aFaire     = total - publies - brouillons;
       const pctPublie  = total > 0 ? Math.round((publies / total) * 100) : 0;
       return { ...n, total, publies, brouillons, aFaire, pctPublie };
-    }).filter(Boolean) as (typeof NIVEAUX[0] & { total: number; publies: number; brouillons: number; aFaire: number; pctPublie: number })[];
+    });
   }, [eleves, bulletins, selectedTrimestre]);
 
   // KPIs globaux

@@ -17,7 +17,7 @@ import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
 import { BotpressService } from '../services/BotpressService.js';
 
-const ADMIN_PHONE = '+221781311371';
+const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
 // Vérifie que l'eleveId appartient bien au parent connecté
 async function assertOwnsEleve(eleveId, req) {
@@ -714,16 +714,21 @@ export class ParentController {
           {
             category: 'inscription',
             reference: `admission:${ref}`,
-            template: 'candidature_recue',
-            variables: [user?.name || 'Parent', `${prenom} ${nom}`, ref, suiviUrl],
+            template: 'notification_ecole',
+            variables: [user?.name || 'Parent', `${prenom} ${nom}`, `Votre dossier d'inscription a été reçu. Référence : ${ref}. Suivez l'avancement sur ${suiviUrl}`],
           }
         ).catch(err => console.warn('[ParentController] WhatsApp parent:', err.message));
       }
 
-      // WhatsApp à l'administration
+      // WhatsApp à l'administration (template APPROVED notification_ecole)
       BotpressService.sendWhatsApp(ADMIN_PHONE,
-        `📥 *Nouvelle candidature (portail parent)*\n\nEnfant : *${prenom} ${nom}*\nNiveau : ${niveau || 'PS'}\nParent : ${user?.name || 'N/A'}\nRéf : *${ref}*\n\nConnectez-vous pour traiter ce dossier.`,
-        { category: 'inscription', reference: `admission:${ref}` }
+        `Nouvelle candidature (portail parent) : ${prenom} ${nom} — Réf : ${ref}`,
+        {
+          category: 'inscription',
+          reference: `admission:${ref}`,
+          template: 'notification_ecole',
+          variables: ['Administration', `${prenom} ${nom}`, `Nouvelle candidature (portail parent, ${niveau || 'PS'}). Parent : ${user?.name || 'N/A'}. Réf : ${ref}`],
+        }
       ).catch(err => console.warn('[ParentController] WhatsApp admin:', err.message));
 
       res.status(201).json({

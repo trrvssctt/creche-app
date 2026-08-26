@@ -2,7 +2,7 @@
 import { Sequelize, QueryTypes } from 'sequelize';
 
 // Instance ERP Principale (PostgreSQL AlwaysData)
-export const sequelize = new Sequelize('gestionapp_creche_app', 'gestionapp', 'Dianka16', {
+export const sequelize = new Sequelize('gestionapp_creche_app_local', 'gestionapp', 'Dianka16', {
   host: 'postgresql-gestionapp.alwaysdata.net',
   port: 5432,
   dialect: 'postgres',

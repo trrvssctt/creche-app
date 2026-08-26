@@ -1070,8 +1070,8 @@ export class AdminController {
         WHERE c.tenant_id = :tenantId AND c.annee_scolaire = :annee
         GROUP BY c.id, c.nom, c.niveau, c.capacite_max, e.first_name, e.last_name
         ORDER BY
-          CASE c.niveau WHEN 'CRECHE' THEN 1 WHEN 'PS' THEN 2 WHEN 'MS' THEN 3
-            WHEN 'GS' THEN 4 WHEN 'CP' THEN 5 WHEN 'CE1' THEN 6 WHEN 'CE2' THEN 7 ELSE 8 END
+          CASE c.niveau WHEN 'CRECHE1' THEN 1 WHEN 'CRECHE2' THEN 2 WHEN 'TPS' THEN 3 WHEN 'PS' THEN 4 WHEN 'MS' THEN 5
+            WHEN 'GS' THEN 6 WHEN 'CP' THEN 7 WHEN 'CE1' THEN 8 WHEN 'CE2' THEN 9 WHEN 'CM1' THEN 10 WHEN 'CM2' THEN 11 ELSE 12 END
       `, { replacements: { tenantId, annee }, type: sequelize.QueryTypes.SELECT });
 
       // ── Stats globales élèves ────────────────────────────────────────

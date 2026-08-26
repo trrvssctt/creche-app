@@ -24,7 +24,9 @@ const TYPES_OFFRE = [
 ] as const;
 
 const NIVEAUX_SCOLAIRES = [
-  { value: 'CRECHE', label: 'Crèche',    cycle: 'Crèche' },
+  { value: 'CRECHE1', label: 'Crèche (3–12 mois)',  cycle: 'Crèche' },
+  { value: 'CRECHE2', label: 'Crèche (12–18 mois)', cycle: 'Crèche' },
+  { value: 'TPS',     label: 'Toute Petite Section', cycle: 'Pré-maternelle' },
   { value: 'PS',     label: 'PS',        cycle: 'Maternelle' },
   { value: 'MS',     label: 'MS',        cycle: 'Maternelle' },
   { value: 'GS',     label: 'GS',        cycle: 'Maternelle' },

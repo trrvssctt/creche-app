@@ -323,7 +323,7 @@ const FacturationMensuelle = ({
       if (!map[key]) map[key] = { niveau: key, eleves: [] };
       map[key].eleves.push(g);
     });
-    const order = ['CRECHE', 'PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+    const order = ['CRECHE1', 'CRECHE2', 'TPS', 'PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
     return Object.entries(map).sort(([a], [b]) => {
       const ia = order.indexOf(a), ib = order.indexOf(b);
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);

@@ -25,7 +25,9 @@ export const NIVEAUX_PALETTES: { bg: string; text: string; border: string; previ
 ];
 
 export const NIVEAUX_DEFAUT: NiveauDef[] = [
-  { value: 'CRECHE', label: 'Crèche',          cycle: 'Crèche',      accentBg: 'bg-pink-50',    accentText: 'text-pink-700',    accentBorder: 'border-pink-200' },
+  { value: 'CRECHE1', label: 'Crèche (3–12 mois)',  cycle: 'Crèche',          accentBg: 'bg-pink-50',    accentText: 'text-pink-700',    accentBorder: 'border-pink-200' },
+  { value: 'CRECHE2', label: 'Crèche (12–18 mois)', cycle: 'Crèche',          accentBg: 'bg-rose-50',    accentText: 'text-rose-700',    accentBorder: 'border-rose-200' },
+  { value: 'TPS',     label: 'Toute Petite Section', cycle: 'Pré-maternelle', accentBg: 'bg-fuchsia-50', accentText: 'text-fuchsia-700', accentBorder: 'border-fuchsia-200' },
   { value: 'PS',     label: 'Petite Section',  cycle: 'Maternelle',  accentBg: 'bg-violet-50',  accentText: 'text-violet-700',  accentBorder: 'border-violet-200' },
   { value: 'MS',     label: 'Moyenne Section', cycle: 'Maternelle',  accentBg: 'bg-indigo-50',  accentText: 'text-indigo-700',  accentBorder: 'border-indigo-200' },
   { value: 'GS',     label: 'Grande Section',  cycle: 'Maternelle',  accentBg: 'bg-blue-50',    accentText: 'text-blue-700',    accentBorder: 'border-blue-200' },
@@ -95,13 +97,28 @@ interface NiveauxContextType {
 
 const NiveauxContext = createContext<NiveauxContextType | null>(null);
 
+function migrateNiveaux(saved: NiveauDef[]): NiveauDef[] {
+  const hasOldCreche = saved.some(n => n.value === 'CRECHE');
+  const hasNewCreche = saved.some(n => n.value === 'CRECHE1');
+  if (hasOldCreche && !hasNewCreche) {
+    const withoutOld = saved.filter(n => n.value !== 'CRECHE');
+    const newCreche = NIVEAUX_DEFAUT.filter(n => ['CRECHE1', 'CRECHE2', 'TPS'].includes(n.value));
+    return [...newCreche, ...withoutOld];
+  }
+  if (!hasNewCreche && !hasOldCreche) {
+    const newCreche = NIVEAUX_DEFAUT.filter(n => ['CRECHE1', 'CRECHE2', 'TPS'].includes(n.value));
+    return [...newCreche, ...saved];
+  }
+  return saved;
+}
+
 export function NiveauxProvider({ children }: { children: React.ReactNode }) {
   const [niveaux, setNiveaux] = useState<NiveauDef[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return migrateNiveaux(parsed);
       }
     } catch {}
     return NIVEAUX_DEFAUT;

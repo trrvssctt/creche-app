@@ -50,10 +50,11 @@ interface Evenement {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const NIVEAUX_SCOLAIRES: NiveauScolaire[] = ['CRECHE', 'PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+const NIVEAUX_SCOLAIRES: NiveauScolaire[] = ['CRECHE1', 'CRECHE2', 'TPS', 'PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
 const NIVEAUX_LABELS: Record<string, string> = {
   TOUS: 'Tous les niveaux',
-  CRECHE: 'Crèche', PS: 'Petite Section', MS: 'Moyenne Section', GS: 'Grande Section',
+  CRECHE1: 'Crèche (3–12 mois)', CRECHE2: 'Crèche (12–18 mois)', TPS: 'Toute Petite Section',
+  PS: 'Petite Section', MS: 'Moyenne Section', GS: 'Grande Section',
   CP: 'CP', CE1: 'CE1', CE2: 'CE2', CM1: 'CM1', CM2: 'CM2',
 };
 

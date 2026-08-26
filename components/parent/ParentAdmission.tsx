@@ -13,18 +13,20 @@ import PiecesJointes from '../PiecesJointes';
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 // Niveaux maternelle : la garderie n'est proposée que pour eux
-const NIVEAUX_MATERNELLE = ['CRECHE', 'PS', 'MS', 'GS'];
+const NIVEAUX_MATERNELLE = ['CRECHE1', 'CRECHE2', 'TPS', 'PS', 'MS', 'GS'];
 
 const NIVEAUX = [
-  { value: 'CRECHE', label: 'Crèche (3–12 mois)',  cycle: 'Crèche' },
-  { value: 'PS',     label: 'Petite Section',       cycle: 'Maternelle' },
-  { value: 'MS',     label: 'Moyenne Section',      cycle: 'Maternelle' },
-  { value: 'GS',     label: 'Grande Section',       cycle: 'Maternelle' },
-  { value: 'CP',     label: 'CP',                   cycle: 'Élémentaire' },
-  { value: 'CE1',    label: 'CE1',                  cycle: 'Élémentaire' },
-  { value: 'CE2',    label: 'CE2',                  cycle: 'Élémentaire' },
-  { value: 'CM1',    label: 'CM1',                  cycle: 'Élémentaire' },
-  { value: 'CM2',    label: 'CM2',                  cycle: 'Élémentaire' },
+  { value: 'CRECHE1', label: 'Crèche (3–12 mois)',    cycle: 'Crèche' },
+  { value: 'CRECHE2', label: 'Crèche (12–18 mois)',   cycle: 'Crèche' },
+  { value: 'TPS',     label: 'Toute Petite Section',  cycle: 'Pré-maternelle' },
+  { value: 'PS',      label: 'Petite Section',        cycle: 'Maternelle' },
+  { value: 'MS',      label: 'Moyenne Section',       cycle: 'Maternelle' },
+  { value: 'GS',      label: 'Grande Section',        cycle: 'Maternelle' },
+  { value: 'CP',      label: 'CP',                    cycle: 'Élémentaire' },
+  { value: 'CE1',     label: 'CE1',                   cycle: 'Élémentaire' },
+  { value: 'CE2',     label: 'CE2',                   cycle: 'Élémentaire' },
+  { value: 'CM1',     label: 'CM1',                   cycle: 'Élémentaire' },
+  { value: 'CM2',     label: 'CM2',                   cycle: 'Élémentaire' },
 ];
 
 const STATUTS: Record<string, { label: string; color: string; icon: React.FC<any> }> = {

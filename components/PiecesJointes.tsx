@@ -20,6 +20,10 @@ const PiecesJointes: React.FC<Props> = ({ niveau, value, onChange, title }) => {
 
   const handleFile = async (code: string, label: string, file: File | undefined) => {
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError(`« ${file.name} » dépasse 5 Mo. Prenez une photo de moindre qualité ou compressez le PDF.`);
+      return;
+    }
     setBusy(code); setError(null);
     try {
       const { dataUrl, mimeType } = await fileToDataUrl(file);
@@ -34,7 +38,7 @@ const PiecesJointes: React.FC<Props> = ({ niveau, value, onChange, title }) => {
         },
       });
     } catch (e: any) {
-      setError(e?.message || 'Fichier illisible.');
+      setError(e?.message || `Impossible de lire « ${file.name} ». Essayez un autre fichier.`);
     } finally {
       setBusy(null);
     }
@@ -98,9 +102,14 @@ const PiecesJointes: React.FC<Props> = ({ niveau, value, onChange, title }) => {
                   {busy === p.code
                     ? <><Loader2 size={12} className="animate-spin" /> Lecture…</>
                     : <><Paperclip size={12} /> Joindre</>}
-                  <input type="file" accept="image/*,application/pdf" className="hidden"
+                  <input type="file" accept="image/*,.pdf,application/pdf" capture={undefined} className="hidden"
                     disabled={busy !== null}
-                    onChange={e => { handleFile(p.code, p.label, e.target.files?.[0]); e.target.value = ''; }} />
+                    onChange={async e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      await handleFile(p.code, p.label, f);
+                      e.target.value = '';
+                    }} />
                 </label>
               )}
             </li>

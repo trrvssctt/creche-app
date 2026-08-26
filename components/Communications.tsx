@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Send, Users, MessageSquare, FileText, History, Eye, Search,
-  AlertCircle, CheckCircle2, Clock, Loader2, X, Edit3, Zap,
-  Phone, RefreshCw, Info
+  Send, Users, MessageSquare, History, Eye, Search,
+  AlertCircle, CheckCircle2, Clock, Loader2, X,
+  Phone, RefreshCw
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
@@ -60,10 +60,31 @@ interface LogEntry {
   createdAt: string;
 }
 
+interface EditableVar {
+  key: string;
+  label: string;
+  placeholder: string;
+}
+
+interface Template {
+  id: string;
+  type: string;
+  label: string;
+  icon: string;
+  category: string;
+  waTemplate: string;
+  body: string;
+  editableVars: EditableVar[];
+}
+
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
+const STATUTS_ELIGIBLE = ['INSCRIT', 'ADMIS', 'ACTIF'];
+
 const NIVEAUX = [
-  { value: 'CRECHE', label: 'Crèche' },
+  { value: 'CRECHE1', label: 'Crèche (3–12 mois)' },
+  { value: 'CRECHE2', label: 'Crèche (12–18 mois)' },
+  { value: 'TPS', label: 'Toute Petite Section' },
   { value: 'PS', label: 'Petite Section' },
   { value: 'MS', label: 'Moyenne Section' },
   { value: 'GS', label: 'Grande Section' },
@@ -76,39 +97,36 @@ const NIVEAUX = [
 
 const NIVEAUX_LABELS: Record<string, string> = Object.fromEntries(NIVEAUX.map(n => [n.value, n.label]));
 
-const TYPES_MESSAGE = [
-  { value: 'BULLETIN', label: 'Bulletin disponible', category: 'PEDAGOGIQUE', icon: '📊', color: 'indigo' },
-  { value: 'ANNONCE', label: 'Annonce générale', category: 'GENERAL', icon: '📢', color: 'teal' },
-  { value: 'EVENEMENT', label: 'Événement', category: 'GENERAL', icon: '🎉', color: 'orange' },
-];
-
 const NOM_ECOLE = 'Le Toit des Anges';
 
-const DEFAULT_TEMPLATES = [
+const TEMPLATES: Template[] = [
   {
-    id: 'BULLETIN', label: 'Bulletin disponible', category: 'PEDAGOGIQUE',
-    variables: ['prenom_parent', 'prenom_enfant', 'nom_enfant', 'niveau', 'trimestre'],
-    body: `Bonjour {prenom_parent},
-
-Le bulletin de *{prenom_enfant} {nom_enfant}* ({niveau}) pour le *{trimestre}* est disponible.
-
-📊 Connectez-vous au portail parent pour le consulter.
-— ${NOM_ECOLE} 🏫`,
+    id: 'BULLETIN', type: 'BULLETIN',
+    label: 'Bulletin disponible', icon: '📊',
+    category: 'PEDAGOGIQUE', waTemplate: 'notification_ecole',
+    body: `Bonjour {prenom_parent},\n\nLe bulletin de {prenom_enfant} {nom_enfant} ({niveau}) pour le {trimestre} est disponible.\n\nConnectez-vous au portail parent pour le consulter.\n— ${NOM_ECOLE}`,
+    editableVars: [
+      { key: 'trimestre', label: 'Trimestre', placeholder: '1er trimestre 2026-2027' },
+    ],
   },
   {
-    id: 'ANNONCE', label: 'Annonce générale', category: 'GENERAL',
-    variables: ['prenom_parent'],
-    body: `Bonjour {prenom_parent},
-
-{message}
-
-— ${NOM_ECOLE} 🏫`,
+    id: 'ANNONCE', type: 'ANNONCE',
+    label: 'Annonce générale', icon: '📢',
+    category: 'GENERAL', waTemplate: 'notification_ecole',
+    body: `Bonjour {prenom_parent},\n\n{contenu}\n\n— ${NOM_ECOLE}`,
+    editableVars: [
+      { key: 'contenu', label: 'Contenu de l\'annonce', placeholder: 'La rentrée scolaire est fixée au 6 octobre 2026...' },
+    ],
   },
-];
-
-const MOIS_LABELS = [
-  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+  {
+    id: 'EVENEMENT', type: 'EVENEMENT',
+    label: 'Événement', icon: '🎉',
+    category: 'GENERAL', waTemplate: 'notification_ecole',
+    body: `Bonjour {prenom_parent},\n\n{contenu}\n\n— ${NOM_ECOLE}`,
+    editableVars: [
+      { key: 'contenu', label: 'Détails de l\'événement', placeholder: 'Journée portes ouvertes le samedi 15 novembre...' },
+    ],
+  },
 ];
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -121,7 +139,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function renderTemplate(body: string, vars: Record<string, string>): string {
+function renderBody(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
 }
 
@@ -131,10 +149,8 @@ function getElevePhone(e: EleveComm): string {
 
 function getParentDisplay(e: EleveComm): string {
   if (!e.parent1) return '—';
-  const p = e.parent1;
-  return [p.prenom, p.nom].filter(Boolean).join(' ') || '—';
+  return [e.parent1.prenom, e.parent1.nom].filter(Boolean).join(' ') || '—';
 }
-
 
 // ─── Composant principal ─────────────────────────────────────────────────────
 
@@ -142,7 +158,7 @@ export default function Communications() {
   const showToast = useToast();
   const { annee: anneeScolaire } = useAnnee();
 
-  const [activeTab, setActiveTab] = useState<'composer' | 'historique' | 'templates'>('composer');
+  const [activeTab, setActiveTab] = useState<'composer' | 'historique'>('composer');
   const [eleves, setEleves] = useState<EleveComm[]>([]);
   const [classes, setClasses] = useState<Classe[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -151,20 +167,13 @@ export default function Communications() {
   const [loading, setLoading] = useState(false);
 
   // Composer
-  const [messageType, setMessageType] = useState('ANNONCE');
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [targetType, setTargetType] = useState<'ALL' | 'NIVEAU' | 'CLASSE' | 'INDIVIDUEL'>('ALL');
   const [targetNiveau, setTargetNiveau] = useState('');
   const [targetClasseId, setTargetClasseId] = useState('');
   const [selectedEleve, setSelectedEleve] = useState<EleveComm | null>(null);
-  const [body, setBody] = useState('');
-  const [subject, setSubject] = useState('');
-  const [customVars, setCustomVars] = useState<Record<string, string>>({
-    mois: MOIS_LABELS[new Date().getMonth()],
-    montant: '',
-    date_limite: '',
-    trimestre: '',
-  });
   const [searchEleve, setSearchEleve] = useState('');
+  const [varsValues, setVarsValues] = useState<Record<string, string>>({});
 
   // Preview / Send
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -210,13 +219,18 @@ export default function Communications() {
     finally { setLoading(false); }
   };
 
-  // ── Recherche élèves (par nom enfant OU nom parent) ───────────────────────
+  // ── Élèves éligibles (INSCRIT / ADMIS / ACTIF uniquement) ────────────────
+
+  const eligibleEleves = useMemo(() =>
+    eleves.filter(e => STATUTS_ELIGIBLE.includes(e.statut)),
+  [eleves]);
+
+  // ── Recherche élèves ─────────────────────────────────────────────────────
 
   const filteredEleves = useMemo(() => {
     const q = searchEleve.toLowerCase().trim();
     if (!q) return [];
-    return eleves.filter(e => {
-      if (!['ACTIF', 'INSCRIT'].includes(e.statut)) return false;
+    return eligibleEleves.filter(e => {
       if (!getElevePhone(e)) return false;
       const nomEnfant = `${e.prenom} ${e.nom}`.toLowerCase();
       const nomParent1 = `${e.parent1?.prenom || ''} ${e.parent1?.nom || ''}`.toLowerCase();
@@ -224,7 +238,7 @@ export default function Communications() {
       const phone = getElevePhone(e);
       return nomEnfant.includes(q) || nomParent1.includes(q) || nomParent2.includes(q) || phone.includes(q);
     }).slice(0, 15);
-  }, [eleves, searchEleve]);
+  }, [eligibleEleves, searchEleve]);
 
   // ── Classe lookup ─────────────────────────────────────────────────────────
 
@@ -239,20 +253,17 @@ export default function Communications() {
     return classes.filter(c => c.niveau === targetNiveau);
   }, [classes, targetNiveau]);
 
-  // ── Category/financier ────────────────────────────────────────────────────
+  // ── Template sélection ───────────────────────────────────────────────────
 
-  const category = useMemo(() => TYPES_MESSAGE.find(t => t.value === messageType)?.category || 'GENERAL', [messageType]);
-  const isFinancier = category === 'FINANCIER' || category === 'PEDAGOGIQUE';
-
-  // ── Appliquer un template ─────────────────────────────────────────────────
-
-  const handleSelectTemplate = (tmpl: typeof DEFAULT_TEMPLATES[0]) => {
-    setBody(tmpl.body);
-    const typeMatch = TYPES_MESSAGE.find(t => t.category === tmpl.category);
-    if (typeMatch) setMessageType(typeMatch.value);
+  const handleSelectTemplate = (tmpl: Template) => {
+    setSelectedTemplate(tmpl);
+    const defaultVars: Record<string, string> = {};
+    tmpl.editableVars.forEach(v => { defaultVars[v.key] = varsValues[v.key] || ''; });
+    setVarsValues(defaultVars);
+    setPreview(null);
+    setShowPreview(false);
+    setSendResult(null);
   };
-
-  // ── Sélection d'un élève ──────────────────────────────────────────────────
 
   const handleSelectEleve = (e: EleveComm) => {
     setSelectedEleve(e);
@@ -260,31 +271,49 @@ export default function Communications() {
     setTargetType('INDIVIDUEL');
   };
 
-  // ── Message rendu (preview) ───────────────────────────────────────────────
+  // ── Body rendu ───────────────────────────────────────────────────────────
 
-  const renderedMessage = useMemo(() => {
-    if (!body || !selectedEleve) return body;
-    const parentPrenom = selectedEleve.parent1?.prenom || '';
-    const parentNom = selectedEleve.parent1?.nom || '';
+  const renderedBody = useMemo(() => {
+    if (!selectedTemplate) return '';
+    const exampleEleve = selectedEleve || eligibleEleves[0];
+    const parentPrenom = exampleEleve?.parent1?.prenom || '';
+    const parentNom = exampleEleve?.parent1?.nom || '';
     const vars: Record<string, string> = {
-      ...customVars,
-      prenom_enfant: selectedEleve.prenom,
-      nom_enfant: selectedEleve.nom,
-      niveau: NIVEAUX_LABELS[selectedEleve.niveau] || selectedEleve.niveau,
-      classe: classeMap[selectedEleve.classeId] || selectedEleve.niveau,
+      ...varsValues,
+      prenom_enfant: exampleEleve?.prenom || 'Prénom',
+      nom_enfant: exampleEleve?.nom || 'Nom',
+      niveau: NIVEAUX_LABELS[exampleEleve?.niveau || ''] || exampleEleve?.niveau || 'Niveau',
+      classe: (exampleEleve ? classeMap[exampleEleve.classeId] : '') || exampleEleve?.niveau || 'Classe',
       prenom_parent: parentPrenom ? `${parentPrenom} ${parentNom}`.trim() : 'Parent',
     };
-    return renderTemplate(body, vars);
-  }, [body, selectedEleve, customVars, classeMap]);
+    return renderBody(selectedTemplate.body, vars);
+  }, [selectedTemplate, selectedEleve, eligibleEleves, varsValues, classeMap]);
+
+  const bodyComplete = useMemo(() => {
+    if (!selectedTemplate) return false;
+    return selectedTemplate.editableVars.every(v => (varsValues[v.key] || '').trim().length > 0);
+  }, [selectedTemplate, varsValues]);
+
+  // ── Resolve final body (with vars injected) ──────────────────────────────
+
+  const finalBody = useMemo(() => {
+    if (!selectedTemplate) return '';
+    return renderBody(selectedTemplate.body, varsValues);
+  }, [selectedTemplate, varsValues]);
 
   // ── Preview (dry-run API) ─────────────────────────────────────────────────
 
   const handlePreview = async () => {
-    if (!body.trim()) { showToast('Le message ne peut pas être vide.', 'error'); return; }
+    if (!selectedTemplate || !bodyComplete) {
+      showToast('Veuillez sélectionner un template et remplir tous les champs.', 'error');
+      return;
+    }
     try {
       setLoading(true);
       const res = await apiClient.post('/communications/preview', {
-        type: messageType, category, body,
+        type: selectedTemplate.type,
+        category: selectedTemplate.category,
+        body: finalBody,
         targetType,
         targetNiveau: targetType === 'NIVEAU' ? targetNiveau : undefined,
         targetClasseId: targetType === 'CLASSE' ? targetClasseId : undefined,
@@ -300,21 +329,27 @@ export default function Communications() {
   // ── Envoi WhatsApp ────────────────────────────────────────────────────────
 
   const handleSend = async () => {
-    if (!body.trim()) { showToast('Le message ne peut pas être vide.', 'error'); return; }
+    if (!selectedTemplate || !bodyComplete) {
+      showToast('Veuillez sélectionner un template et remplir tous les champs.', 'error');
+      return;
+    }
     try {
       setSending(true);
       const res = await apiClient.post('/communications/send', {
-        type: messageType, category, subject, body,
+        type: selectedTemplate.type,
+        category: selectedTemplate.category,
+        subject: selectedTemplate.label,
+        body: finalBody,
         targetType,
         targetNiveau: targetType === 'NIVEAU' ? targetNiveau : undefined,
         targetClasseId: targetType === 'CLASSE' ? targetClasseId : undefined,
         targetEleveId: targetType === 'INDIVIDUEL' ? selectedEleve?.id : undefined,
-        variables: customVars,
+        variables: varsValues,
       });
       const data = res.data || res;
       setSendResult(data);
       if (data.sent > 0) {
-        showToast(`${data.sent} message(s) envoyé(s).`, 'success');
+        showToast(`${data.sent} message(s) envoyé(s) avec succès.`, 'success');
       } else if (data.failed > 0) {
         const errDetail = data.details?.find((d: any) => d.error)?.error || 'Échec envoi WhatsApp';
         showToast(`Échec : ${errDetail}`, 'error');
@@ -325,50 +360,62 @@ export default function Communications() {
     } finally { setSending(false); }
   };
 
-
   // ── Reset ─────────────────────────────────────────────────────────────────
 
   const resetComposer = () => {
-    setBody(''); setSubject(''); setMessageType('ANNONCE'); setTargetType('ALL');
-    setTargetNiveau(''); setTargetClasseId(''); setSelectedEleve(null);
-    setSearchEleve(''); setPreview(null); setShowPreview(false); setSendResult(null);
-    setCustomVars({ mois: MOIS_LABELS[new Date().getMonth()], montant: '', date_limite: '', trimestre: '' });
+    setSelectedTemplate(null);
+    setTargetType('ALL');
+    setTargetNiveau('');
+    setTargetClasseId('');
+    setSelectedEleve(null);
+    setSearchEleve('');
+    setVarsValues({});
+    setPreview(null);
+    setShowPreview(false);
+    setSendResult(null);
   };
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────
+  // ── KPIs (uniquement élèves éligibles) ────────────────────────────────────
 
   const kpis = useMemo(() => {
-    const actifs = eleves.filter(e => e.statut === 'ACTIF').length;
-    const avecPhone = eleves.filter(e => !!getElevePhone(e)).length;
-    return { total: eleves.length, actifs, avecPhone };
-  }, [eleves]);
+    const total = eligibleEleves.length;
+    const avecPhone = eligibleEleves.filter(e => !!getElevePhone(e)).length;
+    return { total, avecPhone, sansPhone: total - avecPhone };
+  }, [eligibleEleves]);
+
+  // ── Validation d'envoi ────────────────────────────────────────────────────
+
+  const canSend = useMemo(() => {
+    if (!selectedTemplate || !bodyComplete) return false;
+    if (targetType === 'NIVEAU' && !targetNiveau) return false;
+    if (targetType === 'CLASSE' && !targetClasseId) return false;
+    if (targetType === 'INDIVIDUEL' && !selectedEleve) return false;
+    return true;
+  }, [selectedTemplate, bodyComplete, targetType, targetNiveau, targetClasseId, selectedEleve]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   const TABS = [
     { id: 'composer' as const, label: 'Envoyer', icon: Send },
     { id: 'historique' as const, label: 'Historique', icon: History },
-    { id: 'templates' as const, label: 'Modèles', icon: FileText },
   ];
 
   return (
     <div className="space-y-6">
-      {/* En-tête + KPIs */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-            <span className="p-2 bg-green-500 rounded-xl text-white"><MessageSquare size={22} /></span>
-            Communications WhatsApp
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">Envoi de messages aux parents via WhatsApp</p>
-        </div>
+      {/* En-tête */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+          <span className="p-2 bg-green-500 rounded-xl text-white"><MessageSquare size={22} /></span>
+          Communications WhatsApp
+        </h1>
+        <p className="text-slate-500 text-sm mt-1">Envoi de messages aux parents via WhatsApp</p>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-2xl p-4 bg-blue-50 text-blue-700 flex items-center gap-3">
           <Users size={20} className="opacity-70" />
-          <div><div className="text-xl font-bold">{kpis.actifs}</div><div className="text-xs opacity-70">Élèves actifs</div></div>
+          <div><div className="text-xl font-bold">{kpis.total}</div><div className="text-xs opacity-70">Élèves inscrits</div></div>
         </div>
         <div className="rounded-2xl p-4 bg-green-50 text-green-700 flex items-center gap-3">
           <Phone size={20} className="opacity-70" />
@@ -376,7 +423,7 @@ export default function Communications() {
         </div>
         <div className="rounded-2xl p-4 bg-amber-50 text-amber-700 flex items-center gap-3">
           <AlertCircle size={20} className="opacity-70" />
-          <div><div className="text-xl font-bold">{kpis.total - kpis.avecPhone}</div><div className="text-xs opacity-70">Sans numéro</div></div>
+          <div><div className="text-xl font-bold">{kpis.sansPhone}</div><div className="text-xs opacity-70">Sans numéro</div></div>
         </div>
       </div>
 
@@ -384,49 +431,71 @@ export default function Communications() {
       <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               activeTab === tab.id ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
             <tab.icon size={16} />{tab.label}
           </button>
         ))}
       </div>
 
-      {/* ═══ TAB COMPOSER ═══ */}
+      {/* ═══ TAB ENVOYER ═══ */}
       {activeTab === 'composer' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Col gauche : formulaire */}
+          {/* Col gauche */}
           <div className="lg:col-span-2 space-y-5">
 
-            {/* Type de message */}
-            <Card title="Type de message" icon={<Zap size={16} className="text-amber-500" />}>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {TYPES_MESSAGE.map(t => (
-                  <button key={t.value} onClick={() => setMessageType(t.value)}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
-                      messageType === t.value ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-                    <span className="mr-1">{t.icon}</span>{t.label}
+            {/* 1. Choix du template */}
+            <Card title="Choisir un template" icon={<MessageSquare size={16} className="text-green-500" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {TEMPLATES.map(tmpl => (
+                  <button key={tmpl.id} onClick={() => handleSelectTemplate(tmpl)}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                      selectedTemplate?.id === tmpl.id
+                        ? 'border-green-500 bg-green-50 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }`}>
+                    <div className="text-2xl mb-1">{tmpl.icon}</div>
+                    <div className="font-semibold text-sm text-slate-800">{tmpl.label}</div>
+                    <div className="flex items-center gap-1 mt-1.5">
+                      <CheckCircle2 size={10} className="text-green-500" />
+                      <span className="text-[10px] text-green-700 font-medium">{tmpl.waTemplate}</span>
+                      <span className="px-1 py-0.5 rounded bg-green-100 text-green-800 text-[9px] font-bold">VALIDÉ</span>
+                    </div>
                   </button>
                 ))}
               </div>
-              {isFinancier && (
-                <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg text-amber-700 text-xs mt-3">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                  <span>Seuls les parents d'élèves <strong>ACTIFS</strong> recevront ce message.</span>
+
+              {/* Champs variables du template sélectionné */}
+              {selectedTemplate && selectedTemplate.editableVars.length > 0 && (
+                <div className="mt-4 space-y-3 p-4 bg-slate-50 rounded-xl">
+                  <p className="text-xs font-medium text-slate-600">Compléter les informations :</p>
+                  {selectedTemplate.editableVars.map(v => (
+                    <div key={v.key}>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{v.label}</label>
+                      <input
+                        type="text"
+                        value={varsValues[v.key] || ''}
+                        onChange={e => setVarsValues(prev => ({ ...prev, [v.key]: e.target.value }))}
+                        placeholder={v.placeholder}
+                        className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all"
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
             </Card>
 
-            {/* Destinataires */}
+            {/* 2. Destinataires */}
             <Card title="Destinataires" icon={<Users size={16} className="text-blue-500" />}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[
+                {([
                   { value: 'ALL', label: 'Tous les parents' },
                   { value: 'NIVEAU', label: 'Par niveau' },
                   { value: 'CLASSE', label: 'Par classe' },
                   { value: 'INDIVIDUEL', label: 'Un parent' },
-                ].map(opt => (
+                ] as const).map(opt => (
                   <button key={opt.value}
-                    onClick={() => { setTargetType(opt.value as any); setSelectedEleve(null); setPreview(null); }}
+                    onClick={() => { setTargetType(opt.value); setSelectedEleve(null); setPreview(null); setShowPreview(false); }}
                     className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
                       targetType === opt.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
                     {opt.label}
@@ -480,15 +549,10 @@ export default function Communications() {
                                 <span className="ml-1 text-[10px] text-slate-400">{classeMap[e.classeId]}</span>
                               )}
                             </div>
-                            {getElevePhone(e) ? (
-                              <Phone size={12} className="text-green-500" />
-                            ) : (
-                              <span className="text-[10px] text-red-400">Pas de n°</span>
-                            )}
+                            <Phone size={12} className="text-green-500" />
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">
-                            Parent : {getParentDisplay(e)}
-                            {getElevePhone(e) && <span className="ml-2 text-slate-400">{getElevePhone(e)}</span>}
+                            Parent : {getParentDisplay(e)} <span className="ml-2 text-slate-400">{getElevePhone(e)}</span>
                           </div>
                         </button>
                       ))}
@@ -497,7 +561,6 @@ export default function Communications() {
                   {searchEleve && !selectedEleve && filteredEleves.length === 0 && (
                     <p className="text-xs text-slate-400 italic px-2">Aucun résultat pour "{searchEleve}"</p>
                   )}
-                  {/* Élève sélectionné */}
                   {selectedEleve && (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
                       <div>
@@ -520,36 +583,17 @@ export default function Communications() {
               )}
             </Card>
 
-            {/* Corps du message */}
-            <Card title="Message" icon={<Edit3 size={16} className="text-green-500" />}>
-              <textarea rows={8} placeholder="Rédigez votre message... Variables : {prenom_enfant}, {nom_enfant}, {niveau}, {classe}, {prenom_parent}, {montant}, {mois}, {date_limite}"
-                value={body} onChange={e => setBody(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all" />
-
-              {/* Variables personnalisées */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-                <input placeholder="Mois" value={customVars.mois} onChange={e => setCustomVars(v => ({ ...v, mois: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs" />
-                <input placeholder="Montant (FCFA)" value={customVars.montant} onChange={e => setCustomVars(v => ({ ...v, montant: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs" />
-                <input placeholder="Date limite" value={customVars.date_limite} onChange={e => setCustomVars(v => ({ ...v, date_limite: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs" />
-                <input placeholder="Trimestre" value={customVars.trimestre} onChange={e => setCustomVars(v => ({ ...v, trimestre: e.target.value }))}
-                  className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs" />
-              </div>
-            </Card>
-
-            {/* Actions */}
+            {/* 3. Actions */}
             <div className="flex flex-wrap items-center gap-3">
-              <button onClick={handlePreview} disabled={loading || !body.trim()}
+              <button onClick={handlePreview} disabled={loading || !canSend}
                 className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-all disabled:opacity-50">
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
                 Prévisualiser
               </button>
-              <button onClick={handleSend} disabled={sending || !body.trim()}
+              <button onClick={handleSend} disabled={sending || !canSend}
                 className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-all disabled:opacity-50">
                 {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                Envoyer
+                Envoyer via WhatsApp
               </button>
               <button onClick={resetComposer}
                 className="flex items-center gap-2 px-4 py-2.5 text-slate-500 text-sm hover:text-slate-700">
@@ -558,41 +602,38 @@ export default function Communications() {
             </div>
           </div>
 
-          {/* Col droite : templates + preview + résultat */}
+          {/* Col droite : preview */}
           <div className="space-y-5">
-            {/* Templates rapides */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-              <h4 className="font-medium text-slate-700 text-sm">Modèles rapides</h4>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {DEFAULT_TEMPLATES.map(tmpl => (
-                  <button key={tmpl.id} onClick={() => handleSelectTemplate(tmpl)}
-                    className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-green-300 hover:bg-green-50/50 transition-all text-xs">
-                    <div className="font-medium text-slate-700">{tmpl.label}</div>
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-medium ${
-                      tmpl.category === 'FINANCIER' ? 'bg-amber-100 text-amber-700' :
-                      tmpl.category === 'PEDAGOGIQUE' ? 'bg-indigo-100 text-indigo-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>{tmpl.category}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Preview message rendu (individuel) */}
-            {targetType === 'INDIVIDUEL' && selectedEleve && body && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
-                <h4 className="font-medium text-slate-700 text-sm">Aperçu du message</h4>
-                <div className="bg-green-50 rounded-lg p-3 text-xs text-slate-700 whitespace-pre-wrap max-h-40 overflow-y-auto">
-                  {renderedMessage}
+            {/* Aperçu du message */}
+            {selectedTemplate && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+                <h4 className="font-medium text-slate-700 text-sm flex items-center gap-2">
+                  <Eye size={14} className="text-slate-400" />
+                  Aperçu du message
+                </h4>
+                <div className="bg-green-50 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-xs text-green-700">
+                    <span className="text-lg">{selectedTemplate.icon}</span>
+                    <span className="font-medium">{selectedTemplate.label}</span>
+                  </div>
+                  <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                    {renderedBody || <span className="italic text-slate-400">Complétez les champs pour voir l'aperçu...</span>}
+                  </div>
                 </div>
+                {!bodyComplete && (
+                  <div className="flex items-start gap-2 p-2.5 bg-amber-50 rounded-lg text-[11px] text-amber-700">
+                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                    <span>Veuillez remplir tous les champs du template.</span>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Preview API (tous/groupe) */}
+            {/* Preview API result */}
             {showPreview && preview && (
               <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-slate-700 text-sm">Aperçu envoi</h4>
+                  <h4 className="font-medium text-slate-700 text-sm">Résultat prévisualisation</h4>
                   <button onClick={() => setShowPreview(false)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -610,7 +651,7 @@ export default function Communications() {
                     <p className="text-[10px] text-slate-500 font-medium">Destinataires :</p>
                     {preview.recipients.slice(0, 10).map((r, i) => (
                       <div key={i} className="text-[10px] text-green-600 flex items-center gap-1">
-                        <CheckCircle2 size={10} />{r.nom} — {r.niveau} — {r.phone}
+                        <CheckCircle2 size={10} />{r.nom} — {r.phone}
                       </div>
                     ))}
                     {preview.recipients.length > 10 && (
@@ -710,37 +751,6 @@ export default function Communications() {
               <button disabled={logsPage * 20 >= logsTotal} onClick={() => setLogsPage(p => p + 1)} className="px-3 py-1 text-xs rounded border disabled:opacity-50">Suivant</button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ═══ TAB TEMPLATES ═══ */}
-      {activeTab === 'templates' && (
-        <div className="space-y-4">
-          <h3 className="font-semibold text-slate-700">Modèles de messages</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {DEFAULT_TEMPLATES.map(tmpl => (
-              <div key={tmpl.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-sm text-slate-700">{tmpl.label}</h4>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                    tmpl.category === 'FINANCIER' ? 'bg-amber-100 text-amber-700' :
-                    tmpl.category === 'PEDAGOGIQUE' ? 'bg-indigo-100 text-indigo-700' :
-                    'bg-slate-100 text-slate-600'
-                  }`}>{tmpl.category}</span>
-                </div>
-                <pre className="text-xs text-slate-500 whitespace-pre-wrap line-clamp-4 bg-slate-50 rounded-lg p-2">{tmpl.body}</pre>
-                <div className="flex flex-wrap gap-1">
-                  {tmpl.variables.map(v => (
-                    <span key={v} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px]">{`{${v}}`}</span>
-                  ))}
-                </div>
-                <button onClick={() => { handleSelectTemplate(tmpl); setActiveTab('composer'); }}
-                  className="text-xs text-green-600 hover:text-green-800 font-medium">
-                  Utiliser ce modèle →
-                </button>
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>

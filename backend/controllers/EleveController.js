@@ -7,7 +7,7 @@ import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
 import { BotpressService } from '../services/BotpressService.js';
 
-const ADMIN_PHONE = '+221781311371';
+const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
 // ── Création automatique des abonnements à l'inscription ────────────────────
 // Cherche les offres (MENSUALITE/BUS/CANTINE) applicables au niveau/options de
@@ -268,8 +268,8 @@ export class EleveController {
             {
               category: 'inscription',
               reference: `validation:${eleve.id}`,
-              template: 'candidature_acceptee',
-              variables: [parentName, enfantNom, ecoleNom],
+              template: 'notification_ecole',
+              variables: [parentName, enfantNom, `Candidature acceptée ! ${enfantNom} est désormais ${statutApres === 'INSCRIT' ? 'inscrit(e)' : 'actif/active'} à ${ecoleNom}. Bienvenue !`],
               indicatifPays: eleve.indicatifPays || '221',
             }
           ).catch(err => console.warn('[EleveController] WhatsApp validation parent:', err.message));
@@ -277,8 +277,13 @@ export class EleveController {
 
         // Notifier l'admin
         BotpressService.sendWhatsApp(ADMIN_PHONE,
-          `✅ *Candidature validée*\n\nÉlève : *${enfantNom}*\nStatut : ${statutApres}\nParent : ${parentName}\n\nL'élève a été inscrit avec succès.`,
-          { category: 'inscription', reference: `validation:${eleve.id}` }
+          `Candidature validée : ${enfantNom} — Statut : ${statutApres}`,
+          {
+            category: 'inscription',
+            reference: `validation:${eleve.id}`,
+            template: 'notification_ecole',
+            variables: ['Administration', enfantNom, `Candidature validée. Statut : ${statutApres}. Parent : ${parentName}.`],
+          }
         ).catch(err => console.warn('[EleveController] WhatsApp validation admin:', err.message));
       }
 
@@ -300,8 +305,8 @@ export class EleveController {
             {
               category: 'inscription',
               reference: `rejet:${eleve.id}`,
-              template: 'candidature_rejetee',
-              variables: [parentName, enfantNom, motif],
+              template: 'notification_ecole',
+              variables: [parentName, enfantNom, `Après examen, la candidature n'a pas été retenue. Motif : ${motif}. Contactez-nous pour plus d'informations.`],
               indicatifPays: eleve.indicatifPays || '221',
             }
           ).catch(err => console.warn('[EleveController] WhatsApp rejet parent:', err.message));
@@ -532,7 +537,7 @@ export class EleveController {
                 mimeType: 'application/pdf',
                 caption: `Reçu inscription — ${enfantNom}`,
               },
-              { category: 'inscription', reference: `inscription:${ref}`, template: 'recu_inscription', variables: [parentName, montantFmt + ' F CFA', enfantNom, ref], indicatifPays: eleve.indicatifPays || '221' }
+              { category: 'inscription', reference: `inscription:${ref}`, template: 'recu_paiement', variables: [parentName, montantFmt + ' F CFA', enfantNom, ref], indicatifPays: eleve.indicatifPays || '221' }
             ).catch(err => console.warn('[EleveController.factureInscription] WhatsApp reçu:', err.message));
           }
         } catch (notifErr) {

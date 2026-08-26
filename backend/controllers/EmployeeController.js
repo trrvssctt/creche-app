@@ -112,6 +112,35 @@ export class EmployeeController {
     }
   }
 
+  static async getMe(req, res) {
+    try {
+      const employeeId = req.user.employeeId;
+      if (!employeeId) return res.status(404).json({ error: 'NoLinkedEmployee', message: 'Aucune fiche employé liée à votre compte.' });
+      const emp = await Employee.findOne({
+        where: { id: employeeId, tenantId: req.user.tenantId },
+        include: [{ model: Department, as: 'departmentInfo', attributes: ['id', 'name'] }],
+      });
+      if (!emp) return res.status(404).json({ error: 'NotFound' });
+      return res.status(200).json(emp);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  static async getMyContracts(req, res) {
+    try {
+      const employeeId = req.user.employeeId;
+      if (!employeeId) return res.status(404).json({ error: 'NoLinkedEmployee', message: 'Aucune fiche employé liée à votre compte.' });
+      const contracts = await Contract.findAll({
+        where: { employeeId, tenantId: req.user.tenantId },
+        order: [['startDate', 'DESC']],
+      });
+      return res.status(200).json(contracts);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
   static async get(req, res) {
     try {
       const { id } = req.params;

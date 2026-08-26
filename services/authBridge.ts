@@ -34,6 +34,7 @@ const ALL_MODULES = [
   'my-leaves', 'employee-pointage',
   'governance', 'security', 'audit',
   'subscription',
+  'mon-profil',
   'info', 'support', 'settings',
   'ai_analysis',
 ];
@@ -44,7 +45,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   [UserRole.DIRECTEUR]: ALL_MODULES,
 
   [UserRole.HR_MANAGER]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'rh',
     'rh.employees', 'rh.departments', 'rh.employee.profile',
     'rh.contracts', 'rh.org', 'rh.docs', 'rh.leaves',
@@ -57,7 +58,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
 
   [UserRole.STOCK_MANAGER]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'inventory', 'movements', 'inventorycampaigns',
     'categories', 'subcategories',
     'suppliers', 'deliveries',
@@ -66,7 +67,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
 
   [UserRole.ACCOUNTANT]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'sales', 'recovery', 'payments', 'facturation',
     'eleves', 'classes', 'customers',
     'rh',
@@ -77,7 +78,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
 
   [UserRole.SALES]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'sales', 'recovery', 'payments',
     'customers', 'inventory',
     'my-leaves', 'employee-pointage',
@@ -85,21 +86,21 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
 
   [UserRole.ENSEIGNANT]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'bulletins', 'emploidutemps', 'evenements',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
 
   [UserRole.MAITRESSE]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'bulletins', 'emploidutemps', 'evenements',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
 
   [UserRole.COMPTABLE]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'eleves', 'classes', 'customers', 'admission',
     'whatsapp', 'communications', 'certificats',
     'sales', 'recovery', 'payments', 'facturation',
@@ -111,7 +112,7 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
 
   [UserRole.ASSISTANTE]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'eleves', 'classes', 'customers', 'admission',
     'bulletins', 'emploidutemps', 'evenements',
     'whatsapp', 'certificats',
@@ -129,21 +130,21 @@ const ROLE_MODULES: Record<string, string[]> = {
   ],
 
   [UserRole.EMPLOYEE]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
 
   [UserRole.INFIRMIERE]: [
-    'dashboard',
+    'dashboard', 'mon-profil',
     'eleves',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],
 
   [UserRole.CHAUFFEUR]: [
-    'dashboard',
-    'eleves', // liste transport (accès rapide du portail)
+    'dashboard', 'mon-profil',
+    'eleves',
     'my-leaves', 'employee-pointage',
     'info', 'support',
   ],

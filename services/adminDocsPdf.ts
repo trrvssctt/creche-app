@@ -1176,7 +1176,7 @@ export type DocAdminType =
 // - Crèche               → fiche d'identité + règlement intérieur + sanitaire + autorisation soins
 // - Maternelle/Élémentaire → fiche d'identité + convention de scolarisation + certificat + sanitaire
 export function docsForNiveau(niveau: string | undefined): DocAdminType[] {
-  if (niveau === 'CRECHE') {
+  if (['CRECHE1', 'CRECHE2', 'TPS'].includes(niveau || '')) {
     return ['fiche_inscription', 'reglement_interieur', 'fiche_sanitaire', 'autorisation_soins'];
   }
   return ['fiche_inscription', 'convention_scolarisation', 'certificat_scolarite', 'fiche_sanitaire'];
