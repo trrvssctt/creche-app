@@ -61,3 +61,11 @@ Capture*
 
 # Lock files (garder package-lock.json pour reproductibilité)
 # package-lock.json
+
+# Sessions WhatsApp Web (profil Chromium = identifiants du compte WhatsApp, à protéger comme un mot de passe)
+backend/wa-data/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Archive locale de l'ancienne intégration WhatsApp (Botpress / n8n / Meta)
+_archive/

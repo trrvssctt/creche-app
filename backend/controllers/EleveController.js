@@ -5,7 +5,7 @@ import { isTeacher, getTeacherClassIds } from '../utils/teacherGuard.js';
 import { findDuplicateEleve, duplicateMessage } from '../utils/eleveDedup.js';
 import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
-import { BotpressService } from '../services/BotpressService.js';
+import { WhatsAppService } from '../services/WhatsAppService.js';
 
 const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
@@ -263,26 +263,24 @@ export class EleveController {
         const ecoleNom = tenant?.name || 'Le Toit des Anges';
 
         if (parentPhone) {
-          BotpressService.sendWhatsApp(parentPhone,
+          WhatsAppService.sendWhatsApp(parentPhone,
             `🎉 *Candidature acceptée !*\n\nBonjour ${parentName},\n\nNous avons le plaisir de vous informer que *${enfantNom}* est désormais *${statutApres === 'INSCRIT' ? 'inscrit(e)' : 'actif/active'}* à *${ecoleNom}*.\n\nBienvenue dans notre établissement !\n\n_${ecoleNom}_`,
             {
+              tenantId: req.user.tenantId,
               category: 'inscription',
               reference: `validation:${eleve.id}`,
-              template: 'notification_ecole',
-              variables: [parentName, enfantNom, `Candidature acceptée ! ${enfantNom} est désormais ${statutApres === 'INSCRIT' ? 'inscrit(e)' : 'actif/active'} à ${ecoleNom}. Bienvenue !`],
               indicatifPays: eleve.indicatifPays || '221',
             }
           ).catch(err => console.warn('[EleveController] WhatsApp validation parent:', err.message));
         }
 
         // Notifier l'admin
-        BotpressService.sendWhatsApp(ADMIN_PHONE,
+        WhatsAppService.sendWhatsApp(ADMIN_PHONE,
           `Candidature validée : ${enfantNom} — Statut : ${statutApres}`,
           {
+            tenantId: req.user.tenantId,
             category: 'inscription',
             reference: `validation:${eleve.id}`,
-            template: 'notification_ecole',
-            variables: ['Administration', enfantNom, `Candidature validée. Statut : ${statutApres}. Parent : ${parentName}.`],
           }
         ).catch(err => console.warn('[EleveController] WhatsApp validation admin:', err.message));
       }
@@ -300,13 +298,12 @@ export class EleveController {
         const motif = rejetMatch ? rejetMatch[1].trim() : 'Non précisé';
 
         if (parentPhone) {
-          BotpressService.sendWhatsApp(parentPhone,
+          WhatsAppService.sendWhatsApp(parentPhone,
             `📋 *Dossier d'inscription — Décision*\n\nBonjour ${parentName},\n\nAprès examen du dossier de *${enfantNom}*, nous avons le regret de vous informer que la candidature n'a pas été retenue.\n\n📌 *Motif :* ${motif}\n\nVous pouvez nous contacter pour plus d'informations ou resoumettre un dossier corrigé.\n\n_${ecoleNom}_`,
             {
+              tenantId: req.user.tenantId,
               category: 'inscription',
               reference: `rejet:${eleve.id}`,
-              template: 'notification_ecole',
-              variables: [parentName, enfantNom, `Après examen, la candidature n'a pas été retenue. Motif : ${motif}. Contactez-nous pour plus d'informations.`],
               indicatifPays: eleve.indicatifPays || '221',
             }
           ).catch(err => console.warn('[EleveController] WhatsApp rejet parent:', err.message));
@@ -529,7 +526,7 @@ export class EleveController {
 
           if (waPhone) {
             const montantFmt = totalHt.toLocaleString('fr-FR');
-            BotpressService.sendDocument(waPhone,
+            WhatsAppService.sendDocument(waPhone,
               `🧾 *Reçu — Frais d'inscription*\n\nBonjour ${parentName},\n\nNous confirmons le paiement des frais d'inscription de *${enfantNom}*.\n\n💰 Montant : *${montantFmt} F CFA*\n💳 Méthode : ${methodePaiement}\n📋 Réf : ${ref}\n\nLe reçu est joint à ce message.\n\n_${ecoleNom}_`,
               {
                 base64: pdfBuffer.toString('base64'),
@@ -537,7 +534,7 @@ export class EleveController {
                 mimeType: 'application/pdf',
                 caption: `Reçu inscription — ${enfantNom}`,
               },
-              { category: 'inscription', reference: `inscription:${ref}`, template: 'recu_paiement', variables: [parentName, montantFmt + ' F CFA', enfantNom, ref], indicatifPays: eleve.indicatifPays || '221' }
+              { tenantId: req.user.tenantId, category: 'inscription', reference: `inscription:${ref}`, indicatifPays: eleve.indicatifPays || '221' }
             ).catch(err => console.warn('[EleveController.factureInscription] WhatsApp reçu:', err.message));
           }
         } catch (notifErr) {

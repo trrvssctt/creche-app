@@ -5,7 +5,7 @@ import {
   validatePiecesJointes, createPiecesJointes, missingRequiredPieces,
 } from '../utils/eleveDedup.js';
 import { EmailService } from '../services/EmailService.js';
-import { BotpressService } from '../services/BotpressService.js';
+import { WhatsAppService } from '../services/WhatsAppService.js';
 
 const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
@@ -186,28 +186,26 @@ export class PublicController {
         }
       }
 
-      // WhatsApp au parent (template APPROVED notification_ecole : 3 vars)
+      // WhatsApp au parent
       const parentPhone = parent1?.whatsapp || parent1?.telephone;
       if (parentPhone) {
-        BotpressService.sendWhatsApp(parentPhone,
+        WhatsAppService.sendWhatsApp(parentPhone,
           `Bonjour ${parentName}, candidature de ${prenom} ${nom} bien reçue par ${ecoleNom}. Référence : ${ref}. Suivi : ${suiviUrl}`,
           {
+            tenantId: tenant.id,
             category: 'inscription',
             reference: `admission:${ref}`,
-            template: 'notification_ecole',
-            variables: [parentName, `${prenom} ${nom}`, `Votre dossier d'inscription a été reçu. Référence : ${ref}. Suivez l'avancement sur ${suiviUrl}`],
           }
         ).catch(err => console.warn('[PublicController] WhatsApp parent:', err.message));
       }
 
-      // WhatsApp à l'administration (template APPROVED notification_ecole)
-      BotpressService.sendWhatsApp(ADMIN_PHONE,
+      // WhatsApp à l'administration
+      WhatsAppService.sendWhatsApp(ADMIN_PHONE,
         `Nouvelle candidature : ${prenom} ${nom} (${niveau || 'PS'}) — Parent : ${parentName} — Réf : ${ref}`,
         {
+          tenantId: tenant.id,
           category: 'inscription',
           reference: `admission:${ref}`,
-          template: 'notification_ecole',
-          variables: ['Administration', `${prenom} ${nom}`, `Nouvelle candidature (${niveau || 'PS'}). Parent : ${parentName}, Tél : ${parentPhone || 'non renseigné'}. Réf : ${ref}`],
         }
       ).catch(err => console.warn('[PublicController] WhatsApp admin:', err.message));
 
@@ -379,14 +377,13 @@ export class PublicController {
       const enfantNom = `${eleve.prenom} ${eleve.nom}`;
       const ecoleNom = tenant.name || "L'école";
 
-      // WhatsApp notification admin (template APPROVED notification_ecole)
-      BotpressService.sendWhatsApp(ADMIN_PHONE,
+      // WhatsApp notification admin
+      WhatsAppService.sendWhatsApp(ADMIN_PHONE,
         `Dossier resoumis : ${enfantNom} — Réf : ${raw}`,
         {
+          tenantId: tenant.id,
           category: 'inscription',
           reference: `resoumission:${raw}`,
-          template: 'notification_ecole',
-          variables: ['Administration', enfantNom, `Dossier resoumis après rejet (${eleve.niveau}). Parent : ${parentName}. Réf : ${raw}`],
         }
       ).catch(err => console.warn('[PublicController] WhatsApp admin resoumission:', err.message));
 

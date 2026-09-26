@@ -978,6 +978,48 @@ export const connectDB = async () => {
       console.warn('⚠️ Note table school_events:', schoolEventsErr.message);
     }
 
+    // WhatsApp (WhatsApp Web piloté en arrière-plan) : compte lié + journal des messages.
+    // whatsapp_sessions (fenêtre 24h Meta/Botpress) n'a plus d'usage.
+    try {
+      await sequelize.query(`
+        DROP TABLE IF EXISTS whatsapp_sessions;
+        CREATE TABLE IF NOT EXISTS whatsapp_accounts (
+          tenant_id  UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+          phone      VARCHAR(30),
+          pushname   VARCHAR(255),
+          linked_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS whatsapp_messages (
+          id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          phone          VARCHAR(30) NOT NULL,
+          chat_id        VARCHAR(80),
+          kind           VARCHAR(20) NOT NULL DEFAULT 'text',
+          body           TEXT NOT NULL DEFAULT '',
+          filename       VARCHAR(255),
+          category       VARCHAR(50),
+          reference      VARCHAR(255),
+          recipient_name VARCHAR(255),
+          status         VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
+          wa_message_id  VARCHAR(255),
+          ack            SMALLINT,
+          error          TEXT,
+          created_by     UUID,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          sent_at        TIMESTAMPTZ,
+          updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_wa_messages_tenant  ON whatsapp_messages (tenant_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_wa_messages_sent    ON whatsapp_messages (tenant_id, sent_at);
+        CREATE INDEX IF NOT EXISTS idx_wa_messages_wamid   ON whatsapp_messages (wa_message_id);
+        CREATE INDEX IF NOT EXISTS idx_wa_messages_status  ON whatsapp_messages (status);
+      `, { type: QueryTypes.RAW });
+      console.log('✅ Tables WhatsApp vérifiées');
+    } catch (waErr) {
+      console.warn('⚠️ Note tables WhatsApp:', waErr.message);
+    }
+
     // 2. Connexion & Sync Registry IA (MySQL)
     await sequelize_db_template.authenticate();
     console.log('✅ Registry IA Connecté (MySQL)');

@@ -15,7 +15,7 @@ import { User }   from '../models/User.js';
 import { uploadToCloudinary } from '../services/CloudinaryService.js';
 import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
-import { BotpressService } from '../services/BotpressService.js';
+import { WhatsAppService } from '../services/WhatsAppService.js';
 
 const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
@@ -709,25 +709,23 @@ export class ParentController {
       const parentPhone = parent1?.whatsapp || parent1?.telephone;
       const suiviUrl = `${frontendUrl}/suivi-inscription?ref=${ref}`;
       if (parentPhone) {
-        BotpressService.sendWhatsApp(parentPhone,
+        WhatsAppService.sendWhatsApp(parentPhone,
           `✅ *Candidature déposée*\n\nBonjour ${user?.name || 'Parent'},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement.\n\n_${ecoleNom}_`,
           {
+            tenantId,
             category: 'inscription',
             reference: `admission:${ref}`,
-            template: 'notification_ecole',
-            variables: [user?.name || 'Parent', `${prenom} ${nom}`, `Votre dossier d'inscription a été reçu. Référence : ${ref}. Suivez l'avancement sur ${suiviUrl}`],
           }
         ).catch(err => console.warn('[ParentController] WhatsApp parent:', err.message));
       }
 
-      // WhatsApp à l'administration (template APPROVED notification_ecole)
-      BotpressService.sendWhatsApp(ADMIN_PHONE,
+      // WhatsApp à l'administration
+      WhatsAppService.sendWhatsApp(ADMIN_PHONE,
         `Nouvelle candidature (portail parent) : ${prenom} ${nom} — Réf : ${ref}`,
         {
+          tenantId,
           category: 'inscription',
           reference: `admission:${ref}`,
-          template: 'notification_ecole',
-          variables: ['Administration', `${prenom} ${nom}`, `Nouvelle candidature (portail parent, ${niveau || 'PS'}). Parent : ${user?.name || 'N/A'}. Réf : ${ref}`],
         }
       ).catch(err => console.warn('[ParentController] WhatsApp admin:', err.message));
 

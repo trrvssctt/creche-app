@@ -22,6 +22,7 @@ import { securityHeaders } from './middlewares/securityHeaders.js';
 import { BackupService } from './services/BackupService.js';
 import { AbonnementController } from './controllers/AbonnementController.js';
 import { Tenant } from './models/index.js';
+import { WhatsAppManager } from './services/whatsapp/WhatsAppManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -119,6 +120,9 @@ app.use(errorHandler);
 
 app.listen(PORT, async () => {
   await connectDB();
+
+  // ── WhatsApp : restauration des sessions liées (Chromium headless, en arrière-plan) ──
+  WhatsAppManager.restoreAll().catch(err => console.error('[WHATSAPP] Restauration :', err.message));
 
   // ── Génération des échéances & rappels J-5 (07:00 chaque jour) ────────────
   cron.schedule('0 7 * * *', async () => {
@@ -222,3 +226,12 @@ app.listen(PORT, async () => {
 
   console.log(`🚀 GeStockPro API running on port ${PORT} (FRONTEND_URL=${FRONTEND_URL})`);
 });
+
+// Arrêt propre : fermer les navigateurs WhatsApp en gardant les sessions (pas de rescan)
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.once(sig, async () => {
+    console.log(`[SERVER] ${sig} reçu — fermeture des sessions WhatsApp…`);
+    await Promise.race([WhatsAppManager.shutdownAll(), new Promise(r => setTimeout(r, 15000))]);
+    process.exit(0);
+  });
+}

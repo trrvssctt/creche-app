@@ -9,7 +9,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { StripeService } from '../services/StripeService.js';
 import { EmailService } from '../services/EmailService.js';
-import { BotpressService } from '../services/BotpressService.js';
+import { WhatsAppService } from '../services/WhatsAppService.js';
 
 // ── Emails et domaines bloqués (spam / abus avérés) ──────────────────────────
 const BLOCKED_EMAILS = new Set([
@@ -1355,13 +1355,12 @@ static async login(req, res) {
       // WhatsApp au parent
       const parentPhone = elevesLinked[0]?.whatsappPrincipal || elevesLinked[0]?.parent1?.whatsapp || elevesLinked[0]?.parent1?.telephone;
       if (parentPhone) {
-        BotpressService.sendWhatsApp(parentPhone,
+        WhatsAppService.sendWhatsApp(parentPhone,
           `🔑 *Votre compte parent est créé !*\n\nBonjour ${prenom} ${nom},\n\nVotre espace parent sur *${ecoleNom}* est prêt.\n\n👤 Email : ${email}\n🔗 Connexion : ${frontendUrl}/parents\n\nConnectez-vous pour suivre la scolarité de votre enfant.\n\n_${ecoleNom}_`,
           {
+            tenantId,
             category: 'compte_parent',
             reference: `parent-account:${user.id}`,
-            template: 'notification_ecole',
-            variables: [`${prenom} ${nom}`, `${prenom} ${nom}`, `Votre compte parent est créé. Connectez-vous avec ${email} sur ${frontendUrl}/parents pour suivre la scolarité de votre enfant.`],
             indicatifPays: elevesLinked[0]?.indicatifPays || '221',
           }
         ).catch(err => console.warn('[AUTH] WhatsApp parent account:', err.message));

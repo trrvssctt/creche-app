@@ -41,6 +41,7 @@ import scheduleRoutes from './schedule.routes.js';
 import planningRoutes from './planning.routes.js';
 import parentRoutes from './parent.routes.js';
 import communicationsRoutes from './communications.routes.js';
+import whatsappRoutes from './whatsapp.routes.js';
 import matieresRoutes from './matieres.routes.js';
 import financeV2Routes from './finance-v2.routes.js';
 import { AuthController } from '../controllers/AuthController.js';
@@ -77,15 +78,6 @@ router.post('/public/admission',               PublicController.submitAdmission)
 router.get('/public/admission/:reference',     PublicController.trackAdmission);
 router.put('/public/admission/:reference',     PublicController.resubmitAdmission);
 
-// ── Webhook WhatsApp entrant (public, appelé par Botpress pour tracker la fenêtre 24h) ──
-import { BotpressService } from '../services/BotpressService.js';
-router.post('/whatsapp/inbound', async (req, res) => {
-  const phone = req.body?.userPhone || req.body?.from;
-  if (!phone) return res.status(400).json({ error: 'Numéro manquant' });
-  await BotpressService.recordInbound(phone);
-  return res.json({ ok: true });
-});
-
 // --- PROTECTION JWT ---
 router.use(authenticateJWT);
 
@@ -121,6 +113,7 @@ router.use('/teacher',      tenantIsolation, teacherRoutes);
 router.use('/schedule',     tenantIsolation, scheduleRoutes);
 router.use('/planning',    tenantIsolation, planningRoutes);
 router.use('/communications', tenantIsolation, communicationsRoutes);
+router.use('/whatsapp',       tenantIsolation, whatsappRoutes);
 router.use('/matieres',       tenantIsolation, matieresRoutes);
 router.use('/finance-v2',     tenantIsolation, financeV2Routes);
 

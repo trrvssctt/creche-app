@@ -189,6 +189,8 @@ Direction, Pédagogie Maternelle, Pédagogie Élémentaire, Crèche, Administrat
 | `payment_records` | tenant_id, amount, method, transaction_id | Paiements SaaS |
 | `registration_intents` | stripe_session_id, registration_data, status | Inscriptions en attente |
 | `n8n_chat_histories` | session_id, message (json), sender | Historique chat IA |
+| `whatsapp_accounts` | tenant_id (PK), phone, pushname, linked_at | Téléphone WhatsApp lié par établissement |
+| `whatsapp_messages` | tenant_id, phone, kind, body, category, status (QUEUED/SENT/DELIVERED/READ/FAILED), ack, error, sent_at | Journal des envois WhatsApp |
 
 ### Triggers & Fonctions DB
 - `update_updated_at_column()` — MAJ auto du champ `updated_at`
@@ -249,7 +251,8 @@ enum UserRole {
 | `components/Certificats.tsx` | Certificats scolaires |
 | `components/EmploiDuTemps.tsx` | Emplois du temps |
 | `components/Evenements.tsx` | Événements scolaires |
-| `components/WhatsApp.tsx` | Communication WhatsApp parents |
+| `components/WhatsApp.tsx` | Communication WhatsApp parents (connexion QR, envoi individuel/groupé, historique serveur) |
+| `components/WhatsAppConnexion.tsx` | Liaison du téléphone WhatsApp (QR / code d'appairage, état) |
 | `components/FacturationMensuelle.tsx` | Facturation mensuelle scolarité |
 | `components/EleveDossier.tsx` | Dossier complet élève |
 | `components/SchoolAdminDashboard.tsx` | Dashboard administratif école |
@@ -477,4 +480,5 @@ enum UserRole {
 | Date | Description | Fichiers modifiés |
 |---|---|---|
 | 2026-06-10 | Création de ce fichier maître de documentation | memory/master_project.md |
+| 2026-09-26 | WhatsApp : suppression de Botpress / n8n / templates Meta / liens wa.me ; envoi en arrière-plan via WhatsApp Web headless (whatsapp-web.js, une session par établissement), routes `/api/whatsapp/*`, tables `whatsapp_accounts` + `whatsapp_messages`, table `whatsapp_sessions` supprimée. Voir docs/whatsapp.md | backend/services/WhatsAppService.js, backend/services/whatsapp/*, backend/controllers/WhatsAppController.js, backend/routes/whatsapp.routes.js, controllers appelants, components/WhatsApp*.tsx, Evenements.tsx, EmploiDuTemps.tsx, Communications.tsx |
 Mercredi

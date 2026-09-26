@@ -1,5 +1,5 @@
 import { CommunicationLog, CommunicationTemplate, Eleve, Classe } from '../models/index.js';
-import { BotpressService } from '../services/BotpressService.js';
+import { WhatsAppService } from '../services/WhatsAppService.js';
 import { Op } from 'sequelize';
 
 // Catégories de messages qui nécessitent un élève actif
@@ -24,11 +24,16 @@ export class CommunicationController {
         targetNiveau,
         targetClasseId,
         targetEleveId,
+        targetGroupIds = [],
         variables = {},
       } = req.body;
 
       if (!body || !targetType) {
         return res.status(400).json({ error: 'BadRequest', message: 'body et targetType sont obligatoires.' });
+      }
+
+      if (targetType === 'GROUPE') {
+        return sendToGroups(req, res, { tenantId, senderId, type, category, templateId, subject, body, variables, targetGroupIds });
       }
 
       // ── Résolution des destinataires ─────────────────────────────────────
@@ -122,6 +127,11 @@ export class CommunicationController {
         });
       }
 
+      const waError = WhatsAppService.connectionError(tenantId);
+      if (waError) {
+        return res.status(409).json({ error: 'WhatsAppNotConnected', message: waError });
+      }
+
       // ── Création du log ───────────────────────────────────────────────────
       const log = await CommunicationLog.create({
         tenantId,
@@ -140,33 +150,29 @@ export class CommunicationController {
         status: 'SENDING',
       });
 
-      // ── Envoi via Botpress — uniquement templates APPROVED par Meta
-      const TEMPLATE_MAP = {
-        BULLETIN: 'notification_ecole',
-        ANNONCE: 'notification_ecole',
-        EVENEMENT: 'notification_ecole',
-      };
-      const result = await BotpressService.sendBulk(recipients, {
-        delayMs: 1000,
-        template: TEMPLATE_MAP[type] || 'notification_ecole',
-      });
+      // ── Envoi en arrière-plan via le WhatsApp de l'établissement ──────────
+      // La file de la session espace les messages (anti-bannissement) : on répond tout de
+      // suite et le log passe de SENDING à SENT / PARTIAL / FAILED à la fin de l'envoi.
+      WhatsAppService.sendBulk(recipients, { tenantId, createdBy: senderId, category: category.toLowerCase() })
+        .then(result => log.update({
+          deliveredCount: result.sent,
+          failedCount: result.failed,
+          status: result.failed === 0 ? 'SENT' : (result.sent === 0 ? 'FAILED' : 'PARTIAL'),
+          details: { delivered: result.details, skipped },
+        }))
+        .catch(err => {
+          console.error('[COMMUNICATION] Erreur envoi groupé:', err.message);
+          log.update({ status: 'FAILED', details: { error: err.message, skipped } }).catch(() => {});
+        });
 
-      // Mise à jour du log avec les résultats
-      await log.update({
-        deliveredCount: result.sent,
-        failedCount: result.failed,
-        status: result.failed === 0 ? 'SENT' : (result.sent === 0 ? 'FAILED' : 'PARTIAL'),
-        details: { delivered: result.details, skipped },
-      });
-
-      return res.json({
+      return res.status(202).json({
         success: true,
+        queued: true,
         logId: log.id,
-        sent: result.sent,
-        failed: result.failed,
+        sent: recipients.length,
+        failed: 0,
         skipped: skipped.length,
         total: recipients.length + skipped.length,
-        details: result.details,
         skippedDetails: skipped,
       });
 
@@ -189,10 +195,21 @@ export class CommunicationController {
         targetNiveau,
         targetClasseId,
         targetEleveId,
+        targetGroupIds = [],
       } = req.body;
 
       if (!body || !targetType) {
         return res.status(400).json({ error: 'BadRequest', message: 'body et targetType sont obligatoires.' });
+      }
+
+      if (targetType === 'GROUPE') {
+        const { groups, unknown } = await resolveGroups(tenantId, targetGroupIds);
+        return res.json({
+          recipientCount: groups.length,
+          skippedCount: unknown.length,
+          recipients: groups.map(g => ({ eleveId: g.id, nom: g.name, niveau: '', classe: 'Groupe', phone: `${g.participants ?? '?'} membres` })),
+          skipped: unknown.map(id => ({ eleveId: id, nom: id, reason: 'Groupe introuvable ou envoi réservé aux administrateurs' })),
+        });
       }
 
       const eleveWhere = { tenantId };
@@ -345,6 +362,82 @@ export class CommunicationController {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// ── Envoi dans des groupes WhatsApp ─────────────────────────────────────────
+
+/** Ne garde que les groupes du compte lié dans lesquels on peut écrire. */
+async function resolveGroups(tenantId, groupIds) {
+  const wanted = [...new Set((Array.isArray(groupIds) ? groupIds : []).map(String))];
+  const all = await WhatsAppService.listGroups(tenantId);
+  const byId = new Map(all.filter(g => g.canSend).map(g => [g.id, g]));
+  return {
+    groups: wanted.filter(id => byId.has(id)).map(id => byId.get(id)),
+    unknown: wanted.filter(id => !byId.has(id)),
+  };
+}
+
+async function sendToGroups(req, res, { tenantId, senderId, type, category, templateId, subject, body, variables, targetGroupIds }) {
+  const waError = WhatsAppService.connectionError(tenantId);
+  if (waError) return res.status(409).json({ error: 'WhatsAppNotConnected', message: waError });
+  if (!Array.isArray(targetGroupIds) || targetGroupIds.length === 0) {
+    return res.status(400).json({ error: 'BadRequest', message: 'Sélectionnez au moins un groupe.' });
+  }
+
+  const { groups, unknown } = await resolveGroups(tenantId, targetGroupIds);
+  if (groups.length === 0) {
+    return res.status(422).json({ error: 'NoValidRecipients', message: 'Aucun groupe valide (introuvable ou envoi réservé aux administrateurs).' });
+  }
+
+  // Message collectif : pas de personnalisation par parent
+  const message = renderMessage(body, { ...variables, prenom_parent: 'à tous' });
+  const skipped = unknown.map(id => ({ groupId: id, reason: 'Groupe introuvable ou envoi réservé aux administrateurs' }));
+
+  const log = await CommunicationLog.create({
+    tenantId,
+    senderId,
+    type,
+    category,
+    templateId,
+    subject,
+    body,
+    channel: 'WHATSAPP',
+    targetType: 'GROUPE',
+    recipientCount: groups.length,
+    status: 'SENDING',
+  });
+
+  Promise.all(groups.map(g => WhatsAppService.sendToGroup(g.id, message, {
+    tenantId, createdBy: senderId, category: 'groupe', recipientName: g.name, reference: `communication:${log.id}`,
+  }).then(r => ({ g, r }))))
+    .then(results => {
+      const sent = results.filter(x => x.r.success).length;
+      const failed = results.length - sent;
+      return log.update({
+        deliveredCount: sent,
+        failedCount: failed,
+        status: failed === 0 ? 'SENT' : (sent === 0 ? 'FAILED' : 'PARTIAL'),
+        details: {
+          delivered: results.map(({ g, r }) => ({ groupId: g.id, nom: g.name, status: r.success ? 'SENT' : 'FAILED', messageId: r.messageId, ...(r.success ? {} : { error: r.error }) })),
+          skipped,
+        },
+      });
+    })
+    .catch(err => {
+      console.error('[COMMUNICATION] Erreur envoi groupes:', err.message);
+      log.update({ status: 'FAILED', details: { error: err.message, skipped } }).catch(() => {});
+    });
+
+  return res.status(202).json({
+    success: true,
+    queued: true,
+    logId: log.id,
+    sent: groups.length,
+    failed: 0,
+    skipped: skipped.length,
+    total: groups.length + skipped.length,
+    skippedDetails: skipped,
+  });
+}
 
 function renderMessage(template, vars) {
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] || `{${key}}`);

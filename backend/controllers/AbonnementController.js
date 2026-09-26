@@ -4,10 +4,9 @@ import {
   AbonnementEleve, EcheancePaiement, Eleve, Service, Sale, SaleItem, Payment,
   Invoice, InvoiceItem, Tenant,
 } from '../models/index.js';
-import { NotificationService } from '../services/NotificationService.js';
 import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
-import { BotpressService } from '../services/BotpressService.js';
+import { WhatsAppService } from '../services/WhatsAppService.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -245,16 +244,15 @@ async function sendPaymentReceiptWhatsApp({ tenantId, eleve, echeances, methodeP
 
     const message = `✅ *Paiement confirmé*\n\nBonjour ${parentName},\n\nNous confirmons la réception de votre paiement de *${montantFmt} ${currency}* pour l'élève *${enfantNom}*.\n\n📄 Services : ${periodes}\n💳 Mode : ${methodePaiement || 'Espèces'}\n📅 Date : ${dateFmt}\n🧾 Réf : ${saleRef || 'N/A'}\n\nVeuillez trouver votre reçu en pièce jointe.\n\nMerci.\n_${ecoleNom}_`;
 
-    const result = await BotpressService.sendDocument(phone, message, {
+    const result = await WhatsAppService.sendDocument(phone, message, {
       base64: pdfBuffer.toString('base64'),
       filename: `recu_${enfantNom.replace(/\s+/g, '_')}_${dateFmt.replace(/\//g, '-')}.pdf`,
       mimeType: 'application/pdf',
       caption: `Reçu de paiement — ${enfantNom}`,
     }, {
+      tenantId,
       category: 'recu',
       reference: `vente:${saleRef}`,
-      template: 'recu_paiement',
-      variables: [parentName, `${montantFmt} ${currency}`, enfantNom, saleRef || 'N/A'],
       indicatifPays: eleve.indicatifPays || '221',
     });
 
@@ -264,6 +262,73 @@ async function sendPaymentReceiptWhatsApp({ tenantId, eleve, echeances, methodeP
   } catch (err) {
     console.warn('[sendPaymentReceiptWhatsApp] Erreur:', err.message);
   }
+}
+
+/**
+ * Relance de recouvrement WhatsApp : un avis PDF listant les échéances impayées de l'élève,
+ * avec le message de rappel en légende. Mis en file (la session espace les envois).
+ */
+async function sendRelancePdfWhatsApp({ tenantId, tenant, eleve, echeances, recipient }) {
+  const ecoleNom = tenant?.name || 'Le Toit des Anges';
+  const currency = tenant?.currency || 'F CFA';
+  const parentName = [eleve.parent1?.prenom, eleve.parent1?.nom].filter(Boolean).join(' ') || 'Parent';
+  const enfantNom = `${eleve.prenom} ${eleve.nom}`.trim();
+  const dateFmt = new Date().toLocaleDateString('fr-FR');
+  const restant = e => parseFloat(e.amountRemaining ?? e.montant ?? 0);
+  const totalDu = echeances.reduce((s, e) => s + parseFloat(e.montant || 0), 0);
+  const soldeRestant = echeances.reduce((s, e) => s + restant(e), 0);
+  const periodes = echeances.map(e => e.periodeLabel).filter(Boolean).join(', ');
+  const reference = `REL-${(eleve.matricule || eleve.id.slice(0, 8)).replace(/-/g, '').toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+  const pdfBuffer = await PdfReceiptService.generateReceipt({
+    ecoleNom,
+    ecoleAdresse: tenant?.address || '',
+    ecoleTel: tenant?.phone || '',
+    ecoleEmail: tenant?.email || '',
+    logoUrl: tenant?.logoUrl || '',
+    parentName,
+    parentTel: recipient,
+    enfantNom,
+    matricule: eleve.matricule || '',
+    classe: '',
+    niveau: eleve.niveau || '',
+    reference,
+    type: 'Avis de relance',
+    date: dateFmt,
+    periode: periodes,
+    currency,
+    lignes: echeances.map(e => ({
+      label: e.service?.name || 'Scolarité',
+      periode: e.periodeLabel || '',
+      echeance: e.dateEcheance ? new Date(e.dateEcheance).toLocaleDateString('fr-FR') : '',
+      montant: parseFloat(e.montant) || 0,
+      amountPaid: parseFloat(e.amountPaid ?? 0),
+      amountRemaining: restant(e),
+      statut: e.statut === 'EN_RETARD' ? 'En retard' : e.statut === 'PARTIEL' ? 'Partiel' : 'En attente',
+    })),
+    totalDu,
+    totalPaye: Math.max(totalDu - soldeRestant, 0),
+    soldeRestant,
+    isPaid: false,
+  });
+
+  const lignesTxt = echeances
+    .map(e => `• ${e.service?.name || 'Scolarité'}${e.periodeLabel ? ` (${e.periodeLabel})` : ''} : ${restant(e).toLocaleString('fr-FR')} ${currency} — échéance ${new Date(e.dateEcheance).toLocaleDateString('fr-FR')}`)
+    .join('\n');
+  const message = `🔔 *Rappel de paiement*\n\nBonjour ${parentName},\n\nNous vous rappelons que les redevances suivantes restent dues pour *${enfantNom}* :\n\n${lignesTxt}\n\n💰 Total restant : *${soldeRestant.toLocaleString('fr-FR')} ${currency}*\n\nLe détail est joint en PDF. Merci de vous en acquitter auprès de notre caisse.\nSi vous avez déjà réglé, veuillez ignorer ce message.\n\n_${ecoleNom}_`;
+
+  return WhatsAppService.sendDocument(recipient, message, {
+    base64: pdfBuffer.toString('base64'),
+    filename: `relance_${enfantNom.replace(/\s+/g, '_')}_${dateFmt.replace(/\//g, '-')}.pdf`,
+    mimeType: 'application/pdf',
+  }, {
+    tenantId,
+    category: 'relance',
+    reference: `relance:${reference}`,
+    recipientName: parentName,
+    indicatifPays: eleve.indicatifPays || '221',
+    wait: false,
+  });
 }
 
 // ── Contrôleur ──────────────────────────────────────────────────────────────
@@ -750,12 +815,13 @@ export class AbonnementController {
       const echeances = await EcheancePaiement.findAll({
         where: { id: echeanceIds, tenantId: req.user.tenantId },
         include: [
-          { model: Eleve, as: 'eleve', attributes: ['nom', 'prenom', 'parent1', 'whatsappPrincipal'] },
+          { model: Eleve, as: 'eleve', attributes: ['id', 'nom', 'prenom', 'matricule', 'niveau', 'parent1', 'whatsappPrincipal', 'indicatifPays'] },
           { model: Service, as: 'service', attributes: ['name'] },
         ],
+        order: [['dateEcheance', 'ASC']],
       });
 
-      const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl', 'currency'] });
+      const tenant = await Tenant.findByPk(req.user.tenantId, { attributes: ['name', 'logoUrl', 'currency', 'address', 'phone', 'email'] });
       const ecoleNom = tenant?.name || 'Le Toit des Anges';
       const currency = tenant?.currency || 'F CFA';
 
@@ -802,20 +868,33 @@ export class AbonnementController {
           });
           await ech.update({ reminderSentAt: new Date() });
           sent++;
-        } else {
-          const message = `Bonjour ${parentNom},\n\nNous vous rappelons qu'une redevance de *${montantFmt} ${currency}* pour *${ech.service?.name || 'scolarité'}* (${ech.periodeLabel}) est due le ${dateFmt} pour l'élève *${eleve.prenom} ${eleve.nom}*.\n\nMerci de vous en acquitter auprès de notre caisse.\n\n_${ecoleNom}_`;
+        }
+      }
+
+      // WhatsApp : un seul message par élève, avec l'avis de relance en PDF
+      if (canal !== 'EMAIL') {
+        const waError = WhatsAppService.connectionError(req.user.tenantId);
+        if (waError) return res.status(409).json({ error: 'WhatsAppNotConnected', message: waError });
+
+        const parEleve = new Map();
+        for (const ech of echeances) {
+          if (!ech.eleve) continue;
+          if (!parEleve.has(ech.eleveId)) parEleve.set(ech.eleveId, []);
+          parEleve.get(ech.eleveId).push(ech);
+        }
+
+        for (const echs of parEleve.values()) {
+          const eleve = echs[0].eleve;
           const recipient = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
-          if (recipient) {
-            const result = await BotpressService.sendWhatsApp(recipient, message, {
-              category: 'relance',
-              template: 'relance_redevance',
-              variables: [parentNom, `${montantFmt} ${currency}`, `${eleve.prenom} ${eleve.nom}`, `${ech.periodeLabel || ''} — échéance ${dateFmt}`],
-              indicatifPays: eleve.indicatifPays || '221',
-            });
+          if (!recipient) continue;
+          try {
+            const result = await sendRelancePdfWhatsApp({ tenantId: req.user.tenantId, tenant, eleve, echeances: echs, recipient });
             if (result.success) {
-              await ech.update({ reminderSentAt: new Date() });
-              sent++;
+              await EcheancePaiement.update({ reminderSentAt: new Date() }, { where: { id: echs.map(e => e.id) } });
+              sent += echs.length;
             }
+          } catch (e) {
+            console.warn('[AbonnementController.sendReminder] relance WhatsApp:', e.message);
           }
         }
       }
@@ -1041,14 +1120,20 @@ export class AbonnementController {
         const montantRestant = parseFloat(ech.amountRemaining ?? ech.montant);
         const montantFmt = montantRestant.toLocaleString('fr-FR');
         const dateFmt = new Date(ech.dateEcheance).toLocaleDateString('fr-FR');
-        const canal = 'WHATSAPP';
         const recipient = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
         if (!recipient) continue;
 
-        await NotificationService.send(canal, recipient, {
-          subject: `Rappel redevance — ${eleve.prenom} ${eleve.nom}`,
-          message: `Bonjour ${parentNom}, votre redevance de *${montantFmt} ${cronCurrency}* (${ech.service?.name || 'scolarité'} — ${ech.periodeLabel}) est due dans 5 jours, le ${dateFmt}.\n\n_${ecoleNom}_`,
-        });
+        // Mis en file sans attendre : la session espace les envois (anti-bannissement)
+        WhatsAppService.sendWhatsApp(recipient,
+          `Bonjour ${parentNom}, votre redevance de *${montantFmt} ${cronCurrency}* (${ech.service?.name || 'scolarité'} — ${ech.periodeLabel}) est due dans 5 jours, le ${dateFmt}.\n\n_${ecoleNom}_`,
+          {
+            tenantId,
+            category: 'relance',
+            reference: `echeance:${ech.id}`,
+            indicatifPays: eleve.indicatifPays || '221',
+            wait: false,
+          }
+        );
         await ech.update({ reminderSentAt: new Date() });
       }
 
@@ -1073,6 +1158,9 @@ export class AbonnementController {
       const ids = eleveIds || (eleveId ? [eleveId] : []);
       if (!ids.length) return res.status(400).json({ error: 'eleveId ou eleveIds[] requis.' });
 
+      const waError = WhatsAppService.connectionError(tenantId);
+      if (waError) return res.status(409).json({ error: 'WhatsAppNotConnected', message: waError });
+
       const tenant = await Tenant.findByPk(tenantId, { attributes: ['name', 'currency', 'logoUrl', 'address', 'phone', 'email'] });
       const ecoleNom = tenant?.name || "L'école";
       const currency = tenant?.currency || 'F CFA';
@@ -1080,15 +1168,17 @@ export class AbonnementController {
       const MOIS_LABELS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
       const periodLabel = `${MOIS_LABELS[m - 1]} ${y}`;
 
-      const results = { sent: 0, skippedNoEmail: 0, skippedNoData: 0, errors: [] };
+      // L'email est désactivé pour l'instant : la facture part par WhatsApp (PDF joint).
+      // skippedNoEmail est conservé pour compatibilité avec le front (toujours 0).
+      const results = { sent: 0, skippedNoEmail: 0, skippedNoData: 0, skippedNoPhone: 0, errors: [] };
 
       for (const id of ids) {
         try {
           const eleve = await Eleve.findOne({ where: { id, tenantId } });
           if (!eleve) { results.skippedNoData++; continue; }
 
-          const parentEmail = eleve.parent1?.email;
-          if (!parentEmail) { results.skippedNoEmail++; continue; }
+          const waPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
+          if (!waPhone) { results.skippedNoPhone++; continue; }
 
           // Chercher échéances enregistrées
           let echeances = await EcheancePaiement.findAll({
@@ -1168,23 +1258,26 @@ export class AbonnementController {
           // Email désactivé pour l'instant
           // await EmailService.sendInvoice({ ... });
 
-          // Envoi WhatsApp de la facture
-          const waPhone = eleve.whatsappPrincipal || eleve.parent1?.whatsapp || eleve.parent1?.telephone;
-          if (waPhone) {
+          // Envoi WhatsApp de la facture (mise en file : la session espace les envois)
+          {
             const montantFmt = totalDu.toLocaleString('fr-FR');
             const waMessage = `📄 *Facture mensuelle*\n\nBonjour ${parentName},\n\nVoici la facture de *${enfantNom}* pour *${periodLabel}*.\n\n💰 Total dû : *${montantFmt} ${currency}*\n📅 Échéance : fin du mois\n🧾 Réf : ${refFacture}\n\nVeuillez trouver la facture en pièce jointe.\n\n_${ecoleNom}_`;
-            await BotpressService.sendDocument(waPhone, waMessage, {
+            const waResult = await WhatsAppService.sendDocument(waPhone, waMessage, {
               base64: pdfBuffer.toString('base64'),
               filename: `facture_${enfantNom.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`,
               mimeType: 'application/pdf',
-              caption: `Facture ${periodLabel} — ${enfantNom}`,
             }, {
+              tenantId,
               category: 'facture',
               reference: `facture:${refFacture}`,
-              template: 'facture_mensuelle',
-              variables: [parentName, enfantNom, periodLabel, `${montantFmt} ${currency}`],
+              recipientName: parentName,
               indicatifPays: eleve.indicatifPays || '221',
+              wait: false,
             });
+            if (!waResult.success) {
+              results.errors.push({ eleveId: id, message: waResult.error });
+              continue;
+            }
           }
 
           results.sent++;

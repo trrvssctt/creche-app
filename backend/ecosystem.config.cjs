@@ -13,6 +13,8 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
+      // Laisser le temps de fermer proprement les Chromium WhatsApp (SIGTERM → shutdownAll)
+      kill_timeout: 20000,
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
