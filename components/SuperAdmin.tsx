@@ -3,7 +3,7 @@ import {
   ShieldCheck, BarChart3, Globe, CreditCard, AlertTriangle,
   Mail, Send, LifeBuoy, Terminal, RefreshCw, Loader2,
   CheckCircle2, Ban, Check, X, Layers,
-  Menu, Bell, Zap, DollarSign, ChevronDown
+  Menu, Bell, Zap, DollarSign, ChevronDown, Percent, LogOut
 } from 'lucide-react';
 import { apiClient } from '../services/api';
 import { useToast } from './ToastProvider';
@@ -17,13 +17,15 @@ import SAMessages from './superadmin/SAMessages';
 import SACommunication from './superadmin/SACommunication';
 import SASupport from './superadmin/SASupport';
 import SALogs from './superadmin/SALogs';
+import SARevenueShare from './superadmin/SARevenueShare';
 
-type Tab = 'DASHBOARD' | 'COMPTES' | 'PAIEMENTS' | 'PLANS' | 'ALERTES' | 'MESSAGES' | 'COMMUNICATION' | 'SUPPORT' | 'LOGS';
+type Tab = 'DASHBOARD' | 'COMPTES' | 'PAIEMENTS' | 'REDEVANCE' | 'PLANS' | 'ALERTES' | 'MESSAGES' | 'COMMUNICATION' | 'SUPPORT' | 'LOGS';
 
 const NAV_ITEMS: { id: Tab; label: string; icon: any; description: string }[] = [
   { id: 'DASHBOARD',     label: 'Dashboard',     icon: BarChart3,     description: 'Vue globale SaaS' },
   { id: 'COMPTES',       label: 'Comptes',        icon: Globe,         description: 'Gestion des tenants' },
   { id: 'PAIEMENTS',     label: 'Paiements',      icon: CreditCard,    description: 'Registre & validations' },
+  { id: 'REDEVANCE',     label: 'Redevance',      icon: Percent,       description: "Part sur le CA des établissements" },
   { id: 'PLANS',         label: 'Offres',         icon: Layers,        description: 'Catalogue des plans' },
   { id: 'ALERTES',       label: 'Alertes',        icon: AlertTriangle, description: 'Comptes en retard' },
   { id: 'MESSAGES',      label: 'Messages',       icon: Mail,          description: 'Messages de contact' },
@@ -32,7 +34,11 @@ const NAV_ITEMS: { id: Tab; label: string; icon: any; description: string }[] = 
   { id: 'LOGS',          label: 'Audit Logs',     icon: Terminal,      description: 'Journal d\'activité' },
 ];
 
-const SuperAdmin: React.FC = () => {
+interface SuperAdminProps {
+  onLogout?: () => void;
+}
+
+const SuperAdmin: React.FC<SuperAdminProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<Tab>('DASHBOARD');
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -278,6 +284,8 @@ const SuperAdmin: React.FC = () => {
         return <SAPayments tenants={tenants} plans={plans} pendingValidations={pendingValidations}
           loading={loading} onValidate={handleValidateSubscription} onReject={handleRejectUpgrade}
           onOpenBilling={openBillingDetail} {...commonProps} />;
+      case 'REDEVANCE':
+        return <SARevenueShare {...commonProps} />;
       case 'PLANS':
         return <SAPlans plans={plans} tenants={tenants} onRefresh={fetchData} fmt={fmt} />;
       case 'ALERTES':
@@ -398,6 +406,18 @@ const SuperAdmin: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Déconnexion */}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Se déconnecter"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-zinc-800 border border-zinc-700/50 rounded-xl text-zinc-400 text-xs font-bold hover:text-rose-400 hover:border-rose-500/30 transition-all"
+              >
+                <LogOut size={13} />
+                <span className="hidden sm:inline">Quitter</span>
+              </button>
+            )}
+
             {/* Alert badge */}
             {totalAlerts > 0 && (
               <button

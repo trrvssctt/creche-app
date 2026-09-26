@@ -5,6 +5,7 @@ import { AdminController } from '../controllers/AdminController.js';
 import { SupportController } from '../controllers/SupportController.js';
 import { AnnouncementController } from '../controllers/AnnouncementController.js';
 import { BackupController } from '../controllers/BackupController.js';
+import { RevenueShareController } from '../controllers/RevenueShareController.js';
 import { checkRole } from '../middlewares/rbac.js';
 
 
@@ -58,6 +59,14 @@ router.get('/announcements', AnnouncementController.listAll);
 router.post('/announcements', AnnouncementController.create);
 router.patch('/announcements/:id', AnnouncementController.update);
 router.delete('/announcements/:id', AnnouncementController.remove);
+
+// ── Redevance contractuelle sur CA (SUPER_ADMIN uniquement) ──
+// IMPORTANT : /revenue-share/overview AVANT /revenue-share/:tenantId
+router.get('/revenue-share/overview',                    checkRole(['SUPER_ADMIN']), RevenueShareController.getOverview);
+router.get('/revenue-share/:tenantId',                   checkRole(['SUPER_ADMIN']), RevenueShareController.getTenantDetail);
+router.get('/revenue-share/:tenantId/settings',          checkRole(['SUPER_ADMIN']), RevenueShareController.getSettings);
+router.put('/revenue-share/:tenantId/settings',          checkRole(['SUPER_ADMIN']), RevenueShareController.updateSettings);
+router.get('/revenue-share/:tenantId/rate-history',      checkRole(['SUPER_ADMIN']), RevenueShareController.getRateHistory);
 
 // ── Sauvegardes système (SUPER_ADMIN uniquement) ──
 // IMPORTANT : /backups/stats et /backups/trigger AVANT /backups/:id

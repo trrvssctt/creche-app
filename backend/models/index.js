@@ -74,6 +74,8 @@ import { Refund } from './Refund.js';
 import { OtherRevenue } from './OtherRevenue.js';
 import { CollectionCase } from './CollectionCase.js';
 import { CollectionAction } from './CollectionAction.js';
+import { RevenueShareSetting } from './RevenueShareSetting.js';
+import { RevenueShareRateHistory } from './RevenueShareRateHistory.js';
 
 /**
  * ARCHITECTURE KERNEL V3.2.3
@@ -422,6 +424,13 @@ CollectionAction.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 CollectionAction.belongsTo(CollectionCase, { foreignKey: 'case_id', as: 'collectionCase' });
 CollectionAction.belongsTo(User, { foreignKey: 'performed_by', as: 'performer' });
 
+// Redevance contractuelle sur CA (Revenue Share)
+RevenueShareSetting.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(RevenueShareSetting, { foreignKey: 'tenant_id', as: 'revenueShareSetting' });
+
+RevenueShareRateHistory.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(RevenueShareRateHistory, { foreignKey: 'tenant_id', as: 'revenueShareHistory' });
+
 // Audit financier
 FinanceAuditEvent.belongsTo(Tenant, { foreignKey: 'tenant_id' });
 FinanceAuditEvent.belongsTo(User, { foreignKey: 'user_id', as: 'actor' });
@@ -469,4 +478,6 @@ export {
   OtherRevenue,
   CollectionCase,
   CollectionAction,
+  RevenueShareSetting,
+  RevenueShareRateHistory,
 };

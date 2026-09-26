@@ -386,8 +386,28 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
     setLoading(true);
     setApiError(null);
     try {
-      const endpoint = mode === 'SUPERADMIN' ? '/auth/superadmin/login' : '/auth/login';
-      const data = await apiClient.post(endpoint, { email: loginEmail, password: loginPassword });
+      // Les comptes SUPER_ADMIN vivent dans `super_admins`, pas dans `users` :
+      // ils ne peuvent donc pas passer par /auth/login. Si la connexion normale
+      // échoue, on retente sur l'endpoint plateforme afin que le SuperAdmin
+      // puisse se connecter depuis cet écran comme depuis /superadmin.
+      let isSuperAdminLogin = mode === 'SUPERADMIN';
+      let data: any;
+
+      if (isSuperAdminLogin) {
+        data = await apiClient.post('/auth/superadmin/login', { email: loginEmail, password: loginPassword });
+      } else {
+        try {
+          data = await apiClient.post('/auth/login', { email: loginEmail, password: loginPassword });
+        } catch (loginErr: any) {
+          if (loginErr?.status !== 401 && loginErr?.status !== 404) throw loginErr;
+          try {
+            data = await apiClient.post('/auth/superadmin/login', { email: loginEmail, password: loginPassword });
+            isSuperAdminLogin = true;
+          } catch {
+            throw loginErr; // On remonte l'erreur d'origine, pas celle du repli
+          }
+        }
+      }
 
       if (data.mfaRequired) {
         setTempUserId(data.tempUserId);
@@ -395,12 +415,12 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
         return;
       }
 
-      const apiUser = mode === 'SUPERADMIN'
+      const apiUser = isSuperAdminLogin
         ? { ...data.user, role: UserRole.SUPER_ADMIN, roles: [UserRole.SUPER_ADMIN], tenantId: 'SYSTEM' }
         : data.user;
 
       // Bloquer la connexion si le tenant est inactif ou si le paiement n'est pas à jour (sauf SuperAdmin)
-      if (mode !== 'SUPERADMIN') {
+      if (!isSuperAdminLogin) {
         const tenant = data.user?.tenant;
         const sub = data.user?.subscription;
         const tenantInactive = tenant && tenant.isActive === false;
@@ -1205,6 +1225,30 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBackToLanding, initialM
         <p className="text-center text-xs text-gray-400 mt-6">
           Pour récupérer votre mot de passe, contactez l'administration de l'établissement.
         </p>
+
+        {/* Accès à la console plateforme */}
+        {mode === 'LOGIN' && (
+          <p className="text-center mt-3">
+            <button
+              type="button"
+              onClick={() => { setMode('SUPERADMIN'); setApiError(null); }}
+              className="text-[11px] font-semibold text-gray-400 hover:text-slate-700 transition-colors"
+            >
+              Console SuperAdmin
+            </button>
+          </p>
+        )}
+        {mode === 'SUPERADMIN' && (
+          <p className="text-center mt-3">
+            <button
+              type="button"
+              onClick={() => { setMode('LOGIN'); setApiError(null); }}
+              className="text-[11px] font-semibold text-gray-400 hover:text-amber-600 transition-colors"
+            >
+              Retour à la connexion établissement
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

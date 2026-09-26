@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } f
 import { AnneeProvider, useAnnee } from './contexts/AnneeContext';
 import { NiveauxProvider } from './contexts/NiveauxContext';
 import Layout from './components/Layout';
+import SuperAdmin from './components/SuperAdmin';
 import ToastProvider from './components/ToastProvider';
 import Dashboard from './components/Dashboard';
 import Inventory from './components/Inventory';
@@ -356,12 +357,30 @@ const App: React.FC = () => {
     if (isParentRoute) {
       return <ParentLogin onLoginSuccess={handleLoginSuccess} />;
     }
+
+    // Console SuperAdmin (plateforme) : /superadmin
+    const isSuperAdminRoute = path.startsWith('/superadmin');
+
     return (
       <Login
         onLoginSuccess={handleLoginSuccess}
         onBackToLanding={() => {}}
+        initialMode={isSuperAdminRoute ? 'SUPERADMIN' : undefined}
       />
     );
+  }
+
+  // ── Console SuperAdmin (plateforme) ──────────────────────────────────────
+  if (currentUser) {
+    const rolesSA = Array.isArray(currentUser.roles) && currentUser.roles.length > 0
+      ? currentUser.roles : [currentUser.role];
+    if (rolesSA.some((r: any) => r === 'SUPER_ADMIN')) {
+      return (
+        <ToastProvider>
+          <SuperAdmin onLogout={handleLogout} />
+        </ToastProvider>
+      );
+    }
   }
 
   // ── Portail Parent ───────────────────────────────────────────────────────
