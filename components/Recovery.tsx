@@ -291,7 +291,11 @@ const Recovery = ({ currency, schoolName }: { currency: string; schoolName?: str
     setActionLoading(`relance-${eleveGroupe.eleveId}`);
     try {
       const res = await apiClient.post('/abonnements/echeances/relancer', { echeanceIds: ids, canal });
-      showToast(`${res.sent} relance(s) envoyée(s) via ${canal === 'EMAIL' ? 'email' : 'WhatsApp'}.`, 'success');
+      showToast(canal === 'EMAIL'
+        ? `${res.sent} relance(s) envoyée(s) par email.`
+        : res.sent > 0
+          ? `Relance avec avis PDF en cours d'envoi sur WhatsApp (${res.sent} échéance(s)).`
+          : 'Aucune relance WhatsApp envoyée (numéro manquant ?).', res.sent > 0 ? 'success' : 'warning');
       setShowReminderModal(null);
       fetchEcheances();
     } catch (err: any) {
@@ -307,7 +311,9 @@ const Recovery = ({ currency, schoolName }: { currency: string; schoolName?: str
     setActionLoading('bulk');
     try {
       const res = await apiClient.post('/abonnements/echeances/relancer', { echeanceIds: ids, canal });
-      showToast(`${res.sent} relance(s) envoyée(s).`, 'success');
+      showToast(canal === 'EMAIL'
+        ? `${res.sent} relance(s) envoyée(s) par email.`
+        : `Relances WhatsApp (avis PDF) en cours d'envoi — ${res.sent} échéance(s), un message par parent.`, res.sent > 0 ? 'success' : 'warning');
       setSelectedEcheances(new Set());
     } catch (err: any) {
       showToast(err.message || 'Erreur.', 'error');

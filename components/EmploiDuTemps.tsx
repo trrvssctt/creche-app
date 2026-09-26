@@ -5,9 +5,10 @@ import {
   MessageCircle, Send, Copy, Check, Printer, Clock,
   GraduationCap, RefreshCw, Zap, School, ChevronDown,
   User as UserIcon, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  Calendar, AlertCircle, Ban, Star, Umbrella, Archive, Lock, Search,
+  Calendar, AlertCircle, Ban, Star, Umbrella, Archive, Lock, Search, Loader2,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
+import { whatsappService } from '../services/whatsappService';
 import { authBridge } from '../services/authBridge';
 import { useAnnee } from '../contexts/AnneeContext';
 import { useToast } from './ToastProvider';
@@ -502,6 +503,21 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
   const [waPhone, setWaPhone] = useState('');
   const [waTxt, setWaTxt]   = useState('');
   const [copied, setCopied] = useState(false);
+  const [waSending, setWaSending] = useState(false);
+
+  const handleSendWA = async () => {
+    if (!waPhone.trim()) return;
+    setWaSending(true);
+    try {
+      const res = await whatsappService.send(waPhone.trim(), waTxt, { category: 'emploi_du_temps' });
+      toast(res.queued ? 'Message en cours d\'envoi en arrière-plan.' : 'Emploi du temps envoyé sur WhatsApp.', 'success');
+      setShowWA(false);
+    } catch (err: any) {
+      toast(err?.message || 'Échec de l\'envoi WhatsApp.', 'error');
+    } finally {
+      setWaSending(false);
+    }
+  };
 
   // Indicateur heure courante
   const [currentY, setCurrentY] = useState(nowY());
@@ -2569,7 +2585,7 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
                   className="w-full text-xs font-mono bg-green-50 border border-green-200 rounded-2xl p-4 resize-none text-slate-700" />
               </div>
               <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Numéro (optionnel)</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Numéro WhatsApp du destinataire</label>
                 <input value={waPhone} onChange={e => setWaPhone(e.target.value)} placeholder="+221 77 000 00 00"
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-500/10" />
               </div>
@@ -2580,9 +2596,10 @@ const EmploiDuTemps: React.FC<{ user: User }> = ({ user }) => {
                   {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier'}
                 </button>
                 <button
-                  onClick={() => { const ph = waPhone.replace(/\D/g,''); window.open(ph ? `https://wa.me/${ph}?text=${encodeURIComponent(waTxt)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(waTxt)}`, '_blank', 'noopener,noreferrer'); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all">
-                  <Send size={14} /> Ouvrir WhatsApp
+                  onClick={handleSendWA}
+                  disabled={!waPhone.trim() || waSending}
+                  className="flex-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {waSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} {waSending ? 'Envoi…' : 'Envoyer'}
                 </button>
               </div>
             </div>

@@ -428,26 +428,22 @@ const FacturationMensuelle = ({
 
       setProgress({ done: 0, total: ids.length, phase: 'email' });
       try {
-        const emailResult = await apiClient.post('/abonnements/echeances/envoyer-facture-email', {
+        const waResult = await apiClient.post('/abonnements/echeances/envoyer-facture-email', {
           eleveIds: ids, month: selectedMonth, year: selectedYear,
         });
         setProgress({ done: ids.length, total: ids.length, phase: 'email' });
-        const sent = emailResult?.sent || 0;
-        const skippedNoEmail = emailResult?.skippedNoEmail || 0;
-        const skippedNoData = emailResult?.skippedNoData || 0;
+        const sent = waResult?.sent || 0;
+        const extras = [];
+        if (waResult?.skippedNoPhone) extras.push(`${waResult.skippedNoPhone} sans numéro WhatsApp`);
+        if (waResult?.skippedNoData) extras.push(`${waResult.skippedNoData} sans échéances ce mois`);
+        if (waResult?.errors?.length) extras.push(`${waResult.errors.length} en erreur`);
         if (sent > 0) {
-          const extras = [];
-          if (skippedNoEmail) extras.push(`${skippedNoEmail} sans email`);
-          if (skippedNoData) extras.push(`${skippedNoData} sans échéances`);
-          showToast(`Facture envoyée par email à ${sent} parent${sent > 1 ? 's' : ''}${extras.length ? ` (${extras.join(', ')})` : ''}`, 'success');
-        } else if (skippedNoEmail || skippedNoData) {
-          const reasons = [];
-          if (skippedNoEmail) reasons.push(`${skippedNoEmail} sans adresse email`);
-          if (skippedNoData) reasons.push(`${skippedNoData} sans échéances pour ce mois`);
-          showToast(`Aucun email envoyé : ${reasons.join(', ')}`, 'warning');
+          showToast(`Facture PDF en cours d'envoi sur WhatsApp à ${sent} parent${sent > 1 ? 's' : ''}${extras.length ? ` (${extras.join(', ')})` : ''}`, 'success');
+        } else {
+          showToast(`Aucune facture envoyée sur WhatsApp${extras.length ? ` : ${extras.join(', ')}` : ''}`, 'warning');
         }
-      } catch {
-        showToast('Factures générées mais erreur lors de l\'envoi par email', 'warning');
+      } catch (waErr: any) {
+        showToast(`Factures générées, mais envoi WhatsApp impossible : ${waErr?.message || 'erreur inconnue'}`, 'warning');
       }
     } catch (err: any) {
       const msg = err?.message || 'Erreur lors de la génération des factures.';
@@ -623,7 +619,7 @@ const FacturationMensuelle = ({
               <Loader2 size={13} className="animate-spin"/>
               {progress.phase === 'data' ? `Données ${progress.done}/${progress.total}…`
                 : progress.phase === 'pdf' ? `PDFs ${progress.done}/${progress.total}…`
-                : `Emails ${progress.done}/${progress.total}…`}
+                : `Envoi WhatsApp ${progress.done}/${progress.total}…`}
             </div>
           )}
         </div>
@@ -834,7 +830,7 @@ const FacturationMensuelle = ({
               <Loader2 size={12} className="animate-spin"/>
               {progress.phase === 'data' ? `Données ${progress.done}/${progress.total}…`
                 : progress.phase === 'pdf' ? `PDFs ${progress.done}/${progress.total}…`
-                : `Emails ${progress.done}/${progress.total}…`}
+                : `Envoi WhatsApp ${progress.done}/${progress.total}…`}
             </div>
           )}
           <button

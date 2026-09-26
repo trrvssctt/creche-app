@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   MessageSquare, Phone, Send, Edit3, Eye, X,
-  Search, RefreshCw, Copy, ExternalLink,
+  Search, RefreshCw, Copy,
   Users, Clock, FileText, Bell, AlertCircle, CheckCircle2,
   Save, Loader2, BookOpen, Calendar, History,
   Zap, ChevronRight, Trash2, Info, GraduationCap,
@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
+import { whatsappService, WaMessage, WA_MESSAGE_STATUS_LABELS } from '../services/whatsappService';
+import { useWhatsAppStatus, WhatsAppStatusBadge } from './WhatsAppConnexion';
 import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
 import { User, NiveauScolaire } from '../types';
@@ -26,15 +28,13 @@ interface Template {
   isCustom?: boolean;
 }
 
-interface HistoriqueEntry {
-  id: string;
-  timestamp: string;
-  templateId: string;
-  templateLabel: string;
-  eleveNom: string;
-  niveau: string;
+interface GroupeEntry {
+  nom: string;
   phone: string;
-  messagePreview: string;
+  message: string;
+  messageId?: string;
+  status?: WaMessage['status'] | 'SENDING';
+  error?: string | null;
 }
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -187,7 +187,6 @@ Ce montant sera ajouté à votre prochaine facture.
 
 const LS_TEMPLATES_KEY = 'wa_templates';
 const LS_CUSTOM_TEMPLATES_KEY = 'wa_custom_templates';
-const LS_HISTORIQUE_KEY = 'wa_historique';
 
 function loadTemplates(): Template[] {
   try {
@@ -251,33 +250,8 @@ function deleteCustomTemplate(id: string) {
   } catch {}
 }
 
-function loadHistorique(): HistoriqueEntry[] {
-  try {
-    const raw = localStorage.getItem(LS_HISTORIQUE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistorique(entries: HistoriqueEntry[]) {
-  try {
-    localStorage.setItem(LS_HISTORIQUE_KEY, JSON.stringify(entries.slice(0, 200)));
-  } catch {}
-}
-
 function renderTemplate(body: string, vars: Record<string, string>): string {
   return body.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
-}
-
-function buildWaLink(phone: string, message: string): string {
-  const clean = phone.replace(/\D/g, '');
-  const intl = clean.startsWith('0') ? '221' + clean.slice(1) : clean.startsWith('221') ? clean : '221' + clean;
-  return `https://wa.me/${intl}?text=${encodeURIComponent(message)}`;
-}
-
-function genId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function formatDateTime(iso: string): string {
@@ -323,9 +297,16 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
   const { annee: anneeScolaire } = useAnnee();
   const canSend = authBridge.canPerform(user, 'EDIT', 'whatsapp');
 
+  const wa = useWhatsAppStatus();
+  const waReady = wa.status?.status === 'READY';
+
   const [activeTab, setActiveTab] = useState<'templates' | 'envoyer' | 'historique' | 'groupe'>('templates');
   const [templates, setTemplates] = useState<Template[]>(loadTemplates);
-  const [historique, setHistorique] = useState<HistoriqueEntry[]>(loadHistorique);
+
+  // --- historique (journal serveur : statut réel + accusés de réception)
+  const [messages, setMessages] = useState<WaMessage[]>([]);
+  const [messagesTotal, setMessagesTotal] = useState(0);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   // --- état onglet Templates
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -353,8 +334,9 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
     trimestre: 'Trimestre 1',
     annee_scolaire: anneeScolaire,
   });
-  const [groupeResult, setGroupeResult] = useState<{ nom: string; phone: string; link: string }[]>([]);
+  const [groupeResult, setGroupeResult] = useState<GroupeEntry[]>([]);
   const [groupeGenerated, setGroupeGenerated] = useState(false);
+  const [groupeSending, setGroupeSending] = useState(false);
 
   // ── Charger élèves ───────────────────────────────────────────────────────
 
@@ -377,6 +359,45 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
   useEffect(() => {
     if (activeTab === 'envoyer' || activeTab === 'groupe') fetchEleves();
   }, [activeTab, fetchEleves]);
+
+  const fetchMessages = useCallback(async () => {
+    setLoadingMessages(true);
+    try {
+      const data = await whatsappService.listMessages({ limit: 100 });
+      setMessages(data.messages || []);
+      setMessagesTotal(data.total || 0);
+    } catch {
+      // silencieux : l'historique n'est pas bloquant
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+
+  // Rafraîchir l'historique tant que des messages sont en file
+  useEffect(() => {
+    if (activeTab !== 'historique' || !messages.some(m => m.status === 'QUEUED')) return;
+    const t = setInterval(fetchMessages, 5000);
+    return () => clearInterval(t);
+  }, [activeTab, messages, fetchMessages]);
+
+  // Suivi des statuts de l'envoi groupé en cours
+  useEffect(() => {
+    const pending = groupeResult.filter(r => r.messageId && r.status === 'QUEUED').map(r => r.messageId!);
+    if (!pending.length) return;
+    const t = setInterval(async () => {
+      try {
+        const { messages: rows } = await whatsappService.listMessages({ ids: pending });
+        const byId = new Map(rows.map(m => [m.id, m]));
+        setGroupeResult(prev => prev.map(r => {
+          const m = r.messageId ? byId.get(r.messageId) : undefined;
+          return m ? { ...r, status: m.status, error: m.error } : r;
+        }));
+      } catch { /* prochain tour */ }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [groupeResult]);
 
   // ── Template sélectionné ─────────────────────────────────────────────────
 
@@ -501,28 +522,25 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
 
   // ── Handler Envoyer ────────────────────────────────────────────────────────
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!selectedEleve || !selectedTemplate || !elevePhone) return;
+    const eleveNom = selectedEleve.companyName || selectedEleve.name || 'Élève';
     setSending(true);
-    const link = buildWaLink(elevePhone, renderedMessage);
-    window.open(link, '_blank', 'noopener,noreferrer');
-
-    const entry: HistoriqueEntry = {
-      id: genId(),
-      timestamp: new Date().toISOString(),
-      templateId: selectedTemplate.id,
-      templateLabel: selectedTemplate.label,
-      eleveNom: (selectedEleve.companyName || selectedEleve.name || 'Élève'),
-      niveau: selectedEleve.niveau || selectedEleve.niveauScolaire || '',
-      phone: elevePhone,
-      messagePreview: renderedMessage.slice(0, 120),
-    };
-    const newHisto = [entry, ...historique];
-    setHistorique(newHisto);
-    saveHistorique(newHisto);
-
-    setSending(false);
-    showToast(`Message ouvert dans WhatsApp pour ${entry.eleveNom}.`, 'success');
+    try {
+      const res = await whatsappService.send(elevePhone, renderedMessage, {
+        recipientName: eleveNom,
+        category: selectedTemplate.id.toLowerCase(),
+      });
+      showToast(res.queued
+        ? `Message pour ${eleveNom} en cours d'envoi en arrière-plan.`
+        : `Message envoyé sur WhatsApp à ${eleveNom}.`, 'success');
+      fetchMessages();
+      wa.refresh();
+    } catch (err: any) {
+      showToast(err?.message || 'Échec de l\'envoi WhatsApp.', 'error');
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleCopy = () => {
@@ -564,34 +582,60 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
       };
       const message = renderTemplate(tmpl.body, vars);
       const phone = e.parent1Whatsapp || e.parent1Tel || e.phone || e.contact || '';
-      return { nom, phone, link: phone ? buildWaLink(phone, message) : '' };
+      return { nom, phone, message };
     });
 
     setGroupeResult(results);
     setGroupeGenerated(true);
-    showToast(`${results.length} lien(s) WhatsApp générés.`, 'success');
+    showToast(`${results.length} message(s) préparé(s).`, 'success');
   };
 
-  const handleSendGroupe = (entry: { nom: string; phone: string; link: string }) => {
-    if (!entry.link) { showToast('Aucun numéro WhatsApp pour cet élève.', 'error'); return; }
-    window.open(entry.link, '_blank', 'noopener,noreferrer');
+  const handleSendGroupe = async (index: number) => {
+    const entry = groupeResult[index];
+    if (!entry?.phone) { showToast('Aucun numéro WhatsApp pour cet élève.', 'error'); return; }
+    setGroupeResult(prev => prev.map((r, i) => i === index ? { ...r, status: 'SENDING', error: null } : r));
+    try {
+      const res = await whatsappService.send(entry.phone, entry.message, { recipientName: entry.nom, category: groupeTemplateId.toLowerCase() });
+      setGroupeResult(prev => prev.map((r, i) => i === index ? { ...r, messageId: res.messageId, status: res.queued ? 'QUEUED' : 'SENT' } : r));
+    } catch (err: any) {
+      setGroupeResult(prev => prev.map((r, i) => i === index ? { ...r, status: 'FAILED', error: err?.message } : r));
+      showToast(err?.message || 'Échec de l\'envoi.', 'error');
+    }
   };
 
-  const handleClearHistorique = () => {
-    setHistorique([]);
-    saveHistorique([]);
-    showToast('Historique effacé.', 'info');
+  const handleSendAllGroupe = async () => {
+    const targets = groupeResult.map((r, i) => ({ r, i })).filter(({ r }) => r.phone && !r.messageId);
+    if (!targets.length) return;
+    if (!window.confirm(`Envoyer ${targets.length} message(s) WhatsApp ? Ils partiront un par un en arrière-plan.`)) return;
+    setGroupeSending(true);
+    try {
+      const res = await whatsappService.sendBulk(
+        targets.map(({ r }) => ({ phone: r.phone, message: r.message, recipientName: r.nom })),
+        groupeTemplateId.toLowerCase(),
+      );
+      setGroupeResult(prev => {
+        const next = [...prev];
+        targets.forEach(({ i }, k) => {
+          const d = res.details[k];
+          next[i] = { ...next[i], messageId: d?.messageId, status: (d?.status as GroupeEntry['status']) || 'QUEUED', error: d?.error || null };
+        });
+        return next;
+      });
+      showToast(`${res.sent} message(s) mis en file d'envoi.`, 'success');
+      wa.refresh();
+    } catch (err: any) {
+      showToast(err?.message || 'Échec de l\'envoi groupé.', 'error');
+    } finally {
+      setGroupeSending(false);
+    }
   };
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
 
   const kpis = useMemo(() => {
-    const today = new Date().toDateString();
-    const ceJour = historique.filter(h => new Date(h.timestamp).toDateString() === today).length;
-    const total = historique.length;
     const avecPhone = eleves.filter(e => !!(e.parent1Whatsapp || e.parent1Tel || e.phone)).length;
-    return { total, ceJour, avecPhone, templates: templates.length };
-  }, [historique, eleves, templates]);
+    return { total: messagesTotal, ceJour: wa.status?.sentToday ?? 0, avecPhone, templates: templates.length };
+  }, [messagesTotal, wa.status?.sentToday, eleves, templates]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -613,9 +657,17 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
             </span>
             Communication WhatsApp
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Modèles, envoi individuel &amp; groupé aux parents</p>
+          <p className="text-slate-500 text-sm mt-1">Modèles, envoi individuel &amp; groupé aux parents — envoyés en arrière-plan depuis le WhatsApp de l'établissement</p>
         </div>
+        <WhatsAppStatusBadge status={wa.status} />
       </div>
+
+      {wa.status && !waReady && (
+        <div className="w-full flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <AlertCircle size={16} className="shrink-0" />
+          WhatsApp n'est pas connecté : les messages ne partiront pas. Liez le téléphone dans Communications → Connexion WhatsApp.
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1044,12 +1096,12 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
                   </button>
                   <button
                     onClick={handleSend}
-                    disabled={!elevePhone || sending}
-                    title={!elevePhone ? 'Aucun numéro WhatsApp enregistré pour cet élève' : ''}
+                    disabled={!elevePhone || sending || !waReady}
+                    title={!elevePhone ? 'Aucun numéro WhatsApp enregistré pour cet élève' : !waReady ? 'WhatsApp non connecté' : ''}
                     className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {sending ? <Loader2 size={15} className="animate-spin" /> : <ExternalLink size={15} />}
-                    Ouvrir dans WhatsApp
+                    {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                    {sending ? 'Envoi en cours…' : 'Envoyer sur WhatsApp'}
                   </button>
                 </div>
                 {!elevePhone && (
@@ -1137,7 +1189,7 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white font-semibold text-sm hover:bg-green-700 disabled:opacity-50"
               >
                 {loadingEleves ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                Générer les liens
+                Préparer les messages
               </button>
             </div>
 
@@ -1148,9 +1200,18 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
                   {groupeGenerated ? `${groupeResult.length} élève(s) ciblé(s)` : 'Résultats'}
                 </p>
                 {groupeGenerated && (
-                  <span className="text-xs text-slate-400">
-                    {groupeResult.filter(r => r.phone).length} avec numéro
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400">
+                      {groupeResult.filter(r => r.phone).length} avec numéro
+                    </span>
+                    <button
+                      onClick={handleSendAllGroupe}
+                      disabled={groupeSending || !waReady || !groupeResult.some(r => r.phone && !r.messageId)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {groupeSending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Tout envoyer
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
@@ -1170,13 +1231,26 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
                         <p className="text-sm font-medium text-slate-800">{r.nom}</p>
                         <p className="text-xs text-slate-400">{r.phone || <span className="text-rose-400">Sans numéro</span>}</p>
                       </div>
-                      <button
-                        onClick={() => handleSendGroupe(r)}
-                        disabled={!r.phone}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Send size={12} /> Envoyer
-                      </button>
+                      {r.status ? (
+                        <span
+                          title={r.error || ''}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                            r.status === 'FAILED' ? 'bg-rose-50 text-rose-700'
+                              : r.status === 'QUEUED' || r.status === 'SENDING' ? 'bg-amber-50 text-amber-700'
+                              : 'bg-emerald-50 text-emerald-700'}`}
+                        >
+                          {(r.status === 'QUEUED' || r.status === 'SENDING') && <Loader2 size={11} className="animate-spin" />}
+                          {r.status === 'SENDING' ? 'Envoi…' : WA_MESSAGE_STATUS_LABELS[r.status]}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleSendGroupe(i)}
+                          disabled={!r.phone || !waReady}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Send size={12} /> Envoyer
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
@@ -1185,7 +1259,7 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
                 <div className="p-3 border-t border-slate-100 bg-amber-50">
                   <p className="text-xs text-amber-700 flex items-start gap-1.5">
                     <Info size={12} className="shrink-0 mt-0.5" />
-                    Chaque clic "Envoyer" ouvre WhatsApp dans un nouvel onglet avec le message pré-rempli. Envoyez-les un à un.
+                    Les messages partent en arrière-plan, espacés de quelques secondes pour protéger le numéro contre un bannissement. Vous pouvez quitter cette page.
                   </p>
                 </div>
               )}
@@ -1199,54 +1273,55 @@ const WhatsApp: React.FC<{ user: User }> = ({ user }) => {
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <p className="font-bold text-slate-800 flex items-center gap-2">
-              <History size={16} /> Historique des messages ({historique.length})
+              <History size={16} /> Historique des messages ({messagesTotal})
             </p>
-            {historique.length > 0 && (
-              <button
-                onClick={handleClearHistorique}
-                className="flex items-center gap-1.5 text-xs text-rose-500 hover:text-rose-700 font-medium"
-              >
-                <Trash2 size={13} /> Tout effacer
-              </button>
-            )}
+            <button
+              onClick={fetchMessages}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 font-medium"
+            >
+              <RefreshCw size={13} className={loadingMessages ? 'animate-spin' : ''} /> Actualiser
+            </button>
           </div>
 
-          {historique.length === 0 ? (
+          {messages.length === 0 ? (
             <div className="p-16 text-center">
               <History size={40} className="mx-auto text-slate-300 mb-4" />
               <p className="text-slate-500 font-medium">Aucun message envoyé pour l'instant</p>
-              <p className="text-xs text-slate-400 mt-1">L'historique s'affiche ici après chaque envoi</p>
+              <p className="text-xs text-slate-400 mt-1">Tous les messages WhatsApp (manuels et automatiques) s'affichent ici</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {historique.map(h => {
-                const tmpl = templates.find(t => t.id === h.templateId);
-                const c = tmpl ? COLOR_MAP[tmpl.color] : COLOR_MAP.blue;
+              {messages.map(m => {
+                const cls = m.status === 'FAILED' ? 'text-rose-600'
+                  : m.status === 'QUEUED' ? 'text-amber-600'
+                  : m.status === 'READ' ? 'text-blue-600' : 'text-emerald-600';
                 return (
-                  <div key={h.id} className="px-5 py-4 hover:bg-slate-50">
+                  <div key={m.id} className="px-5 py-4 hover:bg-slate-50">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3">
-                        <span className="text-lg">{tmpl?.icon ?? '💬'}</span>
-                        <div>
+                      <div className="flex items-start gap-3 min-w-0">
+                        <span className="text-lg">{m.kind === 'document' ? '📄' : '💬'}</span>
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold text-slate-800">{h.eleveNom}</p>
-                            <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${c?.badge}`}>
-                              {h.templateLabel}
-                            </span>
+                            <p className="text-sm font-semibold text-slate-800">{m.recipient_name || m.phone}</p>
+                            {m.category && (
+                              <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                {m.category.replace(/_/g, ' ')}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-400 mt-0.5">
-                            {NIVEAUX_LABELS[h.niveau] ?? h.niveau} · {h.phone}
+                            {m.phone}{m.filename ? ` · ${m.filename}` : ''}
                           </p>
-                          <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 italic">
-                            "{h.messagePreview}…"
-                          </p>
+                          <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 italic">"{m.body}"</p>
+                          {m.error && <p className="text-xs text-rose-500 mt-1">{m.error}</p>}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-xs text-slate-400">{formatDateTime(h.timestamp)}</p>
-                        <div className="flex items-center justify-end gap-1 mt-1 text-emerald-600">
-                          <CheckCircle2 size={12} />
-                          <span className="text-xs font-medium">Ouvert</span>
+                        <p className="text-xs text-slate-400">{formatDateTime(m.sent_at || m.created_at)}</p>
+                        <div className={`flex items-center justify-end gap-1 mt-1 ${cls}`}>
+                          {m.status === 'QUEUED' ? <Loader2 size={12} className="animate-spin" />
+                            : m.status === 'FAILED' ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
+                          <span className="text-xs font-medium">{WA_MESSAGE_STATUS_LABELS[m.status]}</span>
                         </div>
                       </div>
                     </div>

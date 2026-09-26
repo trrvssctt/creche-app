@@ -450,7 +450,7 @@ const App: React.FC = () => {
       case 'admission':          return <Admission user={currentUser} currency={appSettings.currency} />;
       case 'bulletins':          return <Bulletins user={currentUser} />;
       case 'whatsapp':
-      case 'communications':    return <Communications />;
+      case 'communications':    return <Communications user={currentUser} />;
       case 'certificats':        return <Certificats user={currentUser} />;
       case 'emploidutemps':      return <EmploiDuTemps user={currentUser} />;
       case 'evenements':         return <Evenements user={currentUser} />;

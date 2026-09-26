@@ -3,11 +3,12 @@ import {
   CalendarDays, Bell, Plus, Edit3, Trash2, Send, Eye, X,
   Search, ChevronLeft, ChevronRight, MapPin, Users,
   Clock, CheckCircle2, AlertCircle, Loader2, MessageSquare,
-  Save, Info, Tag, FileText, GraduationCap, ExternalLink,
+  Save, Info, Tag, FileText, GraduationCap,
   Megaphone, PartyPopper, BookOpen, AlertTriangle, Home, Archive, Lock
 } from 'lucide-react';
 import { authBridge } from '../services/authBridge';
 import { apiClient } from '../services/api';
+import { whatsappService, WaMessage, WA_MESSAGE_STATUS_LABELS } from '../services/whatsappService';
 import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
 import { User, NiveauScolaire, EvenementEcole } from '../types';
@@ -136,12 +137,6 @@ function formatDateShort(iso: string): string {
 }
 
 function isoToday(): string { return new Date().toISOString().split('T')[0]; }
-
-function buildWaLink(phone: string, message: string): string {
-  const clean = phone.replace(/\D/g, '');
-  const intl = clean.startsWith('0') ? '221' + clean.slice(1) : clean.startsWith('221') ? clean : '221' + clean;
-  return `https://wa.me/${intl}?text=${encodeURIComponent(message)}`;
-}
 
 function buildWaMessage(ev: Evenement): string {
   const type = getTypeInfo(ev.typeEvenement);
@@ -472,7 +467,8 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
 
   // --- modal diffusion WhatsApp
   const [diffusionEvent, setDiffusionEvent] = useState<Evenement | null>(null);
-  const [diffusionLinks, setDiffusionLinks] = useState<{ nom: string; phone: string; link: string }[]>([]);
+  const [diffusionLinks, setDiffusionLinks] = useState<{ nom: string; phone: string; messageId?: string; status?: WaMessage['status']; error?: string | null }[]>([]);
+  const [diffusionSending, setDiffusionSending] = useState(false);
 
   // --- calendrier — démarre au mois courant, se reset si l'année scolaire change
   const [calAnnee, setCalAnnee] = useState(() => new Date().getFullYear());
@@ -633,10 +629,60 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
       const nom = getEleveNom(e);
       const parent1 = e.parent1 || {};
       const phone = e.whatsapp_principal || e.whatsappPrincipal || parent1.telephone || parent1.whatsapp || '';
-      return { nom, phone, link: phone ? buildWaLink(phone, message) : '' };
+      return { nom, phone };
     });
     setDiffusionLinks(links);
     setDiffusionEvent(ev);
+  };
+
+  // Suivi des statuts pendant la diffusion
+  useEffect(() => {
+    const pending = diffusionLinks.filter(l => l.messageId && l.status === 'QUEUED').map(l => l.messageId!);
+    if (!pending.length) return;
+    const t = setInterval(async () => {
+      try {
+        const { messages } = await whatsappService.listMessages({ ids: pending });
+        const byId = new Map(messages.map(m => [m.id, m]));
+        setDiffusionLinks(prev => prev.map(l => {
+          const m = l.messageId ? byId.get(l.messageId) : undefined;
+          return m ? { ...l, status: m.status, error: m.error } : l;
+        }));
+      } catch { /* prochain tour */ }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [diffusionLinks]);
+
+  const handleSendDiffusion = async () => {
+    if (!diffusionEvent) return;
+    const message = buildWaMessage(diffusionEvent);
+    const targets = diffusionLinks.map((l, i) => ({ l, i })).filter(({ l }) => l.phone && !l.messageId);
+    if (!targets.length) return;
+    setDiffusionSending(true);
+    try {
+      const res = await whatsappService.sendBulk(
+        targets.map(({ l }) => ({ phone: l.phone, message, recipientName: l.nom })),
+        'evenement',
+      );
+      setDiffusionLinks(prev => {
+        const next = [...prev];
+        targets.forEach(({ i }, k) => {
+          const d = res.details[k];
+          next[i] = { ...next[i], messageId: d?.messageId, status: (d?.status as WaMessage['status']) || 'QUEUED', error: d?.error || null };
+        });
+        return next;
+      });
+      showToast(`${res.sent} message(s) mis en file d'envoi WhatsApp.`, 'success');
+      if (res.sent > 0) {
+        try {
+          const raw = await apiClient.put(`/school-events/${diffusionEvent.id}`, toPayload({ ...diffusionEvent, diffuse: true }));
+          setEvents(prev => prev.map(e => e.id === diffusionEvent.id ? rawToEvenement(raw) : e));
+        } catch { /* non-bloquant */ }
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Échec de la diffusion WhatsApp.', 'error');
+    } finally {
+      setDiffusionSending(false);
+    }
   };
 
   const handleConfirmDiffusion = async () => {
@@ -1524,16 +1570,19 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
                     <p className="text-sm font-medium text-slate-800">{l.nom}</p>
                     <p className="text-xs text-slate-400">{l.phone || <span className="text-rose-400">Sans numéro</span>}</p>
                   </div>
-                  <a
-                    href={l.link || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => !l.link && e.preventDefault()}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                      ${l.link ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-                  >
-                    <ExternalLink size={11} /> Envoyer
-                  </a>
+                  {l.status ? (
+                    <span
+                      title={l.error || ''}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                        l.status === 'FAILED' ? 'bg-rose-50 text-rose-700'
+                          : l.status === 'QUEUED' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}
+                    >
+                      {l.status === 'QUEUED' && <Loader2 size={11} className="animate-spin" />}
+                      {WA_MESSAGE_STATUS_LABELS[l.status]}
+                    </span>
+                  ) : (
+                    <span className={`text-xs ${l.phone ? 'text-slate-400' : 'text-rose-400'}`}>{l.phone ? 'Prêt' : 'Ignoré'}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -1541,16 +1590,27 @@ const Evenements: React.FC<{ user: User }> = ({ user }) => {
             <div className="px-6 py-4 border-t border-slate-100 space-y-2">
               <p className="text-xs text-amber-700 bg-amber-50 rounded-xl px-3 py-2 flex items-start gap-1.5">
                 <Info size={12} className="shrink-0 mt-0.5" />
-                Cliquez sur "Envoyer" pour chaque parent. WhatsApp s'ouvre avec le message pré-rempli.
+                Les messages partent en arrière-plan depuis le WhatsApp de l'établissement, espacés de quelques secondes (protection anti-bannissement).
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setDiffusionEvent(null)} className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-sm hover:bg-slate-50">Fermer</button>
-                <button
-                  onClick={handleConfirmDiffusion}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
-                >
-                  <CheckCircle2 size={14} /> Marquer comme diffusé
-                </button>
+                {diffusionLinks.some(l => l.phone && !l.messageId) ? (
+                  <button
+                    onClick={handleSendDiffusion}
+                    disabled={diffusionSending}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {diffusionSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Envoyer à {diffusionLinks.filter(l => l.phone && !l.messageId).length} parent(s)
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleConfirmDiffusion}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700"
+                  >
+                    <CheckCircle2 size={14} /> Marquer comme diffusé
+                  </button>
+                )}
               </div>
             </div>
           </div>

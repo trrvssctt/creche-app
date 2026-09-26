@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Send, Users, MessageSquare, History, Eye, Search,
   AlertCircle, CheckCircle2, Clock, Loader2, X,
-  Phone, RefreshCw
+  Phone, RefreshCw, Smartphone, FileText, CheckCheck, UsersRound, Megaphone,
 } from 'lucide-react';
 import { apiClient } from '../services/api';
+import { authBridge } from '../services/authBridge';
+import { whatsappService, WaMessage, WaGroup, WA_MESSAGE_STATUS_LABELS } from '../services/whatsappService';
 import { useToast } from './ToastProvider';
 import { useAnnee } from '../contexts/AnneeContext';
+import { User } from '../types';
+import WhatsAppConnexion, { useWhatsAppStatus, WhatsAppStatusBadge } from './WhatsAppConnexion';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -72,7 +76,6 @@ interface Template {
   label: string;
   icon: string;
   category: string;
-  waTemplate: string;
   body: string;
   editableVars: EditableVar[];
 }
@@ -103,7 +106,7 @@ const TEMPLATES: Template[] = [
   {
     id: 'BULLETIN', type: 'BULLETIN',
     label: 'Bulletin disponible', icon: '📊',
-    category: 'PEDAGOGIQUE', waTemplate: 'notification_ecole',
+    category: 'PEDAGOGIQUE',
     body: `Bonjour {prenom_parent},\n\nLe bulletin de {prenom_enfant} {nom_enfant} ({niveau}) pour le {trimestre} est disponible.\n\nConnectez-vous au portail parent pour le consulter.\n— ${NOM_ECOLE}`,
     editableVars: [
       { key: 'trimestre', label: 'Trimestre', placeholder: '1er trimestre 2026-2027' },
@@ -112,7 +115,7 @@ const TEMPLATES: Template[] = [
   {
     id: 'ANNONCE', type: 'ANNONCE',
     label: 'Annonce générale', icon: '📢',
-    category: 'GENERAL', waTemplate: 'notification_ecole',
+    category: 'GENERAL',
     body: `Bonjour {prenom_parent},\n\n{contenu}\n\n— ${NOM_ECOLE}`,
     editableVars: [
       { key: 'contenu', label: 'Contenu de l\'annonce', placeholder: 'La rentrée scolaire est fixée au 6 octobre 2026...' },
@@ -121,7 +124,7 @@ const TEMPLATES: Template[] = [
   {
     id: 'EVENEMENT', type: 'EVENEMENT',
     label: 'Événement', icon: '🎉',
-    category: 'GENERAL', waTemplate: 'notification_ecole',
+    category: 'GENERAL',
     body: `Bonjour {prenom_parent},\n\n{contenu}\n\n— ${NOM_ECOLE}`,
     editableVars: [
       { key: 'contenu', label: 'Détails de l\'événement', placeholder: 'Journée portes ouvertes le samedi 15 novembre...' },
@@ -154,11 +157,22 @@ function getParentDisplay(e: EleveComm): string {
 
 // ─── Composant principal ─────────────────────────────────────────────────────
 
-export default function Communications() {
+export default function Communications({ user }: { user?: User }) {
   const showToast = useToast();
   const { annee: anneeScolaire } = useAnnee();
 
-  const [activeTab, setActiveTab] = useState<'composer' | 'historique'>('composer');
+  // Liaison du numéro (QR, déliaison) : direction uniquement, comme côté API
+  const currentUser = user || authBridge.getSession()?.user;
+  const canManageWa = ['ADMIN', 'DIRECTEUR', 'SUPER_ADMIN'].some(
+    r => currentUser?.roles?.includes(r as any) || currentUser?.role === r,
+  );
+  const wa = useWhatsAppStatus();
+  const waReady = wa.status?.status === 'READY';
+
+  const [activeTab, setActiveTab] = useState<'composer' | 'historique' | 'connexion'>('composer');
+  const [historyView, setHistoryView] = useState<'campagnes' | 'messages'>('campagnes');
+  const [waMessages, setWaMessages] = useState<WaMessage[]>([]);
+  const [waMessagesTotal, setWaMessagesTotal] = useState(0);
   const [eleves, setEleves] = useState<EleveComm[]>([]);
   const [classes, setClasses] = useState<Classe[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -168,7 +182,15 @@ export default function Communications() {
 
   // Composer
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [targetType, setTargetType] = useState<'ALL' | 'NIVEAU' | 'CLASSE' | 'INDIVIDUEL'>('ALL');
+  const [targetType, setTargetType] = useState<'ALL' | 'NIVEAU' | 'CLASSE' | 'INDIVIDUEL' | 'GROUPE'>('ALL');
+
+  // Groupes WhatsApp du compte lié
+  const [groups, setGroups] = useState<WaGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+  const [groupSearch, setGroupSearch] = useState('');
   const [targetNiveau, setTargetNiveau] = useState('');
   const [targetClasseId, setTargetClasseId] = useState('');
   const [selectedEleve, setSelectedEleve] = useState<EleveComm | null>(null);
@@ -191,6 +213,70 @@ export default function Communications() {
   useEffect(() => {
     if (activeTab === 'historique') loadLogs();
   }, [activeTab, logsPage]);
+
+  // Premier affichage : si WhatsApp n'est pas lié, ouvrir directement l'onglet Connexion
+  const [waChecked, setWaChecked] = useState(false);
+  useEffect(() => {
+    if (waChecked || !wa.status) return;
+    setWaChecked(true);
+    if (wa.status.status !== 'READY') setActiveTab('connexion');
+  }, [wa.status, waChecked]);
+
+  const loadWaMessages = useCallback(async () => {
+    try {
+      const data = await whatsappService.listMessages({ limit: 100 });
+      setWaMessages(data.messages || []);
+      setWaMessagesTotal(data.total || 0);
+    } catch { /* silently fail */ }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'historique') loadWaMessages();
+  }, [activeTab, loadWaMessages]);
+
+  const loadGroups = useCallback(async () => {
+    setGroupsLoading(true);
+    setGroupsError(null);
+    try {
+      const data = await whatsappService.listGroups();
+      setGroups(data.groups || []);
+      setGroupsLoaded(true);
+    } catch (e: any) {
+      setGroupsError(e?.message || 'Impossible de récupérer les groupes WhatsApp.');
+    } finally {
+      setGroupsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (targetType === 'GROUPE' && waReady && !groupsLoaded && !groupsLoading) loadGroups();
+  }, [targetType, waReady, groupsLoaded, groupsLoading, loadGroups]);
+
+  const filteredGroups = useMemo(() => {
+    const q = groupSearch.toLowerCase().trim();
+    return q ? groups.filter(g => g.name.toLowerCase().includes(q)) : groups;
+  }, [groups, groupSearch]);
+
+  const toggleGroup = (id: string) => {
+    setSelectedGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    setPreview(null);
+    setShowPreview(false);
+  };
+
+  // Rafraîchir tant qu'un envoi est en cours (campagne SENDING ou message en file)
+  useEffect(() => {
+    if (activeTab !== 'historique') return;
+    const busy = historyView === 'campagnes'
+      ? logs.some(l => l.status === 'SENDING')
+      : waMessages.some(m => m.status === 'QUEUED');
+    if (!busy) return;
+    const t = setInterval(() => (historyView === 'campagnes' ? loadLogs() : loadWaMessages()), 5000);
+    return () => clearInterval(t);
+  }, [activeTab, historyView, logs, waMessages, loadWaMessages]);
 
   const loadEleves = async () => {
     try {
@@ -284,10 +370,13 @@ export default function Communications() {
       nom_enfant: exampleEleve?.nom || 'Nom',
       niveau: NIVEAUX_LABELS[exampleEleve?.niveau || ''] || exampleEleve?.niveau || 'Niveau',
       classe: (exampleEleve ? classeMap[exampleEleve.classeId] : '') || exampleEleve?.niveau || 'Classe',
-      prenom_parent: parentPrenom ? `${parentPrenom} ${parentNom}`.trim() : 'Parent',
+      prenom_parent: targetType === 'GROUPE' ? 'à tous' : (parentPrenom ? `${parentPrenom} ${parentNom}`.trim() : 'Parent'),
     };
     return renderBody(selectedTemplate.body, vars);
-  }, [selectedTemplate, selectedEleve, eligibleEleves, varsValues, classeMap]);
+  }, [selectedTemplate, selectedEleve, eligibleEleves, varsValues, classeMap, targetType]);
+
+  // Un message de groupe n'est pas personnalisé : les modèles qui citent un enfant ne conviennent pas
+  const templateNeedsChild = !!selectedTemplate && /\{(prenom_enfant|nom_enfant|niveau|classe)\}/.test(selectedTemplate.body);
 
   const bodyComplete = useMemo(() => {
     if (!selectedTemplate) return false;
@@ -318,6 +407,7 @@ export default function Communications() {
         targetNiveau: targetType === 'NIVEAU' ? targetNiveau : undefined,
         targetClasseId: targetType === 'CLASSE' ? targetClasseId : undefined,
         targetEleveId: targetType === 'INDIVIDUEL' ? selectedEleve?.id : undefined,
+        targetGroupIds: targetType === 'GROUPE' ? Array.from(selectedGroupIds) : undefined,
       });
       setPreview(res.data || res);
       setShowPreview(true);
@@ -344,11 +434,15 @@ export default function Communications() {
         targetNiveau: targetType === 'NIVEAU' ? targetNiveau : undefined,
         targetClasseId: targetType === 'CLASSE' ? targetClasseId : undefined,
         targetEleveId: targetType === 'INDIVIDUEL' ? selectedEleve?.id : undefined,
+        targetGroupIds: targetType === 'GROUPE' ? Array.from(selectedGroupIds) : undefined,
         variables: varsValues,
       });
       const data = res.data || res;
       setSendResult(data);
-      if (data.sent > 0) {
+      wa.refresh();
+      if (data.queued && data.sent > 0) {
+        showToast(`${data.sent} message(s) en cours d'envoi en arrière-plan — suivi dans l'historique.`, 'success');
+      } else if (data.sent > 0) {
         showToast(`${data.sent} message(s) envoyé(s) avec succès.`, 'success');
       } else if (data.failed > 0) {
         const errDetail = data.details?.find((d: any) => d.error)?.error || 'Échec envoi WhatsApp';
@@ -369,6 +463,8 @@ export default function Communications() {
     setTargetClasseId('');
     setSelectedEleve(null);
     setSearchEleve('');
+    setSelectedGroupIds(new Set());
+    setGroupSearch('');
     setVarsValues({});
     setPreview(null);
     setShowPreview(false);
@@ -383,6 +479,19 @@ export default function Communications() {
     return { total, avecPhone, sansPhone: total - avecPhone };
   }, [eligibleEleves]);
 
+  // ── Estimation locale des destinataires (avant vérification serveur) ─────
+
+  const estimatedRecipients = useMemo(() => {
+    const withPhone = eligibleEleves.filter(e => !!getElevePhone(e));
+    switch (targetType) {
+      case 'ALL': return withPhone.length;
+      case 'NIVEAU': return targetNiveau ? withPhone.filter(e => e.niveau === targetNiveau).length : 0;
+      case 'CLASSE': return targetClasseId ? withPhone.filter(e => e.classeId === targetClasseId).length : 0;
+      case 'INDIVIDUEL': return selectedEleve ? 1 : 0;
+      case 'GROUPE': return selectedGroupIds.size;
+    }
+  }, [eligibleEleves, targetType, targetNiveau, targetClasseId, selectedEleve, selectedGroupIds]);
+
   // ── Validation d'envoi ────────────────────────────────────────────────────
 
   const canSend = useMemo(() => {
@@ -390,136 +499,149 @@ export default function Communications() {
     if (targetType === 'NIVEAU' && !targetNiveau) return false;
     if (targetType === 'CLASSE' && !targetClasseId) return false;
     if (targetType === 'INDIVIDUEL' && !selectedEleve) return false;
+    if (targetType === 'GROUPE' && (selectedGroupIds.size === 0 || templateNeedsChild)) return false;
     return true;
-  }, [selectedTemplate, bodyComplete, targetType, targetNiveau, targetClasseId, selectedEleve]);
+  }, [selectedTemplate, bodyComplete, targetType, targetNiveau, targetClasseId, selectedEleve, selectedGroupIds, templateNeedsChild]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   const TABS = [
     { id: 'composer' as const, label: 'Envoyer', icon: Send },
     { id: 'historique' as const, label: 'Historique', icon: History },
+    { id: 'connexion' as const, label: 'Connexion WhatsApp', icon: Smartphone },
   ];
 
+  const TARGETS = [
+    { value: 'ALL', label: 'Tous' },
+    { value: 'NIVEAU', label: 'Niveau' },
+    { value: 'CLASSE', label: 'Classe' },
+    { value: 'INDIVIDUEL', label: 'Un parent' },
+    { value: 'GROUPE', label: 'Groupe' },
+  ] as const;
+
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all';
+  const dotCls = waReady ? 'bg-emerald-500' : wa.status ? 'bg-amber-500 animate-pulse' : 'bg-slate-300';
+
   return (
-    <div className="space-y-6">
-      {/* En-tête */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-          <span className="p-2 bg-green-500 rounded-xl text-white"><MessageSquare size={22} /></span>
-          Communications WhatsApp
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">Envoi de messages aux parents via WhatsApp</p>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-2xl p-4 bg-blue-50 text-blue-700 flex items-center gap-3">
-          <Users size={20} className="opacity-70" />
-          <div><div className="text-xl font-bold">{kpis.total}</div><div className="text-xs opacity-70">Élèves inscrits</div></div>
+    <div className="space-y-4">
+      {/* En-tête : titre + indicateurs sur une seule ligne */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="p-2 bg-green-500 rounded-xl text-white"><MessageSquare size={20} /></span>
+          <div>
+            <h1 className="text-xl font-bold text-slate-800 leading-tight">Communications WhatsApp</h1>
+            <p className="text-slate-500 text-xs">Messages aux parents, envoyés en arrière-plan depuis le numéro de l'établissement</p>
+          </div>
         </div>
-        <div className="rounded-2xl p-4 bg-green-50 text-green-700 flex items-center gap-3">
-          <Phone size={20} className="opacity-70" />
-          <div><div className="text-xl font-bold">{kpis.avecPhone}</div><div className="text-xs opacity-70">Avec WhatsApp</div></div>
-        </div>
-        <div className="rounded-2xl p-4 bg-amber-50 text-amber-700 flex items-center gap-3">
-          <AlertCircle size={20} className="opacity-70" />
-          <div><div className="text-xl font-bold">{kpis.sansPhone}</div><div className="text-xs opacity-70">Sans numéro</div></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip icon={<Users size={13} />} value={kpis.total} label="inscrits" cls="bg-blue-50 text-blue-700" />
+          <Chip icon={<Phone size={13} />} value={kpis.avecPhone} label="avec WhatsApp" cls="bg-green-50 text-green-700" />
+          <Chip icon={<AlertCircle size={13} />} value={kpis.sansPhone} label="sans numéro" cls="bg-amber-50 text-amber-700" />
+          <button onClick={() => setActiveTab('connexion')}>
+            <WhatsAppStatusBadge status={wa.status} />
+          </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+      {/* Onglets */}
+      <div className="inline-flex gap-1 bg-slate-100 rounded-xl p-1 max-w-full overflow-x-auto">
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
               activeTab === tab.id ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
-            <tab.icon size={16} />{tab.label}
+            <tab.icon size={15} />{tab.label}
+            {tab.id === 'connexion' && <span className={`w-2 h-2 rounded-full ${dotCls}`} />}
           </button>
         ))}
       </div>
 
+      {wa.status && !waReady && activeTab !== 'connexion' && (
+        <button onClick={() => setActiveTab('connexion')}
+          className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm text-left hover:bg-amber-100">
+          <AlertCircle size={16} className="shrink-0" />
+          WhatsApp n'est pas connecté : les messages ne partiront pas. Cliquez ici pour lier le téléphone de l'établissement.
+        </button>
+      )}
+
+      {/* ═══ TAB CONNEXION ═══ */}
+      {activeTab === 'connexion' && <WhatsAppConnexion canManage={canManageWa} wa={wa} />}
+
       {/* ═══ TAB ENVOYER ═══ */}
       {activeTab === 'composer' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Col gauche */}
-          <div className="lg:col-span-2 space-y-5">
-
-            {/* 1. Choix du template */}
-            <Card title="Choisir un template" icon={<MessageSquare size={16} className="text-green-500" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+          {/* Col gauche : message + destinataires dans une seule carte */}
+          <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            {/* 1. Message */}
+            <section className="p-5 space-y-3">
+              <StepTitle n={1} title="Message" />
+              <div className="grid grid-cols-3 gap-2">
                 {TEMPLATES.map(tmpl => (
                   <button key={tmpl.id} onClick={() => handleSelectTemplate(tmpl)}
-                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
                       selectedTemplate?.id === tmpl.id
-                        ? 'border-green-500 bg-green-50 shadow-sm'
+                        ? 'border-green-500 bg-green-50'
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     }`}>
-                    <div className="text-2xl mb-1">{tmpl.icon}</div>
-                    <div className="font-semibold text-sm text-slate-800">{tmpl.label}</div>
-                    <div className="flex items-center gap-1 mt-1.5">
-                      <CheckCircle2 size={10} className="text-green-500" />
-                      <span className="text-[10px] text-green-700 font-medium">{tmpl.waTemplate}</span>
-                      <span className="px-1 py-0.5 rounded bg-green-100 text-green-800 text-[9px] font-bold">VALIDÉ</span>
-                    </div>
+                    <span className="text-xl">{tmpl.icon}</span>
+                    <span className="font-semibold text-xs sm:text-sm text-slate-800 leading-tight">{tmpl.label}</span>
                   </button>
                 ))}
               </div>
 
-              {/* Champs variables du template sélectionné */}
-              {selectedTemplate && selectedTemplate.editableVars.length > 0 && (
-                <div className="mt-4 space-y-3 p-4 bg-slate-50 rounded-xl">
-                  <p className="text-xs font-medium text-slate-600">Compléter les informations :</p>
-                  {selectedTemplate.editableVars.map(v => (
-                    <div key={v.key}>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{v.label}</label>
-                      <input
-                        type="text"
-                        value={varsValues[v.key] || ''}
-                        onChange={e => setVarsValues(prev => ({ ...prev, [v.key]: e.target.value }))}
-                        placeholder={v.placeholder}
-                        className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all"
-                      />
-                    </div>
-                  ))}
+              {selectedTemplate?.editableVars.map(v => (
+                <div key={v.key}>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{v.label}</label>
+                  {v.key === 'contenu' ? (
+                    <textarea rows={4} value={varsValues[v.key] || ''} placeholder={v.placeholder}
+                      onChange={e => setVarsValues(prev => ({ ...prev, [v.key]: e.target.value }))}
+                      className={`${inputCls} mt-1 resize-y`} />
+                  ) : (
+                    <input type="text" value={varsValues[v.key] || ''} placeholder={v.placeholder}
+                      onChange={e => setVarsValues(prev => ({ ...prev, [v.key]: e.target.value }))}
+                      className={`${inputCls} mt-1`} />
+                  )}
                 </div>
+              ))}
+              {!selectedTemplate && (
+                <p className="text-xs text-slate-400">Choisissez un type de message pour commencer.</p>
               )}
-            </Card>
+            </section>
 
             {/* 2. Destinataires */}
-            <Card title="Destinataires" icon={<Users size={16} className="text-blue-500" />}>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {([
-                  { value: 'ALL', label: 'Tous les parents' },
-                  { value: 'NIVEAU', label: 'Par niveau' },
-                  { value: 'CLASSE', label: 'Par classe' },
-                  { value: 'INDIVIDUEL', label: 'Un parent' },
-                ] as const).map(opt => (
+            <section className="p-5 space-y-3 border-t border-slate-100">
+              <div className="flex items-center justify-between gap-2">
+                <StepTitle n={2} title="Destinataires" />
+                <span className="text-xs text-slate-500">
+                  {targetType === 'GROUPE'
+                    ? <><b className="text-slate-800">{estimatedRecipients}</b> groupe(s) sélectionné(s)</>
+                    : <>≈ <b className="text-slate-800">{estimatedRecipients}</b> parent(s) avec WhatsApp</>}
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-1 bg-slate-100 rounded-lg p-1">
+                {TARGETS.map(opt => (
                   <button key={opt.value}
                     onClick={() => { setTargetType(opt.value); setSelectedEleve(null); setPreview(null); setShowPreview(false); }}
-                    className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
-                      targetType === opt.value ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                    className={`py-1.5 rounded-md text-xs font-semibold transition-all ${
+                      targetType === opt.value ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>
                     {opt.label}
                   </button>
                 ))}
               </div>
 
               {targetType === 'NIVEAU' && (
-                <select value={targetNiveau} onChange={e => setTargetNiveau(e.target.value)}
-                  className="w-full mt-3 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <select value={targetNiveau} onChange={e => setTargetNiveau(e.target.value)} className={inputCls}>
                   <option value="">-- Sélectionner un niveau --</option>
                   {NIVEAUX.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
                 </select>
               )}
 
               {targetType === 'CLASSE' && (
-                <div className="mt-3 space-y-2">
-                  <select value={targetNiveau} onChange={e => { setTargetNiveau(e.target.value); setTargetClasseId(''); }}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="">Filtrer par niveau (optionnel)</option>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <select value={targetNiveau} onChange={e => { setTargetNiveau(e.target.value); setTargetClasseId(''); }} className={inputCls}>
+                    <option value="">Tous les niveaux</option>
                     {NIVEAUX.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
                   </select>
-                  <select value={targetClasseId} onChange={e => setTargetClasseId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                  <select value={targetClasseId} onChange={e => setTargetClasseId(e.target.value)} className={inputCls}>
                     <option value="">-- Sélectionner une classe --</option>
                     {filteredClasses.map(c => <option key={c.id} value={c.id}>{c.nom} ({c.niveau})</option>)}
                   </select>
@@ -527,41 +649,8 @@ export default function Communications() {
               )}
 
               {targetType === 'INDIVIDUEL' && (
-                <div className="mt-3 space-y-2">
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                    <input type="text" placeholder="Rechercher par nom d'élève ou de parent..."
-                      value={searchEleve} onChange={e => { setSearchEleve(e.target.value); setSelectedEleve(null); }}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                  </div>
-                  {searchEleve && !selectedEleve && filteredEleves.length > 0 && (
-                    <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-50">
-                      {filteredEleves.map(e => (
-                        <button key={e.id} onClick={() => handleSelectEleve(e)}
-                          className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="font-medium text-sm text-slate-800">{e.prenom} {e.nom}</span>
-                              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                                {NIVEAUX_LABELS[e.niveau] || e.niveau}
-                              </span>
-                              {classeMap[e.classeId] && (
-                                <span className="ml-1 text-[10px] text-slate-400">{classeMap[e.classeId]}</span>
-                              )}
-                            </div>
-                            <Phone size={12} className="text-green-500" />
-                          </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
-                            Parent : {getParentDisplay(e)} <span className="ml-2 text-slate-400">{getElevePhone(e)}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {searchEleve && !selectedEleve && filteredEleves.length === 0 && (
-                    <p className="text-xs text-slate-400 italic px-2">Aucun résultat pour "{searchEleve}"</p>
-                  )}
-                  {selectedEleve && (
+                <div className="space-y-2">
+                  {selectedEleve ? (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
                       <div>
                         <div className="font-medium text-sm text-blue-800">
@@ -578,93 +667,200 @@ export default function Communications() {
                       <button onClick={() => { setSelectedEleve(null); setSearchEleve(''); }}
                         className="text-blue-400 hover:text-blue-600"><X size={16} /></button>
                     </div>
+                  ) : (
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                      <input type="text" placeholder="Rechercher un élève, un parent ou un numéro…"
+                        value={searchEleve} onChange={e => setSearchEleve(e.target.value)}
+                        className={`${inputCls} pl-9`} />
+                    </div>
+                  )}
+                  {searchEleve && !selectedEleve && filteredEleves.length > 0 && (
+                    <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-50">
+                      {filteredEleves.map(e => (
+                        <button key={e.id} onClick={() => handleSelectEleve(e)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm">
+                              <span className="font-medium text-slate-800">{e.prenom} {e.nom}</span>
+                              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                                {NIVEAUX_LABELS[e.niveau] || e.niveau}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 truncate">Parent : {getParentDisplay(e)}</div>
+                          </div>
+                          <span className="text-xs text-slate-400 shrink-0">{getElevePhone(e)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {searchEleve && !selectedEleve && filteredEleves.length === 0 && (
+                    <p className="text-xs text-slate-400 italic px-2">Aucun résultat pour "{searchEleve}"</p>
                   )}
                 </div>
               )}
-            </Card>
 
-            {/* 3. Actions */}
-            <div className="flex flex-wrap items-center gap-3">
-              <button onClick={handlePreview} disabled={loading || !canSend}
-                className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-all disabled:opacity-50">
-                {loading ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
-                Prévisualiser
-              </button>
-              <button onClick={handleSend} disabled={sending || !canSend}
-                className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 transition-all disabled:opacity-50">
-                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                Envoyer via WhatsApp
-              </button>
+              {targetType === 'GROUPE' && (
+                <div className="space-y-2">
+                  {!waReady ? (
+                    <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                      Connectez WhatsApp pour afficher les groupes du compte.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                          <input type="text" placeholder="Rechercher un groupe…" value={groupSearch}
+                            onChange={e => setGroupSearch(e.target.value)} className={`${inputCls} pl-9`} />
+                        </div>
+                        <button onClick={loadGroups} disabled={groupsLoading} title="Actualiser la liste"
+                          className="px-3 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+                          <RefreshCw size={14} className={groupsLoading ? 'animate-spin' : ''} />
+                        </button>
+                      </div>
+
+                      {groupsError && <p className="text-xs text-red-600">{groupsError}</p>}
+
+                      <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-50">
+                        {groupsLoading && groups.length === 0 ? (
+                          <div className="p-6 text-center"><Loader2 size={18} className="animate-spin mx-auto text-slate-400" /></div>
+                        ) : filteredGroups.length === 0 ? (
+                          <p className="p-4 text-center text-xs text-slate-400">
+                            {groups.length === 0 ? 'Aucun groupe trouvé sur ce compte WhatsApp.' : `Aucun groupe pour "${groupSearch}"`}
+                          </p>
+                        ) : filteredGroups.map(g => {
+                          const checked = selectedGroupIds.has(g.id);
+                          return (
+                            <label key={g.id}
+                              className={`flex items-center gap-3 px-3 py-2 transition-colors ${
+                                g.canSend ? 'cursor-pointer hover:bg-green-50' : 'opacity-50 cursor-not-allowed'} ${checked ? 'bg-green-50' : ''}`}>
+                              <input type="checkbox" checked={checked} disabled={!g.canSend}
+                                onChange={() => toggleGroup(g.id)} className="accent-green-600" />
+                              <span className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                                <UsersRound size={15} />
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-800 truncate">{g.name}</p>
+                                <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                                  {g.participants ? `${g.participants} membres` : 'Membres inconnus'}
+                                  {g.announce && <span className="inline-flex items-center gap-0.5"><Megaphone size={10} /> annonces</span>}
+                                  {!g.canSend && <span className="text-amber-600">· réservé aux admins</span>}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {selectedGroupIds.size > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500">{selectedGroupIds.size} groupe(s) sélectionné(s)</span>
+                          <button onClick={() => setSelectedGroupIds(new Set())} className="text-slate-400 hover:text-slate-600">Tout décocher</button>
+                        </div>
+                      )}
+                      {templateNeedsChild && (
+                        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                          <AlertCircle size={12} className="shrink-0" />
+                          Ce modèle cite un enfant : choisissez « Annonce générale » ou « Événement » pour un groupe.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Actions */}
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
               <button onClick={resetComposer}
-                className="flex items-center gap-2 px-4 py-2.5 text-slate-500 text-sm hover:text-slate-700">
+                className="flex items-center gap-1.5 px-3 py-2 text-slate-500 text-sm hover:text-slate-700">
                 <RefreshCw size={14} />Réinitialiser
+              </button>
+              <div className="flex-1" />
+              <button onClick={handlePreview} disabled={loading || !canSend}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-100 transition-all disabled:opacity-50">
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
+                Vérifier les destinataires
+              </button>
+              <button onClick={handleSend} disabled={sending || !canSend || !waReady}
+                title={!waReady ? 'WhatsApp non connecté' : ''}
+                className="flex items-center gap-2 px-5 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition-all disabled:opacity-50">
+                {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                Envoyer{estimatedRecipients ? ` à ${estimatedRecipients}${targetType === 'GROUPE' ? ' groupe(s)' : ''}` : ''}
               </button>
             </div>
           </div>
 
-          {/* Col droite : preview */}
-          <div className="space-y-5">
-            {/* Aperçu du message */}
-            {selectedTemplate && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-                <h4 className="font-medium text-slate-700 text-sm flex items-center gap-2">
-                  <Eye size={14} className="text-slate-400" />
-                  Aperçu du message
-                </h4>
-                <div className="bg-green-50 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-green-700">
-                    <span className="text-lg">{selectedTemplate.icon}</span>
-                    <span className="font-medium">{selectedTemplate.label}</span>
-                  </div>
-                  <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
-                    {renderedBody || <span className="italic text-slate-400">Complétez les champs pour voir l'aperçu...</span>}
-                  </div>
+          {/* Col droite : aperçu type WhatsApp, toujours visible */}
+          <div className="lg:col-span-2 space-y-4 lg:sticky lg:top-4">
+            <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+              <div className="bg-[#075e54] text-white px-4 py-2.5 flex items-center gap-3">
+                <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">
+                  {NOM_ECOLE.charAt(0)}
+                </span>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold">{wa.status?.pushname || NOM_ECOLE}</p>
+                  <p className="text-[11px] text-white/70">{wa.status?.phone ? `+${wa.status.phone}` : 'Aperçu du message'}</p>
                 </div>
-                {!bodyComplete && (
-                  <div className="flex items-start gap-2 p-2.5 bg-amber-50 rounded-lg text-[11px] text-amber-700">
-                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                    <span>Veuillez remplir tous les champs du template.</span>
+              </div>
+              <div className="bg-[#ece5dd] p-4 min-h-[220px] flex flex-col justify-end">
+                {selectedTemplate ? (
+                  <div className="ml-auto max-w-[92%] bg-[#dcf8c6] rounded-xl rounded-tr-sm px-3 py-2 shadow-sm">
+                    <p className="text-[13px] text-slate-800 whitespace-pre-wrap leading-relaxed">{renderedBody}</p>
+                    <p className="text-[10px] text-slate-500 text-right mt-1 flex items-center justify-end gap-1">
+                      {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      <CheckCheck size={12} className="text-sky-500" />
+                    </p>
+                  </div>
+                ) : (
+                  <div className="m-auto text-center text-slate-500 text-xs">
+                    <FileText size={28} className="mx-auto mb-2 opacity-40" />
+                    L'aperçu du message apparaîtra ici
                   </div>
                 )}
               </div>
-            )}
+              {selectedTemplate && !bodyComplete && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-[11px] text-amber-700">
+                  <AlertCircle size={12} className="shrink-0" /> Complétez les champs du message.
+                </div>
+              )}
+              {selectedTemplate && (
+                <p className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
+                  {targetType === 'GROUPE'
+                    ? 'Message identique pour chaque groupe sélectionné.'
+                    : <>Exemple avec {selectedEleve ? 'le parent choisi' : 'le premier parent'} — chaque parent reçoit son message personnalisé.</>}
+                </p>
+              )}
+            </div>
 
-            {/* Preview API result */}
             {showPreview && preview && (
               <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium text-slate-700 text-sm">Résultat prévisualisation</h4>
+                  <h4 className="font-medium text-slate-700 text-sm">Destinataires vérifiés</h4>
                   <button onClick={() => setShowPreview(false)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-green-50 rounded-lg text-center">
-                    <div className="text-lg font-bold text-green-700">{preview.recipientCount}</div>
-                    <div className="text-[10px] text-green-600">Destinataires</div>
-                  </div>
-                  <div className="p-3 bg-amber-50 rounded-lg text-center">
-                    <div className="text-lg font-bold text-amber-700">{preview.skippedCount}</div>
-                    <div className="text-[10px] text-amber-600">Exclus</div>
-                  </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <MiniStat value={preview.recipientCount} label="Destinataires" cls="bg-green-50 text-green-700" />
+                  <MiniStat value={preview.skippedCount} label="Exclus" cls="bg-amber-50 text-amber-700" />
                 </div>
                 {preview.recipients.length > 0 && (
                   <div className="max-h-32 overflow-y-auto space-y-1">
-                    <p className="text-[10px] text-slate-500 font-medium">Destinataires :</p>
                     {preview.recipients.slice(0, 10).map((r, i) => (
-                      <div key={i} className="text-[10px] text-green-600 flex items-center gap-1">
-                        <CheckCircle2 size={10} />{r.nom} — {r.phone}
+                      <div key={i} className="text-[11px] text-green-700 flex items-center gap-1">
+                        <CheckCircle2 size={11} />{r.nom} — {r.phone}
                       </div>
                     ))}
                     {preview.recipients.length > 10 && (
-                      <p className="text-[10px] text-slate-400">+ {preview.recipients.length - 10} autres...</p>
+                      <p className="text-[11px] text-slate-400">+ {preview.recipients.length - 10} autres…</p>
                     )}
                   </div>
                 )}
                 {preview.skipped.length > 0 && (
                   <div className="max-h-24 overflow-y-auto space-y-1">
-                    <p className="text-[10px] text-slate-500 font-medium">Exclus :</p>
-                    {preview.skipped.map((s, i) => (
-                      <div key={i} className="text-[10px] text-amber-600 flex items-center gap-1">
-                        <AlertCircle size={10} />{s.nom} — {s.reason}
+                    {preview.skipped.map((sk, i) => (
+                      <div key={i} className="text-[11px] text-amber-700 flex items-center gap-1">
+                        <AlertCircle size={11} />{sk.nom} — {sk.reason}
                       </div>
                     ))}
                   </div>
@@ -672,30 +868,25 @@ export default function Communications() {
               </div>
             )}
 
-            {/* Résultat d'envoi */}
             {sendResult && (
               <div className="bg-white rounded-2xl border border-green-200 p-4 space-y-3">
                 <h4 className="font-medium text-green-700 text-sm flex items-center gap-2">
-                  <CheckCircle2 size={16} />Envoi terminé
+                  <CheckCircle2 size={16} />Envoi lancé en arrière-plan
                 </h4>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2 bg-green-50 rounded-lg">
-                    <div className="text-lg font-bold text-green-700">{sendResult.sent}</div>
-                    <div className="text-[10px] text-green-600">Envoyés</div>
-                  </div>
-                  <div className="p-2 bg-red-50 rounded-lg">
-                    <div className="text-lg font-bold text-red-700">{sendResult.failed}</div>
-                    <div className="text-[10px] text-red-600">Échoués</div>
-                  </div>
-                  <div className="p-2 bg-slate-50 rounded-lg">
-                    <div className="text-lg font-bold text-slate-700">{sendResult.skipped}</div>
-                    <div className="text-[10px] text-slate-600">Ignorés</div>
-                  </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <MiniStat value={sendResult.sent} label="En file d'envoi" cls="bg-green-50 text-green-700" />
+                  <MiniStat value={sendResult.skipped} label="Ignorés" cls="bg-slate-50 text-slate-700" />
                 </div>
-                <button onClick={resetComposer}
-                  className="w-full text-center text-xs text-green-600 hover:text-green-800 font-medium mt-2">
-                  Nouveau message
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => { setActiveTab('historique'); setHistoryView('messages'); }}
+                    className="flex-1 text-xs text-slate-600 hover:text-slate-800 font-medium py-1.5 rounded-lg border border-slate-200">
+                    Suivre l'envoi
+                  </button>
+                  <button onClick={resetComposer}
+                    className="flex-1 text-xs text-green-700 hover:text-green-900 font-medium py-1.5 rounded-lg border border-green-200">
+                    Nouveau message
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -705,20 +896,35 @@ export default function Communications() {
       {/* ═══ TAB HISTORIQUE ═══ */}
       {activeTab === 'historique' && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-700">Historique des envois</h3>
-            <button onClick={loadLogs} className="text-slate-400 hover:text-slate-600"><RefreshCw size={16} /></button>
+          <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex gap-1 bg-slate-100 rounded-lg p-1">
+              {([
+                { id: 'campagnes', label: `Campagnes (${logsTotal})` },
+                { id: 'messages', label: `Tous les messages (${waMessagesTotal})` },
+              ] as const).map(v => (
+                <button key={v.id} onClick={() => setHistoryView(v.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    historyView === v.id ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => (historyView === 'campagnes' ? loadLogs() : loadWaMessages())}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700">
+              <RefreshCw size={13} /> Actualiser
+            </button>
           </div>
-          {loading ? (
+
+          {historyView === 'campagnes' && (loading ? (
             <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-slate-400" /></div>
           ) : logs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-sm">Aucun envoi pour l'instant.</div>
+            <div className="p-8 text-center text-slate-400 text-sm">Aucun envoi groupé pour l'instant.</div>
           ) : (
             <div className="divide-y divide-slate-50">
               {logs.map(log => {
                 const st = STATUS_COLORS[log.status] || STATUS_COLORS.PENDING;
                 return (
-                  <div key={log.id} className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors">
+                  <div key={log.id} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
                     <div className="shrink-0">
                       {log.status === 'SENT' ? <CheckCircle2 size={18} className="text-emerald-500" /> :
                        log.status === 'FAILED' ? <AlertCircle size={18} className="text-red-500" /> :
@@ -729,9 +935,9 @@ export default function Communications() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm text-slate-700 truncate">{log.subject || log.type}</span>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${st.bg} ${st.text}`}>{st.label}</span>
-                        <span className="text-[10px] text-slate-400">{log.targetType === 'ALL' ? 'Tous' : log.targetType === 'NIVEAU' ? log.targetNiveau : log.targetType}</span>
+                        <span className="text-[10px] text-slate-400">{log.targetType === 'ALL' ? 'Tous' : log.targetType === 'NIVEAU' ? log.targetNiveau : log.targetType === 'GROUPE' ? 'Groupe(s)' : log.targetType}</span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">{log.body?.slice(0, 80)}...</p>
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{log.body}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xs text-slate-600">{log.deliveredCount}/{log.recipientCount}</div>
@@ -743,27 +949,81 @@ export default function Communications() {
                 );
               })}
             </div>
-          )}
-          {logsTotal > 20 && (
+          ))}
+          {historyView === 'campagnes' && logsTotal > 20 && (
             <div className="p-3 border-t border-slate-100 flex items-center justify-center gap-2">
               <button disabled={logsPage <= 1} onClick={() => setLogsPage(p => p - 1)} className="px-3 py-1 text-xs rounded border disabled:opacity-50">Précédent</button>
               <span className="text-xs text-slate-500">Page {logsPage}</span>
               <button disabled={logsPage * 20 >= logsTotal} onClick={() => setLogsPage(p => p + 1)} className="px-3 py-1 text-xs rounded border disabled:opacity-50">Suivant</button>
             </div>
           )}
+
+          {historyView === 'messages' && (waMessages.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">Aucun message WhatsApp pour l'instant.</div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {waMessages.map(m => {
+                const cls = m.status === 'FAILED' ? 'bg-red-50 text-red-700'
+                  : m.status === 'QUEUED' ? 'bg-amber-50 text-amber-700'
+                  : m.status === 'READ' ? 'bg-sky-50 text-sky-700' : 'bg-emerald-50 text-emerald-700';
+                return (
+                  <div key={m.id} className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                    <span className="text-lg shrink-0">{m.kind === 'document' ? '📄' : '💬'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm text-slate-700">{m.recipient_name || m.phone}</span>
+                        <span className="text-[10px] text-slate-400">{m.phone}</span>
+                        {m.category && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{m.category.replace(/_/g, ' ')}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{m.filename ? `${m.filename} — ` : ''}{m.body}</p>
+                      {m.error && <p className="text-[11px] text-red-500 mt-0.5 truncate">{m.error}</p>}
+                    </div>
+                    <div className="text-right shrink-0 space-y-1">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${cls}`}>
+                        {m.status === 'QUEUED' && <Loader2 size={10} className="animate-spin" />}
+                        {WA_MESSAGE_STATUS_LABELS[m.status]}
+                      </span>
+                      <div className="text-[10px] text-slate-400">
+                        {new Date(m.sent_at || m.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Card helper ─────────────────────────────────────────────────────────────
+// ─── Helpers d'affichage ─────────────────────────────────────────────────────
 
-function Card({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function StepTitle({ n, title }: { n: number; title: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
-      <h3 className="font-semibold text-slate-700 flex items-center gap-2">{icon}{title}</h3>
-      {children}
+    <h3 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+      <span className="w-5 h-5 rounded-full bg-green-600 text-white text-[11px] font-bold flex items-center justify-center">{n}</span>
+      {title}
+    </h3>
+  );
+}
+
+function Chip({ icon, value, label, cls }: { icon: React.ReactNode; value: number; label: string; cls: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${cls}`}>
+      {icon}<b>{value}</b>{label}
+    </span>
+  );
+}
+
+function MiniStat({ value, label, cls }: { value: number; label: string; cls: string }) {
+  return (
+    <div className={`p-2 rounded-lg text-center ${cls}`}>
+      <div className="text-lg font-bold">{value}</div>
+      <div className="text-[10px] opacity-80">{label}</div>
     </div>
   );
 }
