@@ -41,6 +41,8 @@ export const Status = {
 const TRANSIENT = new Set([Status.INITIALIZING, Status.AUTHENTICATING, Status.RECONNECTING]);
 const RESTRICTION_STATES = new Set(['TOS_BLOCK', 'SMB_TOS_BLOCK', 'PROXYBLOCK']);
 
+// Délai max d'un appel au navigateur. Un VPS modeste met plus de temps à charger WhatsApp Web.
+const PROTOCOL_TIMEOUT_MS = parseInt(process.env.WA_PROTOCOL_TIMEOUT_MS || '', 10) || 300_000;
 const WATCHDOG_INTERVAL_MS = 60_000;
 const WATCHDOG_TIMEOUT_MS = 10_000;
 const NAVIGATION_GRACE_MS = 60_000;
@@ -128,6 +130,13 @@ const withTimeout = (p, ms, label) => Promise.race([
   new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} : délai dépassé`)), ms)),
 ]);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Le PID du verrou appartient-il encore à un processus Node vivant ? (évite un faux positif
+// si le PID a été réattribué à un autre programme après un redémarrage du serveur)
+function isLiveNodeProcess(pid) {
+  try { process.kill(pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; }
+  try { return /node/i.test(fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')); } catch { return true; }
+}
 
 export class WhatsAppSession extends EventEmitter {
   constructor(tenantId) {
@@ -228,7 +237,9 @@ export class WhatsAppSession extends EventEmitter {
     this.initToken = token;
     this.initInFlight = true;
 
+    const t0 = Date.now();
     try {
+      this._acquireProcessLock();
       const versionOpts = await resolveWebVersionOptions();
       if (gen !== this.generation) return; // arrêté ou relancé entre-temps
       await killOrphanChromium(this.sessionId);
@@ -247,11 +258,11 @@ export class WhatsAppSession extends EventEmitter {
             `${SESSION_MARKER}${this.sessionId}`,
           ],
           handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
-          protocolTimeout: 120_000,
+          protocolTimeout: PROTOCOL_TIMEOUT_MS,
         },
         ...versionOpts,
         evalOnNewDoc: installWidCompat,
-        authTimeoutMs: 60_000,
+        authTimeoutMs: parseInt(process.env.WA_AUTH_TIMEOUT_MS || '', 10) || 180_000,
         deviceName: process.env.WA_DEVICE_NAME || 'GeStock Pro',
         browserName: 'Chrome',
       });
@@ -260,7 +271,9 @@ export class WhatsAppSession extends EventEmitter {
 
       await client.initialize();
       if (gen !== this.generation) return;
+      this._log(`navigateur prêt en ${Math.round((Date.now() - t0) / 1000)} s`);
       this._bindDeathDetection(client, gen);
+      this._guardReinjection(client, gen);
     } catch (err) {
       if (gen !== this.generation) return;
       const msg = err?.message || String(err);
@@ -342,6 +355,41 @@ export class WhatsAppSession extends EventEmitter {
       const id = readWid(msg?.id);
       if (id) store.updateAck(id, ack).catch(() => {});
     });
+  }
+
+  /**
+   * whatsapp-web.js réinjecte son code à chaque rechargement de page (framenavigated) sans
+   * intercepter les erreurs : un délai dépassé devient un rejet non géré qui arrête tout le
+   * processus Node (et fait « sauter » le QR code). On intercepte ici les réinjections.
+   */
+  _guardReinjection(client, gen) {
+    const original = client.inject.bind(client);
+    client.inject = async (...args) => {
+      try {
+        return await original(...args);
+      } catch (err) {
+        if (gen !== this.generation) return;
+        const msg = err?.message || String(err);
+        this._warn('réinjection après rechargement de WhatsApp Web échouée :', msg);
+        // Une page figée ne se rétablira pas seule : on relance proprement la session
+        this._onDead(`réinjection : ${msg}`);
+      }
+    };
+  }
+
+  /**
+   * Un seul processus par session : deux backends (ex. deux apps PM2) sur le même dossier
+   * wa-data tueraient mutuellement leurs Chromium et corrompraient la session.
+   */
+  _acquireProcessLock() {
+    const lockFile = path.join(DATA_PATH, `${this.sessionId}.lock`);
+    fs.mkdirSync(DATA_PATH, { recursive: true, mode: 0o700 });
+    let pid = null;
+    try { pid = parseInt(fs.readFileSync(lockFile, 'utf8'), 10); } catch { /* pas de verrou */ }
+    if (pid && pid !== process.pid && isLiveNodeProcess(pid)) {
+      throw new Error(`Session WhatsApp déjà utilisée par un autre processus (PID ${pid}). Un seul backend doit tourner sur ce dossier : vérifier « pm2 ls ».`);
+    }
+    fs.writeFileSync(lockFile, String(process.pid), { mode: 0o600 });
   }
 
   _bindDeathDetection(client, gen) {

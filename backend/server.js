@@ -227,6 +227,11 @@ app.listen(PORT, async () => {
   console.log(`🚀 GeStockPro API running on port ${PORT} (FRONTEND_URL=${FRONTEND_URL})`);
 });
 
+// Un rejet de promesse non géré (ex. navigateur WhatsApp lent) ne doit pas arrêter tout l'ERP
+process.on('unhandledRejection', (reason) => {
+  console.error('[SERVER] Rejet de promesse non géré :', reason?.stack || reason?.message || reason);
+});
+
 // Arrêt propre : fermer les navigateurs WhatsApp en gardant les sessions (pas de rescan)
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.once(sig, async () => {
