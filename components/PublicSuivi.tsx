@@ -16,6 +16,7 @@ type Statut = 'EN_ATTENTE' | 'ADMIS' | 'INSCRIT' | 'ACTIF' | 'REJETE' | 'RADIE';
 
 interface DossierResult {
   reference: string;
+  suiviToken?: string;
   prenom: string;
   nomInitiale: string;
   niveau: string;
@@ -137,9 +138,6 @@ const PublicSuivi: React.FC = () => {
       localStorage.setItem('ecole_branding', JSON.stringify(d));
     }).catch(() => {});
 
-    const params = new URLSearchParams(window.location.search);
-    const refParam = params.get('ref');
-    if (refParam) setRef(formatRef(refParam));
   }, []);
 
   const handleSearch = async (e?: React.FormEvent) => {
@@ -158,14 +156,16 @@ const PublicSuivi: React.FC = () => {
   };
 
   useEffect(() => {
+    // Lien reçu par email/WhatsApp : jeton opaque (?t=). ?ref= conservé pour les anciens liens.
     const params = new URLSearchParams(window.location.search);
+    const token = params.get('t');
     const refParam = params.get('ref');
-    if (refParam) {
-      const cleaned = formatRef(refParam);
-      setRef(cleaned);
+    const lookup = token || (refParam ? formatRef(refParam) : null);
+    if (lookup) {
       setTimeout(() => {
-        apiClient.get(`/public/admission/${encodeURIComponent(cleaned)}`).then((data: any) => {
+        apiClient.get(`/public/admission/${encodeURIComponent(lookup)}`).then((data: any) => {
           setResult(data);
+          if (data?.reference) setRef(data.reference);
         }).catch((err: any) => {
           setError(err?.message || 'Dossier introuvable.');
         });

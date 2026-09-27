@@ -16,6 +16,7 @@ import { uploadToCloudinary } from '../services/CloudinaryService.js';
 import { EmailService } from '../services/EmailService.js';
 import { PdfReceiptService } from '../services/PdfReceiptService.js';
 import { WhatsAppService } from '../services/WhatsAppService.js';
+import { encodeSuiviToken } from '../utils/suiviToken.js';
 
 const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
 
@@ -663,6 +664,7 @@ export class ParentController {
       if (pj.list.length) await createPiecesJointes(eleve, pj.list, req.user.id);
 
       const ref = `PRE-${new Date().getFullYear()}-${eleve.id.slice(0, 6).toUpperCase()}`;
+      const suiviToken = encodeSuiviToken(eleve.id);
 
       // Email de confirmation au parent
       const user = await User.findByPk(req.user.id, { attributes: ['email', 'name'] });
@@ -692,7 +694,7 @@ export class ParentController {
                 Conservez cette référence précieusement. Elle vous permettra de suivre l'avancement de votre dossier en ligne.
               </p>
               <div style="text-align:center;margin:28px 0 12px">
-                <a href="${frontendUrl}/suivi-inscription?ref=${ref}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;text-decoration:none;padding:14px 36px;border-radius:12px;font-weight:800;font-size:14px">
+                <a href="${frontendUrl}/suivi-inscription?t=${suiviToken}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;text-decoration:none;padding:14px 36px;border-radius:12px;font-weight:800;font-size:14px">
                   Suivre mon dossier
                 </a>
               </div>
@@ -707,7 +709,7 @@ export class ParentController {
 
       // WhatsApp au parent
       const parentPhone = parent1?.whatsapp || parent1?.telephone;
-      const suiviUrl = `${frontendUrl}/suivi-inscription?ref=${ref}`;
+      const suiviUrl = `${frontendUrl}/suivi-inscription?t=${suiviToken}`;
       if (parentPhone) {
         WhatsAppService.sendWhatsApp(parentPhone,
           `✅ *Candidature déposée*\n\nBonjour ${user?.name || 'Parent'},\n\nLe dossier d'inscription de *${prenom} ${nom}* a bien été reçu par *${ecoleNom}*.\n\n📋 Référence : *${ref}*\n🔗 Suivi : ${suiviUrl}\n\nConservez ce message pour suivre l'avancement.\n\n_${ecoleNom}_`,

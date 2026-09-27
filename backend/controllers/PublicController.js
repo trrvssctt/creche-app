@@ -6,8 +6,35 @@ import {
 } from '../utils/eleveDedup.js';
 import { EmailService } from '../services/EmailService.js';
 import { WhatsAppService } from '../services/WhatsAppService.js';
+import { encodeSuiviToken, decodeSuiviToken } from '../utils/suiviToken.js';
 
 const ADMIN_PHONE = process.env.ADMIN_WHATSAPP || '+221781311371';
+
+// Retrouve un dossier depuis une référence PRE-AAAA-XXXXXX (saisie manuelle)
+// ou un jeton de suivi opaque (lien envoyé par email/WhatsApp).
+async function findAdmission(tenantId, param, attributes) {
+  const trimmed = String(param || '').trim();
+  const match = trimmed.toUpperCase().match(/^PRE-(\d{4})-([A-Z0-9]{6})$/);
+  let eleve;
+  if (match) {
+    eleve = await Eleve.findOne({
+      where: {
+        tenantId,
+        [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${match[2]}'`),
+      },
+      attributes,
+    });
+  } else {
+    const id = decodeSuiviToken(trimmed);
+    if (!id) return { invalid: true };
+    eleve = await Eleve.findOne({ where: { id, tenantId }, attributes });
+  }
+  if (!eleve) return {};
+  const reference = match
+    ? match[0]
+    : `PRE-${new Date(eleve.createdAt).getFullYear()}-${eleve.id.slice(0, 6).toUpperCase()}`;
+  return { eleve, reference };
+}
 
 // Résout le tenant depuis l'Origin/Referer de la requête
 async function resolveTenantFromRequest(req) {
@@ -148,7 +175,8 @@ export class PublicController {
       const parentName = [parent1?.prenom, parent1?.nom].filter(Boolean).join(' ') || 'Parent';
       const ecoleNom = tenant.name || "L'école";
       const frontendUrl = process.env.FRONTEND_URL || `https://${tenant.domain || 'scolarite.letoitdesanges.com'}`;
-      const suiviUrl = `${frontendUrl}/suivi-inscription?ref=${ref}`;
+      const suiviToken = encodeSuiviToken(eleve.id);
+      const suiviUrl = `${frontendUrl}/suivi-inscription?t=${suiviToken}`;
 
       console.log(`[PublicController] Email confirmation → parentEmail="${parentEmail || 'VIDE'}", ref="${ref}"`);
       if (parentEmail) {
@@ -212,6 +240,7 @@ export class PublicController {
       return res.status(201).json({
         success: true,
         reference: ref,
+        suiviToken,
         message:   `Votre dossier a été transmis à ${ecoleNom}. Conservez votre référence : ${ref}. Vous serez contacté(e) pour la suite.`,
       });
     } catch (err) {
@@ -222,30 +251,19 @@ export class PublicController {
 
   // GET /api/public/admission/:reference — suivi public d'un dossier de préinscription
   static async trackAdmission(req, res) {
-    const raw = (req.params.reference || '').toUpperCase().trim();
-
-    const match = raw.match(/^PRE-(\d{4})-([A-Z0-9]{6})$/);
-    if (!match) {
-      return res.status(400).json({ error: 'Format de référence invalide. Exemple : PRE-2026-C0C91A' });
-    }
-
-    const idPrefix = match[2];
-
     try {
       const tenant = await resolveTenantFromRequest(req);
       if (!tenant) return res.status(404).json({ error: 'École introuvable.' });
 
-      const eleve = await Eleve.findOne({
-        where: {
-          tenantId: tenant.id,
-          [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${idPrefix}'`),
-        },
-        attributes: ['id', 'nom', 'prenom', 'niveau', 'statut', 'photoUrl', 'createdAt', 'notes',
+      const { eleve, reference, invalid } = await findAdmission(tenant.id, req.params.reference,
+        ['id', 'nom', 'prenom', 'niveau', 'statut', 'photoUrl', 'createdAt', 'notes',
           'dateNaissance', 'lieuNaissance', 'sexe', 'cantine', 'transportBus', 'garderie',
           'besoinSpecifique', 'ficheSanitaire', 'parent1', 'parent2', 'contactUrgence',
-          'personneAutorisee', 'situationMatrimoniale', 'parentsMemeResidence'],
-      });
+          'personneAutorisee', 'situationMatrimoniale', 'parentsMemeResidence']);
 
+      if (invalid) {
+        return res.status(400).json({ error: 'Format de référence invalide. Exemple : PRE-2026-C0C91A' });
+      }
       if (!eleve) {
         return res.status(404).json({ error: 'Dossier introuvable. Vérifiez votre numéro de référence.' });
       }
@@ -261,7 +279,8 @@ export class PublicController {
       const codeActif = !['ADMIS', 'INSCRIT', 'ACTIF'].includes(statut);
 
       const response = {
-        reference: raw,
+        reference,
+        suiviToken:  encodeSuiviToken(eleve.id),
         prenom:      eleve.prenom,
         nomInitiale: (eleve.nom || 'X')[0].toUpperCase() + '.',
         niveau:      eleve.niveau,
@@ -298,26 +317,14 @@ export class PublicController {
 
   // PUT /api/public/admission/:reference — resoumission d'un dossier rejeté
   static async resubmitAdmission(req, res) {
-    const raw = (req.params.reference || '').toUpperCase().trim();
-
-    const match = raw.match(/^PRE-(\d{4})-([A-Z0-9]{6})$/);
-    if (!match) {
-      return res.status(400).json({ error: 'Format de référence invalide.' });
-    }
-
-    const idPrefix = match[2];
-
     try {
       const tenant = await resolveTenantFromRequest(req);
       if (!tenant) return res.status(404).json({ error: 'École introuvable.' });
 
-      const eleve = await Eleve.findOne({
-        where: {
-          tenantId: tenant.id,
-          [Op.and]: Eleve.sequelize.literal(`UPPER(LEFT(id::text, 6)) = '${idPrefix}'`),
-        },
-      });
-
+      const { eleve, reference: raw, invalid } = await findAdmission(tenant.id, req.params.reference);
+      if (invalid) {
+        return res.status(400).json({ error: 'Format de référence invalide.' });
+      }
       if (!eleve) {
         return res.status(404).json({ error: 'Dossier introuvable.' });
       }

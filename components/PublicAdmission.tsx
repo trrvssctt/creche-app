@@ -95,7 +95,7 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
   const [pieces, setPieces]   = useState<Record<string, PieceJointe>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  const [result, setResult]   = useState<{ reference: string; message: string } | null>(null);
+  const [result, setResult]   = useState<{ reference: string; suiviToken?: string; message: string } | null>(null);
 
   // Cache localStorage → logo affiché immédiatement sans attendre l'API
   const [ecole, setEcole] = useState<Ecole>(() => {
@@ -210,7 +210,7 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
         notes: form.notes || null,
       };
       const res: any = await apiClient.post('/public/admission', payload);
-      setResult({ reference: res.reference, message: res.message });
+      setResult({ reference: res.reference, suiviToken: res.suiviToken, message: res.message });
     } catch (err: any) {
       setError(err?.message || 'Erreur lors de la soumission. Veuillez réessayer.');
     } finally { setLoading(false); }
@@ -255,10 +255,10 @@ const PublicAdmission: React.FC<Props> = ({ onBack }) => {
           </ul>
         </div>
         {/* Bouton suivi — lien direct avec la référence pré-remplie */}
-        <a href={`/suivi-inscription?ref=${result.reference}`}
+        <a href={`/suivi-inscription?t=${result.suiviToken}`}
           onClick={e => {
             e.preventDefault();
-            window.history.pushState({}, '', `/suivi-inscription?ref=${result.reference}`);
+            window.history.pushState({}, '', `/suivi-inscription?t=${result.suiviToken}`);
             window.location.reload();
           }}
           className="w-full py-4 rounded-2xl bg-emerald-500 active:bg-emerald-600 text-white font-black uppercase tracking-widest transition mb-3 text-sm flex items-center justify-center gap-2">
