@@ -69,3 +69,6 @@ backend/wa-data/
 
 # Archive locale de l'ancienne intégration WhatsApp (Botpress / n8n / Meta)
 _archive/
+
+# Sauvegardes produites par backend/scripts/purge-eleve.mjs (données personnelles)
+backend/scripts/backup-eleve-*.json

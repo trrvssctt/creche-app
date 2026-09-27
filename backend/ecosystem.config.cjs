@@ -18,7 +18,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
-        FRONTEND_URL: 'http://185.205.244.139:4000',
+        FRONTEND_URL: 'https://scolarite.letoitdesanges.com',
       },
       // Les variables sensibles restent dans backend/.env
       // Le server.js charge .env avec un chemin absolu (dirname de server.js)
