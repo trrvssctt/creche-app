@@ -17,7 +17,7 @@ module.exports = {
       kill_timeout: 20000,
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001, // doit correspondre au proxy_pass nginx (/etc/nginx/sites-enabled/scolarite)
         FRONTEND_URL: 'https://scolarite.letoitdesanges.com',
       },
       // Les variables sensibles restent dans backend/.env

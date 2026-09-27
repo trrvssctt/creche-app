@@ -26,7 +26,8 @@ BRANCH="${1:-main}"
 REMOTE="origin"
 PM2_APP="gestockpro-backend"
 ECOSYSTEM="$APP_DIR/backend/ecosystem.config.cjs"
-PORT="3000"
+PORT="3001"                                   # = PORT de backend/ecosystem.config.cjs
+NGINX_SITE="/etc/nginx/sites-enabled/scolarite" # le port de son proxy_pass doit être $PORT
 HEALTH_URL="http://127.0.0.1:$PORT/health"
 PUBLIC_URL="https://scolarite.letoitdesanges.com/"
 KEEP_BACKUPS=10
@@ -70,6 +71,17 @@ done
 cd "$APP_DIR" || die "Dossier $APP_DIR introuvable"
 [ -d .git ] || die "$APP_DIR n'est pas un dépôt git"
 [ -f backend/.env ] || die "backend/.env manquant : le déploiement est annulé (rien n'a été modifié)."
+
+# Le port de l'app doit être celui vers lequel nginx envoie le trafic, sinon 502
+if [ -f "$NGINX_SITE" ]; then
+  NGINX_PORT="$(grep -oE 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|localhost):[0-9]+' "$NGINX_SITE" | head -1 | grep -oE '[0-9]+$')"
+  if [ -n "$NGINX_PORT" ] && [ "$NGINX_PORT" != "$PORT" ]; then
+    die "nginx ($NGINX_SITE) envoie vers le port $NGINX_PORT mais l'app est configurée sur $PORT. Alignez PORT dans ce script et dans backend/ecosystem.config.cjs. Rien n'a été modifié."
+  fi
+else
+  warn "$NGINX_SITE introuvable : impossible de vérifier le port nginx"
+fi
+# Et le fichier ecosystem (tel que sur GitHub) doit utiliser le même port — vérifié après le git reset
 
 FREE_MB=$(df -Pm "$APP_DIR" | awk 'NR==2 {print $4}')
 [ "${FREE_MB:-0}" -lt 1024 ] && warn "Peu d'espace disque : ${FREE_MB} Mo libres"
@@ -180,6 +192,12 @@ else
   git --no-pager log --oneline "${PREV_COMMIT}..${TARGET}" 2>/dev/null | head -20
 fi
 
+ECO_PORT="$(grep -oE 'PORT:[[:space:]]*[0-9]+' "$ECOSYSTEM" | head -1 | grep -oE '[0-9]+$')"
+if [ "$ECO_PORT" != "$PORT" ]; then
+  [ -n "$PREV_COMMIT" ] && git reset --hard "$PREV_COMMIT" >/dev/null
+  die "backend/ecosystem.config.cjs (GitHub) utilise le port $ECO_PORT au lieu de $PORT. Code remis à ${PREV_COMMIT:0:7}, application non redémarrée."
+fi
+
 # Garder uniquement les N dernières sauvegardes
 ls -1t "$BACKUP_DIR" 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | while read -r f; do rm -f "$BACKUP_DIR/$f"; done
 
@@ -214,8 +232,17 @@ step "Test de santé ($HEALTH_URL)"
 health_check || { pm2 logs "$PM2_APP" --lines 40 --nostream; rollback "l'application ne répond pas après redémarrage"; }
 ok "Application en ligne"
 
-CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PUBLIC_URL" || true)"
-if [ "$CODE" = "200" ]; then ok "$PUBLIC_URL répond (HTTP 200)"; else warn "$PUBLIC_URL répond HTTP $CODE (vérifier nginx / DNS)"; fi
+# Test de bout en bout via nginx : une 502/503/504 sur l'API = l'app n'est pas joignable par le site
+step "Test via le site public (${PUBLIC_URL}api/plans)"
+CODE="000"
+for i in $(seq 1 10); do
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${PUBLIC_URL}api/plans" || true)"
+  case "$CODE" in 502|503|504|000) sleep 3 ;; *) break ;; esac
+done
+case "$CODE" in
+  502|503|504|000) rollback "le site public ne joint pas l'API (HTTP $CODE) — vérifier le port nginx" ;;
+  *) ok "API joignable via ${PUBLIC_URL} (HTTP $CODE)" ;;
+esac
 
 rm -rf dist.old
 echo
