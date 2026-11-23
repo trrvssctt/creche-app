@@ -460,8 +460,9 @@ export interface AnneeScolaireConfig {
   dateCloture?: string | null;
 }
 
-// Maternelle : ACQUIS(A)/EN_COURS(B)/NON_ACQUIS(C) · Élémentaire : EN_COURS(EA)/ACQUIS(A)/MAITRISE(M)
-export type NiveauCompetence = 'ACQUIS' | 'EN_COURS' | 'NON_ACQUIS' | 'MAITRISE';
+// Codes imprimés (services/bulletinTemplates.ts) — crèche, maternelle, CM : A / EC / NA / NE
+// · CP–CE2 : EA / A / M / NE. NA = non acquis et NE = non évalué partout.
+export type NiveauCompetence = 'ACQUIS' | 'EN_COURS' | 'NON_ACQUIS' | 'MAITRISE' | 'NON_EVALUE';
 
 export interface ContactParent {
   nom: string;

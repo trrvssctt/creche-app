@@ -13,8 +13,7 @@ import { useToast } from './ToastProvider';
 import { User, NiveauScolaire, Trimestre, NiveauCompetence } from '../types';
 import { useAnnee } from '../contexts/AnneeContext';
 import {
-  maternelleDomaines, elementaireCompetences, notesMatieres,
-  scaleForCycle, SCALE_MATERNELLE, SCALE_ELEMENTAIRE, type ScaleOption,
+  grilleNiveau, scaleForNiveau, suitGrilleActuelle, isReussi, type ScaleOption,
 } from '../services/bulletinTemplates';
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
@@ -32,19 +31,6 @@ interface DomaineForm {
   competences: CompetenceForm[];
 }
 
-interface SousMatiereForm {
-  nom: string;
-  coefficient: number;
-  note: number | '';
-}
-
-interface MatiereForm {
-  nom: string;
-  coefficient: number;
-  sousMatieres: SousMatiereForm[];
-  appreciation: string;
-}
-
 interface BulletinLocal {
   id?: string;
   eleveId: string;
@@ -55,9 +41,9 @@ interface BulletinLocal {
   anneeScolaire: string;
   domaines?: DomaineForm[];
   appreciationGenerale?: string;
-  matieres?: MatiereForm[];
-  moyenneGenerale?: number;
-  rang?: number;
+  // Anciens bulletins de notes /20 (abandonnés) : vidés au prochain enregistrement
+  matieres?: unknown[] | null;
+  moyenneGenerale?: number | null;
   publie: boolean;
   datePublication?: string;
 }
@@ -131,64 +117,16 @@ function getDomainesParNiveau(niveau: NiveauScolaire): DomaineForm[] {
       ...(d.section ? { section: d.section } : {}),
       competences: d.competences.map(c => ({ libelle: c.libelle, niveau: '' as NiveauCompetence | '' })),
     }));
-  if (['CRECHE1', 'CRECHE2', 'TPS'].includes(niveau)) return deep(DOMAINES_CRECHE);
-  const officiel = maternelleDomaines(niveau);
+  // Grille officielle de l'école (PS → CM2) ; grille d'éveil interne pour la crèche / TPS
+  const officiel = grilleNiveau(niveau);
   return officiel ? (officiel as DomaineForm[]) : deep(DOMAINES_CRECHE);
 }
 
-// Compétences (observables) du 2e bulletin élémentaire — échelle EA/A/M
-function getCompetencesElementaire(niveau: NiveauScolaire): DomaineForm[] {
-  return (elementaireCompetences(niveau) as DomaineForm[] | null) ?? [];
-}
-
-// ─── Matières Élémentaire ─────────────────────────────────────────────────────
-
-function getMatieresParNiveau(niveau: NiveauScolaire): MatiereForm[] {
-  // Grille de notes officielle du Drive (barème /20 pondéré conservé)
-  return (notesMatieres(niveau) as MatiereForm[] | null) ?? [];
-}
-
-// ─── Calculs ──────────────────────────────────────────────────────────────────
-
-function calcMoyenneMatiere(m: MatiereForm): number {
-  const sms = m.sousMatieres.filter(s => s.note !== '');
-  if (!sms.length) return 0;
-  const totalPts = sms.reduce((acc, s) => acc + (Number(s.note) * s.coefficient), 0);
-  const totalCoeff = sms.reduce((acc, s) => acc + s.coefficient, 0);
-  return totalCoeff > 0 ? Math.round((totalPts / totalCoeff) * 100) / 100 : 0;
-}
-
-function calcMoyenneGenerale(matieres: MatiereForm[]): number {
-  const actives = matieres.filter(m => m.sousMatieres.some(s => s.note !== ''));
-  if (!actives.length) return 0;
-  const totalPts = actives.reduce((acc, m) => acc + calcMoyenneMatiere(m) * m.coefficient, 0);
-  const totalCoeff = actives.reduce((acc, m) => acc + m.coefficient, 0);
-  return totalCoeff > 0 ? Math.round((totalPts / totalCoeff) * 100) / 100 : 0;
-}
-
-function moyenneColor(moy: number): string {
-  if (moy >= 16) return 'text-emerald-600';
-  if (moy >= 14) return 'text-blue-600';
-  if (moy >= 12) return 'text-amber-600';
-  if (moy >= 10) return 'text-orange-600';
-  return 'text-rose-600';
-}
-
-function moyenneBg(moy: number): string {
-  if (moy >= 16) return 'bg-emerald-50 border-emerald-200';
-  if (moy >= 14) return 'bg-blue-50 border-blue-200';
-  if (moy >= 12) return 'bg-amber-50 border-amber-200';
-  if (moy >= 10) return 'bg-orange-50 border-orange-200';
-  return 'bg-rose-50 border-rose-200';
-}
-
-function appreciationFromMoyenne(moy: number): string {
-  if (moy >= 18) return 'Excellent';
-  if (moy >= 16) return 'Très bien';
-  if (moy >= 14) return 'Bien';
-  if (moy >= 12) return 'Assez bien';
-  if (moy >= 10) return 'Passable';
-  return 'Insuffisant';
+/** Part des compétences réussies parmi celles évaluées (hors « non évalué »). */
+function progression(domaines?: DomaineForm[]): number | null {
+  const evaluees = (domaines ?? []).flatMap(d => d.competences).filter(c => c.niveau && c.niveau !== 'NON_EVALUE');
+  if (!evaluees.length) return null;
+  return Math.round((evaluees.filter(c => isReussi(c.niveau)).length / evaluees.length) * 100);
 }
 
 // ─── Composant principal ──────────────────────────────────────────────────────
@@ -222,8 +160,6 @@ export default function Bulletins({ user }: Props) {
   const [bulletinForm, setBulletinForm] = useState<BulletinLocal | null>(null);
   const [saving, setSaving] = useState(false);
   const [detailEleve, setDetailEleve] = useState<any>(null);
-  // Élémentaire : onglet actif de l'éditeur (bulletin de notes ou de compétences)
-  const [elemTab, setElemTab] = useState<'NOTES' | 'COMPETENCES'>('NOTES');
 
   // ── Chargement ─────────────────────────────────────────────────────────────
 
@@ -346,54 +282,40 @@ export default function Bulletins({ user }: Props) {
 
   function openEdit(eleve: any) {
     const existing = getBulletin(eleve.id);
-    const cycle = getCycle(eleve.niveau || 'PS');
+    const niveau: NiveauScolaire = eleve.niveau || 'PS';
     let form: BulletinLocal;
     if (existing) {
       form = JSON.parse(JSON.stringify(existing));
-      // Rétro-compat : un bulletin élémentaire enregistré avant l'ajout du 2e
-      // bulletin n'a pas encore les compétences → on les initialise.
-      if (cycle === 'ELEMENTAIRE' && (!form.domaines || form.domaines.length === 0)) {
-        form.domaines = getCompetencesElementaire(eleve.niveau || 'CP');
+      // Brouillon saisi avec un ancien modèle : l'école a remplacé tous les bulletins,
+      // on repart de la nouvelle grille (les anciens items n'ont pas d'équivalent).
+      if (!suitGrilleActuelle(niveau, form.domaines)) {
+        form.domaines = getDomainesParNiveau(niveau);
+        form.niveau = niveau;
+        addToast('Ce brouillon utilisait l\'ancien modèle de bulletin : la nouvelle grille a été chargée.', 'info');
       }
     } else {
       form = {
         eleveId: eleve.id,
         eleveNom: eleve.nom,
         elevePrenom: eleve.prenom,
-        niveau: eleve.niveau || 'PS',
+        niveau,
         trimestre: selectedTrimestre,
         anneeScolaire: ANNEE_COURANTE,
         publie: false,
+        domaines: getDomainesParNiveau(niveau),
+        appreciationGenerale: '',
       };
-      if (cycle === 'MATERNELLE' || cycle === 'CRECHE') {
-        form.domaines = getDomainesParNiveau(eleve.niveau || 'PS');
-        form.appreciationGenerale = '';
-      } else {
-        // Élémentaire : DEUX bulletins portés par le même dossier —
-        // notes (matieres, barème /20) + compétences (domaines, échelle EA/A/M)
-        form.matieres = getMatieresParNiveau(eleve.niveau || 'CP');
-        form.domaines = getCompetencesElementaire(eleve.niveau || 'CP');
-        form.moyenneGenerale = 0;
-        form.appreciationGenerale = '';
-      }
     }
     setSelectedEleve(eleve);
     setBulletinForm(form);
-    setElemTab('NOTES');
     setModalMode('EDIT');
   }
 
   function openView(eleve: any) {
     const existing = getBulletin(eleve.id);
     if (!existing) return;
-    const cycle = getCycle(eleve.niveau || 'PS');
-    const form = JSON.parse(JSON.stringify(existing));
-    if (cycle === 'ELEMENTAIRE' && (!form.domaines || form.domaines.length === 0)) {
-      form.domaines = getCompetencesElementaire(eleve.niveau || 'CP');
-    }
     setSelectedEleve(eleve);
-    setBulletinForm(form);
-    setElemTab('NOTES');
+    setBulletinForm(JSON.parse(JSON.stringify(existing)));
     setModalMode('VIEW');
   }
 
@@ -403,12 +325,8 @@ export default function Bulletins({ user }: Props) {
     if (!bulletinForm) return;
     setSaving(true);
     try {
-      const updated = { ...bulletinForm };
-      if (updated.matieres) {
-        updated.moyenneGenerale = calcMoyenneGenerale(updated.matieres);
-        if (!updated.appreciationGenerale)
-          updated.appreciationGenerale = appreciationFromMoyenne(updated.moyenneGenerale);
-      }
+      // Plus de bulletin de notes /20 : on efface les restes d'un ancien bulletin
+      const updated = { ...bulletinForm, matieres: null, moyenneGenerale: null };
       if (publish) {
         updated.publie = true;
         updated.datePublication = new Date().toISOString().split('T')[0];
@@ -448,16 +366,16 @@ export default function Bulletins({ user }: Props) {
 
   // ── Compétences sélecteur ──────────────────────────────────────────────────
 
-  // Échelle d'acquisition selon le cycle : maternelle A/B/C, élémentaire EA/A/M
+  // Échelle d'acquisition du niveau : A/EC/NA/NE, ou EA/A/M/NE en CP–CE2
   const compOptsFor = (niveau: NiveauScolaire): { value: NiveauCompetence; label: string; code: string; color: string; icon: React.ReactNode }[] => {
-    const cycle = getCycle(niveau);
     const styleFor = (v: string): { color: string; icon: React.ReactNode } => {
-      if (v === 'ACQUIS')   return { color: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: <CheckSquare size={13} /> };
-      if (v === 'MAITRISE') return { color: 'bg-blue-100 text-blue-700 border-blue-300',          icon: <Award size={13} /> };
-      if (v === 'EN_COURS') return { color: 'bg-amber-100 text-amber-700 border-amber-300',       icon: <Circle size={13} /> };
+      if (v === 'ACQUIS')     return { color: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: <CheckSquare size={13} /> };
+      if (v === 'MAITRISE')   return { color: 'bg-blue-100 text-blue-700 border-blue-300',          icon: <Award size={13} /> };
+      if (v === 'EN_COURS')   return { color: 'bg-amber-100 text-amber-700 border-amber-300',       icon: <Circle size={13} /> };
+      if (v === 'NON_EVALUE') return { color: 'bg-slate-100 text-slate-600 border-slate-300',       icon: <Clock size={13} /> };
       return { color: 'bg-rose-100 text-rose-700 border-rose-300', icon: <MinusCircle size={13} /> };
     };
-    return scaleForCycle(cycle).map((o: ScaleOption) => ({
+    return scaleForNiveau(niveau).map((o: ScaleOption) => ({
       value: o.value as NiveauCompetence, label: o.label, code: o.code, ...styleFor(o.value),
     }));
   };
@@ -470,19 +388,6 @@ export default function Bulletins({ user }: Props) {
         competences: d.competences.map((c, j) => j !== ci ? c : { ...c, niveau }),
       });
       return { ...prev, domaines };
-    });
-  }
-
-  function setNote(mi: number, si: number, note: string) {
-    setBulletinForm(prev => {
-      if (!prev?.matieres) return prev;
-      const matieres = prev.matieres.map((m, i) => i !== mi ? m : {
-        ...m,
-        sousMatieres: m.sousMatieres.map((s, j) =>
-          j !== si ? s : { ...s, note: note === '' ? '' : Math.min(20, Math.max(0, parseFloat(note) || 0)) }
-        ),
-      });
-      return { ...prev, matieres };
     });
   }
 
@@ -846,27 +751,18 @@ export default function Bulletins({ user }: Props) {
 
                         {/* Col 4: Note / Progression */}
                         <div>
-                          {b && !isMat && b.moyenneGenerale !== undefined && b.moyenneGenerale > 0 ? (
-                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-sm font-black ${moyenneBg(b.moyenneGenerale)} ${moyenneColor(b.moyenneGenerale)}`}>
-                              <Award size={12} />
-                              {b.moyenneGenerale.toFixed(2)}
-                              <span className="text-[9px] font-medium opacity-60">/20</span>
-                            </div>
-                          ) : b && isMat && b.domaines ? (() => {
-                            const total  = b.domaines.reduce((s, d) => s + d.competences.length, 0);
-                            const acquis = b.domaines.reduce((s, d) => s + d.competences.filter(c => c.niveau === 'ACQUIS').length, 0);
-                            const pct    = total > 0 ? Math.round((acquis / total) * 100) : 0;
+                          {(() => {
+                            const pct = b ? progression(b.domaines) : null;
+                            if (pct === null) return <span className="text-[9px] text-slate-300 font-bold">—</span>;
                             return (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2" title="Compétences acquises ou maîtrisées, parmi celles évaluées">
                                 <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden">
                                   <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
                                 </div>
                                 <span className="text-[9px] font-black text-emerald-600">{pct}%</span>
                               </div>
                             );
-                          })() : (
-                            <span className="text-[9px] text-slate-300 font-bold">—</span>
-                          )}
+                          })()}
                         </div>
 
                         {/* Col 5: Actions */}
@@ -1062,8 +958,7 @@ export default function Bulletins({ user }: Props) {
                 <div className="grid grid-cols-3 gap-2">
                   {TRIMESTRES.map(t => {
                     const b = bulletins[bulletinKey(detailEleve.id, t.value)];
-                    const cycle = getCycle(detailEleve.niveau || 'PS');
-                    const isMat = cycle === 'MATERNELLE' || cycle === 'CRECHE';
+                    const pct = b ? progression(b.domaines) : null;
                     return (
                       <div key={t.value} className={`rounded-xl p-3 border text-center ${
                         !b ? 'bg-slate-50 border-slate-100' :
@@ -1072,10 +967,8 @@ export default function Bulletins({ user }: Props) {
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{t.label}</p>
                         {!b ? (
                           <p className="text-xs font-bold text-slate-300 mt-1">—</p>
-                        ) : !isMat && b.moyenneGenerale ? (
-                          <p className={`text-sm font-black mt-1 ${moyenneColor(b.moyenneGenerale)}`}>
-                            {b.moyenneGenerale.toFixed(1)}<span className="text-[8px]">/20</span>
-                          </p>
+                        ) : pct !== null ? (
+                          <p className="text-sm font-black mt-1 text-emerald-600">{pct}%</p>
                         ) : b.publie ? (
                           <CheckCircle2 size={16} className="mx-auto mt-1 text-emerald-600" />
                         ) : (
@@ -1145,30 +1038,15 @@ export default function Bulletins({ user }: Props) {
                 <p className="text-lg font-black uppercase tracking-widest">Le Toit des Anges</p>
                 <p className="text-sm text-slate-500">469 Cité Cheikh Omar TALL, Ouakam – Dakar</p>
                 <p className="text-xl font-black mt-4 uppercase border-b-2 border-slate-800 pb-2">
-                  Bulletin de {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' ? (elemTab === 'NOTES' ? 'Notes' : 'Compétences') : 'Compétences'} — {TRIMESTRES.find(t => t.value === bulletinForm.trimestre)?.label}
+                  Bulletin d'évaluation — {TRIMESTRES.find(t => t.value === bulletinForm.trimestre)?.label}
                 </p>
                 <p className="text-sm mt-2">
                   Élève : <strong>{bulletinForm.elevePrenom} {bulletinForm.eleveNom}</strong> · Niveau : <strong>{niveauLabel(bulletinForm.niveau)}</strong> · Année : <strong>{bulletinForm.anneeScolaire}</strong>
                 </p>
               </div>
 
-              {/* ─── ÉLÉMENTAIRE : onglets Notes / Compétences ──────────────── */}
-              {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && (
-                <div className="flex items-center gap-2 mb-5 print:hidden">
-                  {([['NOTES', 'Bulletin de notes', GraduationCap], ['COMPETENCES', 'Bulletin de compétences', Award]] as const).map(([key, lbl, Icon]) => (
-                    <button key={key} onClick={() => setElemTab(key)}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${
-                        elemTab === key ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
-                      }`}>
-                      <Icon size={14} /> {lbl}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* ─── Compétences (maternelle/crèche, ou élémentaire onglet Compétences) ── */}
-              {((getCycle(bulletinForm.niveau) === 'MATERNELLE' || getCycle(bulletinForm.niveau) === 'CRECHE') ||
-                (getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && elemTab === 'COMPETENCES')) && bulletinForm.domaines && (
+              {/* ─── Compétences (grille officielle du niveau) ─────────────────── */}
+              {bulletinForm.domaines && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 mb-2">
                     <Baby size={15} className="text-purple-500" />
@@ -1205,6 +1083,7 @@ export default function Bulletins({ user }: Props) {
                                 {compOptsFor(bulletinForm.niveau).map(o => (
                                   <button
                                     key={o.value}
+                                    title={o.label}
                                     onClick={() => setCompetenceNiveau(di, ci, o.value)}
                                     className={`px-2.5 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
                                       comp.niveau === o.value
@@ -1213,7 +1092,7 @@ export default function Bulletins({ user }: Props) {
                                     }`}
                                   >
                                     {o.icon}
-                                    <span className="hidden sm:inline">{o.label}</span>
+                                    <strong>{o.code}</strong>
                                   </button>
                                 ))}
                               </div>
@@ -1223,7 +1102,7 @@ export default function Bulletins({ user }: Props) {
                                   ? compOptsFor(bulletinForm.niveau).find(o => o.value === comp.niveau)?.color ?? 'bg-slate-100 text-slate-400 border-slate-200'
                                   : 'bg-slate-100 text-slate-300 border-slate-200'
                               }`}>
-                                {comp.niveau ? compOptsFor(bulletinForm.niveau).find(o => o.value === comp.niveau)?.label : '—'}
+                                {comp.niveau ? (() => { const o = compOptsFor(bulletinForm.niveau).find(x => x.value === comp.niveau); return o ? `${o.code} · ${o.label}` : '—'; })() : '—'}
                               </span>
                             )}
                           </div>
@@ -1236,146 +1115,10 @@ export default function Bulletins({ user }: Props) {
                 </div>
               )}
 
-              {/* ─── ÉLÉMENTAIRE : notes (onglet Notes) ───────────────────────── */}
-              {getCycle(bulletinForm.niveau) === 'ELEMENTAIRE' && elemTab === 'NOTES' && bulletinForm.matieres && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <GraduationCap size={15} className="text-indigo-600" />
-                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-[0.2em]">Notes par matière</h3>
-                  </div>
-
-                  {/* Tableau récapitulatif en vue lecture */}
-                  {modalMode === 'VIEW' && (
-                    <div className="border border-slate-100 rounded-2xl overflow-hidden mb-2">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-indigo-50 border-b border-indigo-100">
-                            <th className="text-left px-5 py-3 text-[9px] font-black text-indigo-600 uppercase tracking-widest">Matière</th>
-                            <th className="text-center px-3 py-3 text-[9px] font-black text-indigo-600 uppercase tracking-widest">Coeff.</th>
-                            <th className="text-center px-3 py-3 text-[9px] font-black text-indigo-600 uppercase tracking-widest">Moyenne</th>
-                            <th className="text-left px-5 py-3 text-[9px] font-black text-indigo-600 uppercase tracking-widest">Appréciation</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {bulletinForm.matieres.map((m, mi) => {
-                            const moy = calcMoyenneMatiere(m);
-                            const hasNote = m.sousMatieres.some(s => s.note !== '');
-                            return (
-                              <tr key={mi} className="hover:bg-slate-50">
-                                <td className="px-5 py-2.5 font-bold text-slate-800 text-sm">{m.nom}</td>
-                                <td className="px-3 py-2.5 text-center text-xs font-bold text-slate-400">{m.coefficient}</td>
-                                <td className="px-3 py-2.5 text-center">
-                                  {hasNote ? (
-                                    <span className={`font-black text-sm ${moyenneColor(moy)}`}>
-                                      {moy.toFixed(2)}<span className="text-[9px] opacity-60">/20</span>
-                                    </span>
-                                  ) : <span className="text-slate-300">—</span>}
-                                </td>
-                                <td className="px-5 py-2.5 text-xs text-slate-500 italic">{m.appreciation || '—'}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {bulletinForm.matieres.map((matiere, mi) => {
-                    const moy = calcMoyenneMatiere(matiere);
-                    const hasSomeNote = matiere.sousMatieres.some(s => s.note !== '');
-                    return (
-                      <div key={mi} className="border border-slate-100 rounded-2xl overflow-hidden">
-                        <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
-                          <div>
-                            <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-[0.2em]">{matiere.nom}</h4>
-                            <p className="text-[9px] text-indigo-400 font-bold">Coefficient total : {matiere.coefficient}</p>
-                          </div>
-                          {hasSomeNote && (
-                            <div className={`px-3 py-1.5 rounded-xl border text-sm font-black ${moyenneBg(moy)} ${moyenneColor(moy)}`}>
-                              {moy.toFixed(2)} <span className="text-[9px] font-medium">/20</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="divide-y divide-slate-50">
-                          {matiere.sousMatieres.map((sm, si) => (
-                            <div key={si} className="flex items-center px-5 py-3 gap-4">
-                              <p className="text-sm text-slate-700 font-medium flex-1">{sm.nom}</p>
-                              <span className="text-[9px] font-bold text-slate-400">coeff {sm.coefficient}</span>
-                              {modalMode === 'EDIT' && !bulletinForm.publie ? (
-                                <div className="flex items-center gap-1.5">
-                                  <input
-                                    type="number"
-                                    min={0} max={20} step={0.25}
-                                    value={sm.note}
-                                    onChange={e => setNote(mi, si, e.target.value)}
-                                    placeholder="—"
-                                    className="w-16 text-center border border-slate-200 rounded-lg py-1.5 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                                  />
-                                  <span className="text-xs text-slate-300">/20</span>
-                                </div>
-                              ) : (
-                                <span className={`w-16 text-center text-sm font-black ${sm.note !== '' ? moyenneColor(Number(sm.note)) : 'text-slate-300'}`}>
-                                  {sm.note !== '' ? `${Number(sm.note).toFixed(2)}` : '—'}
-                                  <span className="text-[9px] text-slate-300"> /20</span>
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        {modalMode === 'EDIT' && !bulletinForm.publie && (
-                          <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
-                            <input
-                              type="text"
-                              value={matiere.appreciation}
-                              onChange={e => {
-                                setBulletinForm(prev => {
-                                  if (!prev?.matieres) return prev;
-                                  const matieres = prev.matieres.map((m, i) =>
-                                    i === mi ? { ...m, appreciation: e.target.value } : m
-                                  );
-                                  return { ...prev, matieres };
-                                });
-                              }}
-                              placeholder="Appréciation du professeur…"
-                              className="w-full bg-transparent border-0 text-xs text-slate-500 italic focus:outline-none focus:ring-0 placeholder:text-slate-300"
-                            />
-                          </div>
-                        )}
-                        {modalMode === 'VIEW' && matiere.appreciation && (
-                          <div className="px-5 py-2 bg-slate-50 border-t border-slate-100">
-                            <p className="text-xs text-slate-500 italic">"{matiere.appreciation}"</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Moyenne générale */}
-                  {(() => {
-                    const moy = calcMoyenneGenerale(bulletinForm.matieres);
-                    if (!bulletinForm.matieres.some(m => m.sousMatieres.some(s => s.note !== ''))) return null;
-                    return (
-                      <div className={`flex items-center justify-between px-6 py-4 rounded-2xl border-2 ${moyenneBg(moy)}`}>
-                        <div className="flex items-center gap-3">
-                          <Award size={20} className={moyenneColor(moy)} />
-                          <div>
-                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">Moyenne Générale</p>
-                            <p className="text-[9px] text-slate-400">{appreciationFromMoyenne(moy)}</p>
-                          </div>
-                        </div>
-                        <p className={`text-3xl font-black ${moyenneColor(moy)}`}>
-                          {moy.toFixed(2)}<span className="text-base font-medium ml-1">/20</span>
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
               {/* Appréciation générale */}
               <div className="border border-slate-100 rounded-2xl p-5">
                 <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">
-                  Appréciation générale du conseil de classe
+                  Bilan du trimestre — progrès constatés, points à consolider, accompagnement proposé
                 </label>
                 {modalMode === 'EDIT' && !bulletinForm.publie ? (
                   <textarea
