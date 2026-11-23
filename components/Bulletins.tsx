@@ -134,7 +134,7 @@ function progression(domaines?: DomaineForm[]): number | null {
 interface Props { user: User }
 
 export default function Bulletins({ user }: Props) {
-  const { addToast } = useToast();
+  const addToast = useToast();
   const { annee: ANNEE_COURANTE, isReadOnly, isAnneeCloturee } = useAnnee();
   const canModify = authBridge.hasPermission(user.role, 'bulletins', 'write') && !isReadOnly;
 
@@ -705,7 +705,7 @@ export default function Bulletins({ user }: Props) {
               <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
                 {/* En-tête tableau */}
                 <div className="grid grid-cols-[2.5fr_1fr_1.5fr_1.2fr_auto] gap-0 border-b border-slate-100 bg-slate-50 px-5 py-3">
-                  {['Élève', 'Matricule', 'Statut bulletin', 'Note / Progression', 'Actions'].map(h => (
+                  {['Élève', 'Matricule', 'Statut bulletin', 'Progression', 'Actions'].map(h => (
                     <div key={h} className="text-[8px] font-black text-slate-400 uppercase tracking-[0.25em]">{h}</div>
                   ))}
                 </div>
@@ -749,7 +749,7 @@ export default function Bulletins({ user }: Props) {
                           </span>
                         </div>
 
-                        {/* Col 4: Note / Progression */}
+                        {/* Col 4: Progression (compétences acquises) */}
                         <div>
                           {(() => {
                             const pct = b ? progression(b.domaines) : null;
