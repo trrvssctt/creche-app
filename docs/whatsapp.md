@@ -58,6 +58,25 @@ pm2 reload ecosystem.config.cjs
 | `WA_DEFAULT_TENANT_ID` | — | Établissement utilisé si un envoi n'en précise pas |
 | `WA_PROXY` | — | Proxy Chromium |
 
+## Dépannage : QR absent ou « sendIq called before startComms »
+
+Ce message signifie que WhatsApp Web, dans le Chromium du serveur, n'a jamais ouvert son
+WebSocket vers les serveurs WhatsApp : le QR n'a pas de référence et le code d'appairage échoue.
+C'est un problème réseau du serveur, pas de l'application (tout marche en local).
+
+```bash
+cd /opt/creche-app/backend && node scripts/wa-diagnostic.mjs
+```
+
+Selon la conclusion du diagnostic :
+
+| Constat | Correctif |
+|---|---|
+| Décalage d'horloge > 30 s | `timedatectl set-ntp true && timedatectl` |
+| IPv6 publiée mais WebSocket jamais accepté | Tester `curl -6 -sI --max-time 10 https://web.whatsapp.com` ; si ça échoue alors que `curl -4` marche : désactiver l'IPv6 (`sysctl -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1`, à rendre permanent dans `/etc/sysctl.d/99-no-ipv6.conf`) puis `pm2 restart gestockpro-backend` |
+| WebSocket refusé / fermé sans QR, réseau par ailleurs correct | IP de datacenter restreinte par WhatsApp : passer par un proxy sortant `WA_PROXY=http://hote:port` dans `backend/.env` |
+| Tout est ✅ | Vérifier `pm2 ls` : une seule instance de `gestockpro-backend` (jamais de mode cluster à plusieurs instances) |
+
 ## Risques
 
 - L'automatisation d'un compte WhatsApp est contraire aux CGU de WhatsApp : le numéro peut

@@ -497,6 +497,11 @@ export class WhatsAppSession extends EventEmitter {
         if (!this.client) break;
       }
     }
+    // « sendIq called before startComms » : la page n'a jamais ouvert sa connexion aux
+    // serveurs WhatsApp (réseau du serveur : IPv6, pare-feu, IP bloquée, horloge…)
+    if (/startComms|sendIq/i.test(lastErr?.message || '')) {
+      throw new Error("WhatsApp Web n'arrive pas à se connecter aux serveurs WhatsApp depuis ce serveur (réseau). Lancer « node scripts/wa-diagnostic.mjs » sur le serveur.");
+    }
     throw lastErr || new Error('Impossible d\'obtenir un code d\'appairage');
   }
 
